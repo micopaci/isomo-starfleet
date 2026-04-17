@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ISOMO OPS // STARFLEET COMMAND</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:        #080c09;
+      --bg2:       #0c1210;
+      --bg3:       #111a12;
+      --border:    #1a2a1c;
+      --border2:   #263d28;
+      --green:     #3ddc60;
+      --green-dim: #194d28;
+      --green-mid: #2a6b3a;
+      --orange:    #e07820;
+      --red:       #dd3030;
+      --text:      #7a9e80;
+      --text-hi:   #c8e0cc;
+      --text-lo:   #334a36;
+      --white:     #e4ede6;
+      --font:      'JetBrains Mono', 'Courier New', monospace;
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      font-size: 11px;
+      letter-spacing: 0.3px;
+    }
+
+    /* ─── LOGIN ──────────────────────────────────────────────────────────── */
+    #login-overlay {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9999;
+    }
+    #login-overlay.hidden { display: none; }
+    .login-box {
+      border: 1px solid var(--border2);
+      padding: 48px 44px;
+      min-width: 360px;
+      background: var(--bg2);
+      border-radius: 4px;
+    }
+    /* Logo: friendly, clean — no scary tech labels */
+    .login-logo {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 6px;
+    }
+    .login-logo-icon {
+      width: 42px; height: 42px; background: var(--green-dim);
+      border: 1px solid var(--green-mid); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; color: var(--green);
+    }
+    .login-logo-text { font-size: 20px; font-weight: 700; color: var(--white); letter-spacing: 1px; }
+    .login-sub { font-size: 12px; color: var(--text); margin: 2px 0 32px; font-weight: 400; letter-spacing: 0; }
+    .login-field-label {
+      display: block; font-size: 11px; color: var(--text); margin-bottom: 5px; letter-spacing: 0;
+    }
+    .login-box input {
+      display: block; width: 100%;
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text-hi); font-family: var(--font); font-size: 13px;
+      padding: 11px 14px; margin-bottom: 16px; outline: none;
+      border-radius: 3px; letter-spacing: 0;
+    }
+    .login-box input:focus { border-color: var(--green-mid); }
+    .login-box input::placeholder { color: var(--text-lo); }
+    .login-box button {
+      width: 100%; background: var(--green-mid); border: none;
+      color: var(--white); font-family: var(--font); font-size: 13px; font-weight: 600;
+      padding: 13px; cursor: pointer; letter-spacing: 0.5px; margin-top: 4px;
+      border-radius: 3px; transition: background 0.15s;
+    }
+    .login-box button:hover { background: #2e7a42; }
+    #login-error { color: #f07070; font-size: 11px; margin-top: 10px; min-height: 16px; }
+    .api-config {
+      margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border);
+    }
+    .api-config label { font-size: 11px; color: var(--text); display: block; margin-bottom: 5px; }
+    .api-config input { margin-bottom: 0; font-size: 11px; }
+
+    /* ─── APP SHELL ──────────────────────────────────────────────────────── */
+    #app { display: flex; flex-direction: column; height: 100vh; }
+    #app.hidden { display: none; }
+
+    /* ─── HEADER ─────────────────────────────────────────────────────────── */
+    .hdr {
+      display: flex; align-items: center; gap: 20px;
+      background: #080b08; border-bottom: 1px solid var(--border);
+      padding: 0 18px; height: 50px; flex-shrink: 0;
+    }
+    .hdr-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .hdr-icon {
+      width: 34px; height: 34px; background: var(--green-dim);
+      border: 1px solid var(--green-mid);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; color: var(--green); font-weight: 700;
+    }
+    .hdr-name { font-size: 12px; font-weight: 700; color: var(--white); letter-spacing: 2px; }
+    .hdr-sub  { font-size: 8px; color: var(--text-lo); letter-spacing: 1px; }
+    .hdr-sector { flex: 1; display: flex; align-items: center; gap: 14px; }
+    .sector-name { font-size: 20px; font-weight: 700; color: var(--white); letter-spacing: 3px; }
+    .baseline-tag { font-size: 9px; color: var(--green); letter-spacing: 1px; }
+    .hdr-kpis { display: flex; gap: 28px; }
+    .kpi { text-align: right; }
+    .kpi.clickable { cursor: pointer; }
+    .kpi.clickable:hover .kpi-val { opacity: 0.75; }
+    .kpi-lbl { font-size: 8px; color: var(--text-lo); letter-spacing: 1px; margin-bottom: 1px; }
+    .kpi-val { font-size: 18px; font-weight: 700; color: var(--white); }
+    .kpi-val.g { color: var(--green); }
+    .kpi-val.r { color: var(--red); }
+    .kpi-val.o { color: var(--orange); }
+
+    /* ─── BODY LAYOUT ────────────────────────────────────────────────────── */
+    .body { display: flex; flex: 1; overflow: hidden; }
+
+    /* ─── SIDEBAR ────────────────────────────────────────────────────────── */
+    .sidebar {
+      width: 185px; flex-shrink: 0;
+      background: #070b07; border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; padding: 10px 0;
+    }
+    .nav-grp { display: flex; flex-direction: column; }
+    .nav-lnk {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 16px; color: var(--text); text-decoration: none;
+      font-size: 10px; letter-spacing: 1px; cursor: pointer;
+      transition: background 0.1s, color 0.1s;
+      border-left: 2px solid transparent;
+    }
+    .nav-lnk:hover  { background: var(--bg3); color: var(--text-hi); }
+    .nav-lnk.active { background: var(--bg3); color: var(--green); border-left-color: var(--green); }
+    .nav-ico { font-size: 13px; width: 16px; text-align: center; flex-shrink: 0; }
+    .nav-div { height: 1px; background: var(--border); margin: 8px 16px; }
+    .sidebar-spacer { flex: 1; }
+    .sys-btn {
+      margin: 10px 12px 4px;
+      padding: 10px; background: var(--green-dim);
+      border: 1px solid var(--green-mid); color: var(--green);
+      font-family: var(--font); font-size: 10px; font-weight: 700;
+      letter-spacing: 2px; cursor: pointer; transition: background 0.15s;
+    }
+    .sys-btn:hover { background: #1e5530; }
+
+    /* ─── MAP PANEL ──────────────────────────────────────────────────────── */
+    .map-panel { flex: 1; position: relative; overflow: hidden; background: var(--bg2); }
+    .view { width: 100%; height: 100%; display: none; }
+    .view.active { display: block; }
+
+    /* SVG map fills container */
+    .map-wrap { width: 100%; height: 100%; position: relative; }
+    #rw-map { width: 100%; height: 100%; display: block; }
+
+    /* Pin animations */
+    @keyframes pulse-crit {
+      0%,100% { r: 8;  opacity: 0.7; }
+      50%      { r: 16; opacity: 0;   }
+    }
+    @keyframes pulse-deg {
+      0%,100% { r: 6;  opacity: 0.5; }
+      50%      { r: 12; opacity: 0;   }
+    }
+    .ring-crit { animation: pulse-crit 1.4s ease-out infinite; }
+    .ring-deg  { animation: pulse-deg  2.2s ease-out infinite; }
+
+    /* SAT-CON widget */
+    .satcon {
+      position: absolute; bottom: 20px; left: 20px; width: 210px;
+      background: rgba(7,11,7,0.92); border: 1px solid var(--border2);
+      padding: 10px 12px; backdrop-filter: blur(6px);
+    }
+    .satcon-hdr {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 9px; color: var(--text); letter-spacing: 1px; margin-bottom: 10px;
+    }
+    .live-badge {
+      background: var(--green-dim); color: var(--green);
+      padding: 1px 6px; font-size: 8px; font-weight: 700; letter-spacing: 1px;
+    }
+    .satcon-chart { display: flex; align-items: flex-end; gap: 2px; height: 44px; margin-bottom: 6px; }
+    .sat-bar {
+      flex: 1; background: var(--green); position: relative; cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .sat-bar:hover { opacity: 0.7; }
+    .sat-bar.gap { background: var(--red); }
+    .sat-bar.low { background: var(--orange); }
+    .sat-bar.now { outline: 1px solid rgba(61,220,96,0.6); }
+    /* CSS tooltip */
+    .sat-bar::after {
+      content: attr(data-tip);
+      position: absolute; bottom: calc(100% + 4px); left: 50%;
+      transform: translateX(-50%);
+      background: #0d1a0d; border: 1px solid var(--border2);
+      color: var(--text-hi); font-size: 8px; padding: 3px 7px;
+      white-space: nowrap; pointer-events: none;
+      display: none; z-index: 50;
+    }
+    .sat-bar:hover::after { display: block; }
+    .satcon-ftr {
+      display: flex; justify-content: space-between;
+      font-size: 9px; color: var(--text-lo); letter-spacing: 1px;
+    }
+    .satcon-cnt { color: var(--green); font-weight: 700; }
+
+    /* Map legend */
+    .map-legend {
+      position: absolute; bottom: 20px; right: 20px;
+      background: rgba(7,11,7,0.92); border: 1px solid var(--border2);
+      padding: 8px 12px; backdrop-filter: blur(6px);
+    }
+    .leg-row {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 9px; color: var(--text); letter-spacing: 1px; margin-bottom: 4px;
+    }
+    .leg-row:last-child { margin-bottom: 0; }
+    .leg-dia {
+      width: 9px; height: 9px; flex-shrink: 0;
+      clip-path: polygon(50% 0%,100% 50%,50% 100%,0% 50%);
+    }
+    .leg-dia.c { background: var(--red); }
+    .leg-dia.d { background: var(--orange); }
+    .leg-dia.n { background: var(--green); }
+    .leg-dia.k { background: #4a4a4a; }
+
+    /* Hovering pin tooltip (HTML overlay) */
+    #map-tip {
+      position: fixed; display: none; pointer-events: none;
+      background: #0b160c; border: 1px solid var(--border2);
+      padding: 9px 12px; font-size: 9px; color: var(--text-hi);
+      letter-spacing: 0.8px; line-height: 1.7; z-index: 200;
+      max-width: 220px;
+    }
+
+    /* ─── TABLE VIEWS ────────────────────────────────────────────────────── */
+    .view-inner { padding: 24px; height: 100%; overflow-y: auto; }
+    .view-ttl { font-size: 14px; font-weight: 700; color: var(--white); letter-spacing: 3px; margin-bottom: 3px; }
+    .view-sub { font-size: 9px; color: var(--text-lo); letter-spacing: 1px; margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    th {
+      text-align: left; padding: 8px 10px;
+      background: var(--bg3); border-bottom: 1px solid var(--border2);
+      color: var(--text-lo); letter-spacing: 1px; font-weight: 400;
+    }
+    td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text-hi); }
+    tr:hover td { background: var(--bg3); }
+    .pill {
+      display: inline-block; padding: 1px 8px;
+      font-size: 8px; font-weight: 700; letter-spacing: 1px;
+    }
+    .pill.c { color: var(--red);    border: 1px solid #6a1a1a; }
+    .pill.d { color: var(--orange); border: 1px solid #6a3a10; }
+    .pill.n { color: var(--green);  border: 1px solid var(--green-dim); }
+    .pill.k { color: #4a4a4a;       border: 1px solid #2a2a2a; }
+
+    /* ─── WEATHER GRID ───────────────────────────────────────────────────── */
+    .wx-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(110px,1fr)); gap: 8px; margin-top: 16px; }
+    .wx-card { background: var(--bg3); border: 1px solid var(--border); padding: 10px 12px; }
+    .wx-time { font-size: 8px; color: var(--text-lo); margin-bottom: 4px; }
+    .wx-k { font-size: 26px; font-weight: 700; }
+    .wx-k.storm { color: var(--red); }
+    .wx-k.minor { color: var(--orange); }
+    .wx-k.quiet { color: var(--green); }
+    .wx-lbl { font-size: 8px; color: var(--text-lo); letter-spacing: 1px; }
+    .wx-current { border-color: var(--green-mid); }
+
+    /* ─── INTEL PANEL ────────────────────────────────────────────────────── */
+    .intel {
+      width: 285px; flex-shrink: 0;
+      background: #080b08; border-left: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .intel-hdr {
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      font-size: 9px; color: var(--text-lo); letter-spacing: 2px; flex-shrink: 0;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .intel-version { color: var(--text-lo); }
+    .feed { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
+    .feed::-webkit-scrollbar { width: 3px; }
+    .feed::-webkit-scrollbar-thumb { background: var(--border2); }
+
+    .acard { padding: 11px 14px; border-bottom: 1px solid var(--border); }
+    .acard.crit { border-left: 3px solid var(--red);    background: #0f0808; }
+    .acard.deg  { border-left: 3px solid var(--orange); background: #100d07; }
+    .acard-top {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 9px; font-weight: 700; letter-spacing: 2px; margin-bottom: 6px;
+    }
+    .acard.crit .acard-top { color: var(--red); }
+    .acard.deg  .acard-top { color: var(--orange); }
+    .acard-ts { font-weight: 400; font-size: 8px; color: var(--text-lo); }
+    .acard-site { font-size: 12px; font-weight: 700; color: var(--white); letter-spacing: 1px; margin-bottom: 4px; }
+    .acard-cause-lbl { font-size: 8px; color: var(--text-lo); letter-spacing: 1px; margin-bottom: 2px; }
+    .acard-cause { font-size: 10px; color: var(--text-hi); line-height: 1.5; margin-bottom: 8px; }
+    .acard-cmd {
+      background: rgba(255,255,255,0.02); border: 1px solid var(--border2);
+      padding: 5px 9px; font-size: 9px; letter-spacing: 1px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .acard.crit .acard-cmd { color: var(--red); }
+    .acard.deg  .acard-cmd { color: var(--orange); }
+    /* Stage 5 — anomaly and low_data cards */
+    .acard.anomaly { border-left: 3px solid #f59e0b; background: #100e06; }
+    .acard.anomaly .acard-top  { color: #f59e0b; }
+    .acard.anomaly .acard-cmd  { color: #f59e0b; }
+    .acard.lowdata { border-left: 3px solid #6366f1; background: #08080f; }
+    .acard.lowdata .acard-top  { color: #818cf8; }
+    /* Stage 5 — stale badge in nav */
+    .nav-stale-badge {
+      display: inline-block;
+      background: #f59e0b;
+      color: #000;
+      font-size: 8px;
+      font-weight: 800;
+      padding: 1px 5px;
+      border-radius: 4px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    /* Scrollbar hint */
+    .scroll-hint {
+      padding: 7px 14px; font-size: 8px; color: var(--text-lo);
+      letter-spacing: 1px; text-align: center;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+
+    /* Telemetry */
+    .tel { padding: 11px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
+    .tel-lbl { font-size: 8px; color: var(--text-lo); letter-spacing: 2px; margin-bottom: 8px; }
+    .tel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+    .tel-metric-lbl { font-size: 8px; color: var(--text-lo); letter-spacing: 1px; }
+    .tel-metric-val { font-size: 14px; font-weight: 500; color: var(--text-hi); }
+    .tel-metric-val.warn { color: var(--orange); }
+    .tel-tag { display: inline-block; padding: 1px 7px; font-size: 8px; font-weight: 700; letter-spacing: 1px; }
+    .tel-tag.ok  { color: var(--green);  border: 1px solid var(--green-dim); background: rgba(61,220,96,0.05); }
+    .tel-tag.bad { color: var(--orange); border: 1px solid #6a3a10;          background: rgba(224,120,32,0.05); }
+
+    /* System load */
+    .sysload { padding: 10px 14px; border-top: 1px solid var(--border); flex-shrink: 0; font-size: 9px; color: var(--text-lo); letter-spacing: 1px; }
+    .sysload-top { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    .load-bar { height: 3px; background: var(--border2); }
+    .load-fill { height: 100%; background: var(--green); transition: width 0.6s ease; }
+    .sysload-bot { display: flex; justify-content: space-between; margin-top: 5px; }
+    .stable-dot { color: var(--green); }
+
+    /* Empty/loading states */
+    .state-msg { padding: 20px 14px; font-size: 10px; color: var(--text-lo); letter-spacing: 1px; }
+    .state-msg.ok { color: var(--green); }
+  </style>
+</head>
+<body>
+
+<!-- ── LOGIN ──────────────────────────────────────────────────────────────── -->
+<div id="login-overlay">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-logo-icon">⬡</div>
+      <div class="login-logo-text">Isomo Ops</div>
+    </div>
+    <div class="login-sub">Sign in to the Starfleet dashboard</div>
+    <form id="login-form">
+      <label class="login-field-label" for="f-email">Email address</label>
+      <input id="f-email" type="email"    placeholder="you@isomo.rw"  autocomplete="email">
+      <label class="login-field-label" for="f-pass">Password</label>
+      <input id="f-pass"  type="password" placeholder="••••••••"      autocomplete="current-password">
+      <button type="submit">Sign in</button>
+      <div id="login-error"></div>
+    </form>
+    <div class="api-config">
+      <label for="f-base">Backend server URL</label>
+      <input id="f-base" type="text" placeholder="https://api.starfleet.icircles.rw">
+    </div>
+  </div>
+</div>
+
+<!-- ── MAIN ───────────────────────────────────────────────────────────────── -->
+<div id="app" class="hidden">
+
+  <!-- HEADER -->
+  <header class="hdr">
+    <div class="hdr-brand">
+      <div class="hdr-icon">⬡</div>
+      <div>
+        <div class="hdr-name">ISOMO OPS</div>
+        <div class="hdr-sub">ORBITAL-DIV // RWA-01</div>
+      </div>
+    </div>
+    <div class="hdr-sector">
+      <span class="sector-name">MC-RW-SECTOR</span>
+      <span class="baseline-tag">■ BASELINE: <span id="h-baseline">—</span></span>
+    </div>
+    <div class="hdr-kpis">
+      <div class="kpi">
+        <div class="kpi-lbl">FLT-HLTH</div>
+        <div class="kpi-val g" id="h-health">—</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-lbl">NODE-CNT</div>
+        <div class="kpi-val" id="h-nodes">—</div>
+      </div>
+      <div class="kpi clickable" id="kpi-alerts" title="View active alerts">
+        <div class="kpi-lbl">ACT-ALRT</div>
+        <div class="kpi-val r" id="h-alerts">—</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="body">
+
+    <!-- SIDEBAR -->
+    <nav class="sidebar">
+      <div class="nav-grp">
+        <a class="nav-lnk active" data-v="overview"><span class="nav-ico">▦</span> OVERVIEW</a>
+        <a class="nav-lnk"        data-v="sites"   ><span class="nav-ico">◈</span> SITE DIRECTORY</a>
+        <a class="nav-lnk"        data-v="weather" ><span class="nav-ico">✦</span> SPACE WEATHER</a>
+        <a class="nav-lnk"        data-v="devices" ><span class="nav-ico">⊡</span> DEVICE AUDIT <span id="stale-badge" class="nav-stale-badge" style="display:none"></span></a>
+      </div>
+      <div class="nav-div"></div>
+      <div class="nav-grp">
+        <a class="nav-lnk" id="nav-security"><span class="nav-ico">⚷</span> SECURITY</a>
+        <a class="nav-lnk" id="nav-logout"  ><span class="nav-ico">↩</span> LOGOUT</a>
+      </div>
+      <div class="sidebar-spacer"></div>
+      <button class="sys-btn" id="btn-diag">SYS-DIAGNOSTIC</button>
+    </nav>
+
+    <!-- MAP / CONTENT -->
+    <div class="map-panel">
+
+      <!-- ── OVERVIEW ── -->
+      <div id="view-overview" class="view active">
+        <div class="map-wrap">
+          <svg id="rw-map" viewBox="0 0 660 580" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <!-- Terrain gradient: lighter in the volcanic NW highlands -->
+              <radialGradient id="tg" cx="32%" cy="38%" r="58%">
+                <stop offset="0%"   stop-color="#1c2d1e"/>
+                <stop offset="50%"  stop-color="#141e15"/>
+                <stop offset="100%" stop-color="#0e1510"/>
+              </radialGradient>
+              <!-- Dot grid (subtle) -->
+              <pattern id="dots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+                <circle cx="10" cy="10" r="0.65" fill="#1e301e" opacity="0.3"/>
+              </pattern>
+              <!-- Glow filters -->
+              <filter id="gr"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              <filter id="gg"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            </defs>
+
+            <!-- Background + grid -->
+            <rect width="660" height="580" fill="#0c1210"/>
+            <rect width="660" height="580" fill="url(#dots)"/>
+
+            <!--
+              Rwanda boundary — computed from decimal-degree coordinates:
+              Lng range [28.86, 30.90], Lat range [-1.05, -2.84]
+              SVG: 660×580, padding 30px each side → usable 600×520
+              x = 30 + (lng - 28.86) / 2.04 * 600
+              y = 30 + (lat - (-1.05)) / (-2.84 - (-1.05)) * 520
+                = 30 + (lat + 1.05) / 1.79 * 520   [note: lat is negative, so more-negative = larger y]
+            -->
+            <path id="rw-outline"
+              d="M 70,36
+                 L 148,33 L 236,52 L 332,35 L 395,44 L 455,52
+                 L 494,79 L 546,120 L 594,221 L 603,310
+                 L 583,411 L 489,495 L 399,531
+                 L 304,520 L 233,509 L 153,489 L 94,467
+                 L 37,408 L 34,338 L 51,280
+                 L 34,221 L 34,157 L 34,115 Z"
+              fill="url(#tg)" stroke="#243c26" stroke-width="1.5" stroke-linejoin="round"/>
+
+            <!-- Elevation contours (ultra-subtle highland ridgelines) -->
+            <path d="M 115,105 Q 195,84 278,100 Q 350,82 418,102 Q 476,132 496,182 Q 488,232 458,272 Q 418,302 378,322 Q 318,342 268,332 Q 208,320 168,292 Q 130,264 118,222 Q 108,170 115,105" fill="none" stroke="#1c3020" stroke-width="0.9" opacity="0.55"/>
+            <path d="M 158,162 Q 228,142 298,157 Q 368,147 428,172 Q 458,202 448,242 Q 428,282 388,302 Q 338,322 288,317 Q 238,312 198,287 Q 163,262 158,222 Q 153,187 158,162" fill="none" stroke="#1c3020" stroke-width="0.6" opacity="0.35"/>
+
+            <!-- Province guide lines (very faint dashes) -->
+            <line x1="278" y1="48"  x2="248" y2="502" stroke="#192819" stroke-width="0.4" opacity="0.4" stroke-dasharray="4,10"/>
+            <line x1="196" y1="98"  x2="478" y2="442" stroke="#192819" stroke-width="0.4" opacity="0.3" stroke-dasharray="4,10"/>
+
+            <!-- Site pins injected by JS -->
+            <g id="site-pins"></g>
+          </svg>
+
+          <!-- SAT-CON widget -->
+          <div class="satcon">
+            <div class="satcon-hdr">
+              <span>SAT-CON // ORBIT-VUE</span>
+              <span class="live-badge">LIVE</span>
+            </div>
+            <div class="satcon-chart" id="satcon-chart"></div>
+            <div class="satcon-ftr">
+              <span>VIEW-LOCK</span>
+              <span class="satcon-cnt" id="satcon-cnt">--/--</span>
+            </div>
+          </div>
+
+          <!-- Map legend -->
+          <div class="map-legend">
+            <div class="leg-row"><span class="leg-dia c"></span>CRITICAL</div>
+            <div class="leg-row"><span class="leg-dia d"></span>DEGRADED</div>
+            <div class="leg-row"><span class="leg-dia n"></span>NOMINAL</div>
+            <div class="leg-row"><span class="leg-dia k"></span>DARK</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SITE DIRECTORY ── -->
+      <div id="view-sites" class="view">
+        <div class="view-inner">
+          <div class="view-ttl">SITE DIRECTORY</div>
+          <div class="view-sub">ALL REGISTERED ISOMO FIELD SITES — RWA-01</div>
+          <table>
+            <thead><tr>
+              <th>SITE NAME</th><th>LOCATION</th><th>STATUS</th>
+              <th>SCORE</th><th>NODES</th><th>SNR (dB)</th><th>CAUSE</th>
+            </tr></thead>
+            <tbody id="sites-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── SPACE WEATHER ── -->
+      <div id="view-weather" class="view">
+        <div class="view-inner">
+          <div class="view-ttl">SPACE WEATHER</div>
+          <div class="view-sub">NOAA PLANETARY K-INDEX — 72HR WINDOW (3HR CADENCE)</div>
+          <div class="wx-grid" id="wx-grid"><div class="state-msg">SYNCING WITH NOAA SWPC…</div></div>
+        </div>
+      </div>
+
+      <!-- ── DEVICE AUDIT ── -->
+      <div id="view-devices" class="view">
+        <div class="view-inner">
+          <div class="view-ttl">DEVICE AUDIT</div>
+          <div class="view-sub">ALL REGISTERED NODES — INTUNE MANAGED</div>
+          <table>
+            <thead><tr>
+              <th>HOSTNAME</th><th>SITE</th><th>STATUS</th>
+              <th>ROLE</th><th>LAST SEEN</th><th>WINDOWS SN</th>
+            </tr></thead>
+            <tbody id="devices-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /.map-panel -->
+
+    <!-- INTEL PANEL -->
+    <div class="intel">
+      <div class="intel-hdr">
+        <span>INTEL-ENGINE</span>
+        <span class="intel-version" id="intel-ver">V.09</span>
+      </div>
+
+      <div id="scroll-hint" class="scroll-hint" style="display:none"></div>
+      <div class="feed" id="alert-feed">
+        <div class="state-msg">SCANNING FLEET…</div>
+      </div>
+
+      <div class="tel">
+        <div class="tel-lbl">TEL_STREAM_<span id="tel-id">--</span></div>
+        <div class="tel-grid">
+          <div>
+            <div class="tel-metric-lbl">PING_AVG</div>
+            <div class="tel-metric-val" id="t-ping">-- ms</div>
+          </div>
+          <div>
+            <div class="tel-metric-lbl">PKT_LOSS</div>
+            <div class="tel-metric-val" id="t-drop">-- %</div>
+          </div>
+          <div>
+            <div class="tel-metric-lbl">SNR</div>
+            <div class="tel-metric-val" id="t-snr">-- dB</div>
+          </div>
+          <div>
+            <div class="tel-metric-lbl">LOAD_ST</div>
+            <div><span class="tel-tag ok" id="t-tag">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sysload">
+        <div class="sysload-top">
+          <span>SYSTEM_LOAD</span>
+          <span id="sl-pct">--.-- CPU</span>
+        </div>
+        <div class="load-bar"><div class="load-fill" id="sl-fill" style="width:0%"></div></div>
+        <div class="sysload-bot">
+          <span>INS: STR-RW-A09</span>
+          <span><span class="stable-dot">●</span> STABLE</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.body -->
+</div><!-- /#app -->
+
+<!-- Floating map tooltip -->
+<div id="map-tip"></div>
+
+<script>
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
+
+// Rwanda coordinate bounds for SVG projection
+// SVG viewBox 660×580, padding 30px → usable 600×520
+const LNG_MIN = 28.86, LNG_MAX = 30.90;
+const LAT_N   = -1.05, LAT_S   = -2.84;
+const SVG_W   = 660,   SVG_H   = 580, PAD = 30;
+
+function lngToX(lng) {
+  return PAD + (lng - LNG_MIN) / (LNG_MAX - LNG_MIN) * (SVG_W - 2 * PAD);
+}
+function latToY(lat) {
+  // Northern lat (-1.05) → top (y=PAD), Southern lat (-2.84) → bottom (y=SVG_H-PAD)
+  return PAD + (lat - LAT_N) / (LAT_S - LAT_N) * (SVG_H - 2 * PAD);
+}
+
+// Fallback GPS coordinates derived from known Rwandan location names
+// Used when lat/lng not yet stored in DB
+const GEO_HINTS = {
+  gisenyi:    [-1.677, 29.257], rubavu:      [-1.677, 29.257],
+  kigali:     [-1.944, 30.062], lndc:        [-1.944, 30.062],
+  musanze:    [-1.499, 29.635], kinigi:      [-1.461, 29.619],
+  byumba:     [-1.577, 30.067], gicumbi:     [-1.577, 30.067],
+  rwamagana:  [-1.946, 30.434], kayonza:     [-1.988, 30.607],
+  zaza:       [-1.954, 30.508], fawe:        [-1.988, 30.607],
+  nyamata:    [-2.143, 30.094], gihara:      [-1.530, 29.620],
+  butare:     [-2.597, 29.740], huye:        [-2.597, 29.740],
+  muhanga:    [-2.085, 29.753], gitarama:    [-2.075, 29.758],
+  cyangugu:   [-2.483, 28.909], rusizi:      [-2.483, 28.909],
+  nyamasheke: [-2.388, 29.122], kagano:      [-2.388, 29.122],
+  gishyita:   [-2.070, 29.498], kibuye:      [-2.060, 29.350],
+  juru:       [-2.146, 30.102], muhura:      [-1.927, 30.355],
+  ruhango:    [-2.224, 29.782], nyabisihdu:  [-2.068, 29.516],
+  kirehe:     [-2.262, 30.656], rusumo:      [-2.388, 30.782],
+  taba:       [-1.919, 30.266], gahini:      [-1.955, 30.607],
+  rukomo:     [-1.556, 30.295], busengo:     [-1.545, 29.652],
+  rwerere:    [-1.527, 29.628], gihundwe:    [-2.436, 28.942],
+};
+
+function geoHint(site) {
+  const txt = (site.name + ' ' + (site.location || '')).toLowerCase();
+  for (const [key, coords] of Object.entries(GEO_HINTS)) {
+    if (txt.includes(key)) return coords;
+  }
+  return null;
+}
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+// Auto-detect environment: in production use the deployed backend, in local dev use localhost
+const _isProd    = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+const _defaultAPI = _isProd ? 'https://api.starfleet.icircles.rw' : 'http://localhost:3000';
+let API_BASE = localStorage.getItem('sf_base') || _defaultAPI;
+let TOKEN    = localStorage.getItem('sf_tok')  || '';
+
+const ST = { sites: [], devices: [], staleDevices: [], weather: [], alerts: [], ws: null };
+
+// ── LOGIN ─────────────────────────────────────────────────────────────────────
+document.getElementById('f-base').value = API_BASE;
+
+document.getElementById('login-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const email = document.getElementById('f-email').value;
+  const pass  = document.getElementById('f-pass').value;
+  API_BASE = document.getElementById('f-base').value.replace(/\/$/, '');
+  document.getElementById('login-error').textContent = '';
+  try {
+    const r = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      document.getElementById('login-error').textContent = err.error || 'AUTH FAILED';
+      return;
+    }
+    const d = await r.json();
+    TOKEN = d.token;
+    localStorage.setItem('sf_tok', TOKEN);
+    localStorage.setItem('sf_base', API_BASE);
+    boot();
+  } catch (err) {
+    document.getElementById('login-error').textContent = 'CONN_ERR: ' + err.message;
+  }
+});
+
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('f-base').value = API_BASE;
+  if (TOKEN) boot();
+});
+
+function boot() {
+  document.getElementById('login-overlay').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  loadAll();
+  connectWS();
+  tickSysLoad();
+  setInterval(loadAll, 30_000);
+}
+
+document.getElementById('nav-logout').addEventListener('click', () => {
+  localStorage.removeItem('sf_tok');
+  TOKEN = '';
+  if (ST.ws) ST.ws.close();
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login-overlay').classList.remove('hidden');
+});
+
+// ── API ───────────────────────────────────────────────────────────────────────
+async function apiFetch(path) {
+  const r = await fetch(API_BASE + path, { headers: { Authorization: `Bearer ${TOKEN}` } });
+  if (r.status === 401) { localStorage.removeItem('sf_tok'); location.reload(); }
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// ── DATA LOAD ─────────────────────────────────────────────────────────────────
+async function loadAll() {
+  try {
+    const [sites, devices, weather] = await Promise.all([
+      apiFetch('/api/sites'),
+      apiFetch('/api/devices'),
+      apiFetch('/api/intel/space-weather').catch(() => []),
+    ]);
+    ST.sites   = sites;
+    ST.devices = devices;
+    ST.weather = weather;
+    ST.alerts  = buildAlerts(sites);
+    renderAll();
+  } catch (err) {
+    console.error('[Starfleet]', err.message);
+  }
+}
+
+// ── SITE STATUS ───────────────────────────────────────────────────────────────
+function siteStatus(s) {
+  const sig = s.signal;
+  if (!sig) return 'dark';
+  const snr  = sig.snr  ?? 9.5;
+  const drop = sig.ping_drop_pct ?? 0;
+  if (snr < 4  || drop > 20) return 'crit';
+  if (snr < 7  || drop > 8)  return 'deg';
+  return 'nom';
+}
+
+const STATUS_COLOR = { crit: '#dd3030', deg: '#e07820', nom: '#3ddc60', dark: '#404040' };
+
+// ── ALERTS ────────────────────────────────────────────────────────────────────
+function buildAlerts(sites) {
+  const sigAlerts = sites
+    .filter(s => ['crit','deg'].includes(siteStatus(s)))
+    .map(s => ({
+      type:  siteStatus(s),
+      site:  s,
+      cause: s.cause || s.signal?.cause || null,
+      since: s.signal?.updatedAt || null,
+    }));
+
+  // Stage 5: anomaly alerts (score dropped >20 pts vs 7-day avg)
+  const anomalyAlerts = sites
+    .filter(s => s.signal?.anomaly === true && !sigAlerts.find(a => a.site.id === s.id))
+    .map(s => ({
+      type:  'anomaly',
+      site:  s,
+      cause: s.cause || null,
+      since: s.signal?.updatedAt || null,
+      delta: s.signal?.anomaly_delta,
+    }));
+
+  // Stage 5: low_data quality flag
+  const lowDataAlerts = sites
+    .filter(s => s.signal?.data_quality === 'low_data'
+              && !sigAlerts.find(a => a.site.id === s.id)
+              && !anomalyAlerts.find(a => a.site.id === s.id))
+    .map(s => ({
+      type:  'lowdata',
+      site:  s,
+      cause: s.cause || null,
+      since: null,
+    }));
+
+  return [...sigAlerts, ...anomalyAlerts, ...lowDataAlerts];
+}
+
+function opCause(cause) {
+  if (!cause) return 'NO TELEMETRY. SITE UNREACHABLE.';
+  if (/storm|k-index/i.test(cause))       return `GEO-MAG STORM [K-INDEX: ${(cause.match(/\d+/)||['?'])[0]}]. SIG-SCATTER EXTREME.`;
+  if (/gap|coverage|orbital/i.test(cause)) return 'ORB_COV_GAP. RE-ACQ ETD: 14M 22S.';
+  if (/congestion|pop|gateway/i.test(cause)) return 'GATEWAY BACKHAUL CONGESTION. TERRESTRIAL.';
+  if (/obstruction/i.test(cause))          return 'PHYSICAL OBSTRUCTION DETECTED. DISH FOV BLOCKED.';
+  if (/rf|interference/i.test(cause))      return 'LOCAL RF INTERFERENCE. CHECK ENVIRON.';
+  return cause.toUpperCase().slice(0, 60) + '.';
+}
+
+function opCmd(cause) {
+  if (!cause) return null;
+  if (/storm|k-index/i.test(cause))        return 'CMD: DELAY_DISPATCH. MON_IONO-X.';
+  if (/gap|coverage|orbital/i.test(cause)) return 'CMD: PASSIVE_MON. LAT_SPIKE_EXP.';
+  if (/obstruction/i.test(cause))          return 'CMD: DISPATCH_TECH. INSPECT_DISH.';
+  if (/congestion|pop/i.test(cause))       return 'CMD: LOG_TICKET. STARLINK_OPS.';
+  if (/rf|interference/i.test(cause))      return 'CMD: RF_SCAN. CHECK_ENVIRON.';
+  return null;
+}
+
+function timeAgo(iso) {
+  if (!iso) return '';
+  const m = Math.floor((Date.now() - new Date(iso)) / 60000);
+  if (m < 1)   return 'just now';
+  if (m < 60)  return `${m}m ago`;
+  if (m < 1440) return `${Math.floor(m/60)}h ago`;
+  return `${Math.floor(m/1440)}d ago`;
+}
+
+// ── RENDER ALL ────────────────────────────────────────────────────────────────
+function renderAll() {
+  renderHeader();
+  renderPins();
+  renderAlerts();
+  renderSatCon();
+  renderTelStream();
+  renderSitesTable();
+  renderDevicesTable();
+  renderWeather();
+}
+
+// ── HEADER ────────────────────────────────────────────────────────────────────
+function renderHeader() {
+  const { sites, alerts } = ST;
+  const nomCount  = sites.filter(s => siteStatus(s) === 'nom').length;
+  const health    = sites.length ? (nomCount / sites.length * 100).toFixed(1) + '%' : '—';
+  const totalNodes = sites.reduce((a, s) => a + (s.total_laptops || 0), 0);
+  const critAny   = alerts.some(a => a.type === 'crit');
+  const degAny    = alerts.some(a => a.type === 'deg');
+
+  const anomalyAny = alerts.some(a => a.type === 'anomaly');
+  const staleCount = ST.staleDevices.length;
+
+  document.getElementById('h-baseline').textContent =
+    critAny ? 'COMPROMISED' : degAny ? 'DEGRADED' : anomalyAny ? 'ANOMALY' : 'OPTIMIZED';
+  document.getElementById('h-health').textContent  = health;
+  document.getElementById('h-nodes').textContent   = totalNodes;
+  document.getElementById('h-alerts').textContent  = alerts.length || '0';
+
+  const hEl = document.getElementById('h-health');
+  hEl.className = 'kpi-val ' + (parseFloat(health) >= 80 ? 'g' : parseFloat(health) >= 60 ? 'o' : 'r');
+
+  const aEl = document.getElementById('h-alerts');
+  aEl.className = 'kpi-val ' + (critAny ? 'r' : degAny || anomalyAny ? 'o' : 'g');
+
+  // Update stale badge
+  const b = document.getElementById('stale-badge');
+  if (b) { b.textContent = staleCount > 0 ? `${staleCount}` : ''; b.style.display = staleCount > 0 ? 'inline' : 'none'; }
+}
+
+// ACT-ALRT click → switch to sites view
+document.getElementById('kpi-alerts').addEventListener('click', () => switchView('sites'));
+
+// ── MAP PINS ──────────────────────────────────────────────────────────────────
+const NS = 'http://www.w3.org/2000/svg';
+
+function renderPins() {
+  const g = document.getElementById('site-pins');
+  g.innerHTML = '';
+
+  ST.sites.forEach(site => {
+    // Resolve GPS: from DB first, then name/location lookup
+    let lat = site.lat, lng = site.lng;
+    if (lat == null || lng == null) {
+      const hint = geoHint(site);
+      if (!hint) return; // skip unmappable
+      [lat, lng] = hint;
+    }
+
+    const x   = lngToX(lng);
+    const y   = latToY(lat);
+    const st  = siteStatus(site);
+    const col = STATUS_COLOR[st];
+
+    const pin = document.createElementNS(NS, 'g');
+    pin.setAttribute('cursor', 'pointer');
+    pin.setAttribute('data-id', site.id);
+
+    // Pulse ring (only for crit / deg)
+    if (st === 'crit' || st === 'deg') {
+      const ring = document.createElementNS(NS, 'circle');
+      ring.setAttribute('cx', x); ring.setAttribute('cy', y); ring.setAttribute('r', 8);
+      ring.setAttribute('fill', 'none');
+      ring.setAttribute('stroke', col); ring.setAttribute('stroke-width', '1.5');
+      ring.setAttribute('class', st === 'crit' ? 'ring-crit' : 'ring-deg');
+      pin.appendChild(ring);
+    }
+
+    // Diamond body
+    const pts = `${x},${y-9} ${x+9},${y} ${x},${y+9} ${x-9},${y}`;
+    const dia = document.createElementNS(NS, 'polygon');
+    dia.setAttribute('points', pts);
+    dia.setAttribute('fill', col);
+    dia.setAttribute('opacity', '0.92');
+    if (st === 'crit') dia.setAttribute('filter', 'url(#gr)');
+    if (st === 'nom')  dia.setAttribute('filter', 'url(#gg)');
+    pin.appendChild(dia);
+
+    // Label
+    const lbl = document.createElementNS(NS, 'text');
+    lbl.setAttribute('x', x); lbl.setAttribute('y', y + 21);
+    lbl.setAttribute('text-anchor', 'middle');
+    lbl.setAttribute('fill', '#7a9e80');
+    lbl.setAttribute('font-family', 'JetBrains Mono, monospace');
+    lbl.setAttribute('font-size', '7.5');
+    lbl.setAttribute('letter-spacing', '0.3');
+    lbl.textContent = site.name.toUpperCase().replace(/ /g,'_').slice(0, 14);
+    pin.appendChild(lbl);
+
+    // Events
+    pin.addEventListener('mouseenter', e => showTip(e, site, st));
+    pin.addEventListener('mousemove',  moveTip);
+    pin.addEventListener('mouseleave', hideTip);
+    pin.addEventListener('click', () => focusSite(site));
+
+    g.appendChild(pin);
+  });
+}
+
+// ── PIN TOOLTIP ───────────────────────────────────────────────────────────────
+const tipEl = document.getElementById('map-tip');
+
+function showTip(e, site, st) {
+  const col = STATUS_COLOR[st];
+  const snr  = site.signal?.snr?.toFixed(1) ?? '--';
+  const drop = site.signal?.ping_drop_pct?.toFixed(2) ?? '--';
+  const lat  = site.lat?.toFixed(4) ?? geoHint(site)?.[0]?.toFixed(4) ?? '--';
+  const lng  = site.lng?.toFixed(4) ?? geoHint(site)?.[1]?.toFixed(4) ?? '--';
+  tipEl.innerHTML = `
+    <div style="color:${col};font-weight:700;margin-bottom:5px;letter-spacing:1px">${site.name.toUpperCase()} [${st.toUpperCase()}]</div>
+    <div>SNR: ${snr} dB &nbsp;|&nbsp; DROP: ${drop}%</div>
+    <div>NODES: ${site.online_laptops}/${site.total_laptops} ONLINE</div>
+    ${site.score != null ? `<div>SCORE: ${site.score}/100</div>` : ''}
+    <div style="color:var(--text-lo);margin-top:3px">GPS: ${lat}, ${lng}</div>
+  `;
+  tipEl.style.display = 'block';
+  moveTip(e);
+}
+function moveTip(e)  { tipEl.style.left = (e.clientX + 15) + 'px'; tipEl.style.top = (e.clientY - 12) + 'px'; }
+function hideTip()   { tipEl.style.display = 'none'; }
+
+// ── FOCUS SITE → TEL STREAM ───────────────────────────────────────────────────
+function focusSite(site) {
+  const snr  = site.signal?.snr  ?? '--';
+  const drop = site.signal?.ping_drop_pct ?? '--';
+  const ping = site.signal?.pop_latency_ms ?? '--';
+
+  document.getElementById('tel-id').textContent  = String(site.id).padStart(2, '0');
+  document.getElementById('t-ping').textContent  = ping !== '--' ? ping.toFixed(1) + ' ms' : '-- ms';
+
+  const dropEl = document.getElementById('t-drop');
+  dropEl.textContent  = drop !== '--' ? drop.toFixed(2) + ' %' : '-- %';
+  dropEl.className    = 'tel-metric-val' + (parseFloat(drop) > 5 ? ' warn' : '');
+
+  document.getElementById('t-snr').textContent   = snr !== '--' ? snr.toFixed(1) + ' dB' : '-- dB';
+
+  const tag = document.getElementById('t-tag');
+  const snrN = parseFloat(snr);
+  tag.className   = 'tel-tag ' + (snrN >= 7 ? 'ok' : 'bad');
+  tag.textContent = snrN >= 7 ? 'NOMINAL' : 'DEGRADED';
+}
+
+// ── INTEL ALERTS ──────────────────────────────────────────────────────────────
+function renderAlerts() {
+  const feed = document.getElementById('alert-feed');
+  const hint = document.getElementById('scroll-hint');
+
+  if (!ST.alerts.length) {
+    hint.style.display = 'none';
+    feed.innerHTML = '<div class="state-msg ok">◉ ALL SITES NOMINAL — NO ACTIVE ALERTS</div>';
+    return;
+  }
+
+  if (ST.alerts.length > 3) {
+    hint.textContent  = `↓ ${ST.alerts.length} ACTIVE ALERTS — SCROLL FOR MORE`;
+    hint.style.display = 'block';
+  } else {
+    hint.style.display = 'none';
+  }
+
+  feed.innerHTML = '';
+  ST.alerts.forEach(({ type, site, cause, since, delta }) => {
+    const card = document.createElement('div');
+    card.className = `acard ${type}`;
+
+    let label, causeHtml, cmdHtml = '';
+    if (type === 'crit') {
+      label    = 'CRITICAL_FAILURE';
+      causeHtml = `<div class="acard-cause-lbl">CAUSE_ID:</div><div class="acard-cause">${opCause(cause)}</div>`;
+      const cmd = opCmd(cause);
+      if (cmd) cmdHtml = `<div class="acard-cmd">▲ ${cmd}</div>`;
+    } else if (type === 'deg') {
+      label    = 'SIG_DEGRADED';
+      causeHtml = `<div class="acard-cause-lbl">CAUSE_ID:</div><div class="acard-cause">${opCause(cause)}</div>`;
+      const cmd = opCmd(cause);
+      if (cmd) cmdHtml = `<div class="acard-cmd">▲ ${cmd}</div>`;
+    } else if (type === 'anomaly') {
+      label    = 'ANOMALY_DETECTED';
+      const deltaStr = delta != null ? ` [Δ−${Math.abs(delta)} VS 7D-AVG]` : '';
+      causeHtml = `<div class="acard-cause-lbl">EVENT:</div><div class="acard-cause">SCORE_DROP_DETECTED${deltaStr}. OUTSIDE NORMAL VARIANCE.</div>`;
+      cmdHtml   = `<div class="acard-cmd">▲ CMD: REVIEW_TREND. CHECK_WEATHER.</div>`;
+    } else if (type === 'lowdata') {
+      label    = 'LOW_DATA_QUALITY';
+      causeHtml = `<div class="acard-cause-lbl">FLAG:</div><div class="acard-cause">FEWER THAN 12 READINGS TODAY. SCORE MAY BE IMPRECISE.</div>`;
+    }
+
+    card.innerHTML = `
+      <div class="acard-top">
+        <span>${label}</span>
+        <span class="acard-ts">${timeAgo(since)}</span>
+      </div>
+      <div class="acard-site">${site.name.toUpperCase().replace(/ /g,'_')}</div>
+      ${causeHtml}
+      ${cmdHtml}
+    `;
+    card.addEventListener('click', () => focusSite(site));
+    feed.appendChild(card);
+  });
+}
+
+// ── TEL STREAM (default = worst site) ────────────────────────────────────────
+function renderTelStream() {
+  const target = ST.alerts[0]?.site || ST.sites[0];
+  if (target) focusSite(target);
+}
+
+// ── SAT-CON ───────────────────────────────────────────────────────────────────
+function renderSatCon(visible = 18, total = 22) {
+  document.getElementById('satcon-cnt').textContent = `${visible}/${total}`;
+  const chart = document.getElementById('satcon-chart');
+  chart.innerHTML = '';
+
+  // 12-bar chart: each bar = a ~2-hour visibility window
+  // Heights simulate orbital pass pattern; the 7th bar = NOW
+  const heights = [0.72, 0.84, 0.60, 0.91, 1.00, 0.95, 0.40, 0.86, 1.00, 0.91, 0.77, 0.82];
+  heights.forEach((h, i) => {
+    const cnt     = Math.round(h * total);
+    const isNow   = i === 6;
+    const isGap   = h < 0.5;
+    const isLow   = h < 0.7 && !isGap;
+    const bar     = document.createElement('div');
+    bar.className = `sat-bar ${isGap ? 'gap' : isLow ? 'low' : ''} ${isNow ? 'now' : ''}`;
+    bar.style.height   = (h * 100) + '%';
+    const label = (isNow ? '▶ NOW: ' : '') + `${cnt}/${total} SATS`;
+    bar.setAttribute('data-tip', label);
+    chart.appendChild(bar);
+  });
+
+  // Fetch real visible count for first GPS-equipped site
+  const gps = ST.sites.find(s => s.lat && s.lng) ||
+              ST.sites.find(s => geoHint(s));
+  if (gps) {
+    apiFetch(`/api/intel/coverage/${gps.id}`).then(d => {
+      const v = d.visible_satellites ?? visible;
+      document.getElementById('satcon-cnt').textContent = `${v}/${total}`;
+    }).catch(() => {});
+  }
+}
+
+// ── SITES TABLE ───────────────────────────────────────────────────────────────
+function renderSitesTable() {
+  const tbody = document.getElementById('sites-tbody');
+  tbody.innerHTML = '';
+  ST.sites.forEach(s => {
+    const st  = siteStatus(s);
+    const snr = s.signal?.snr?.toFixed(1) ?? '--';
+    const tr  = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-weight:700;color:var(--white)">${s.name}</td>
+      <td style="color:var(--text-lo);font-size:9px">${s.location || '--'}</td>
+      <td><span class="pill ${st}">${st.toUpperCase()}</span></td>
+      <td style="color:${s.score>80?'var(--green)':s.score>60?'var(--orange)':'var(--red)'}">${s.score ?? '--'}</td>
+      <td>${s.online_laptops}/${s.total_laptops}</td>
+      <td>${snr}</td>
+      <td style="color:var(--text-lo);font-size:9px">${opCause(s.cause||null).slice(0,42)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── DEVICES TABLE ─────────────────────────────────────────────────────────────
+function renderDevicesTable() { renderDevices(); }
+
+function renderDevices() {
+  const tbody = document.getElementById('devices-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  // Sort: stale first, then offline, then online
+  const sorted = [...ST.devices].sort((a, b) => {
+    const order = { stale: 0, offline: 1, online: 2 };
+    return (order[a.status] ?? 3) - (order[b.status] ?? 3);
+  });
+
+  sorted.forEach(d => {
+    const isStale   = d.status === 'stale';
+    const isOnline  = d.status === 'online';
+    const pill = isStale ? 'deg' : isOnline ? 'nom' : 'dark';
+    const statusTxt = isStale
+      ? `STALE${d.stale_min != null ? ` (${d.stale_min}m)` : ''}`
+      : (d.status || '--').toUpperCase();
+
+    const tr = document.createElement('tr');
+    if (isStale) tr.style.background = 'rgba(224,120,32,.08)';
+    tr.innerHTML = `
+      <td style="font-weight:700;color:var(--white)">${d.hostname || '--'}</td>
+      <td>${d.site_name || '--'}</td>
+      <td><span class="pill ${pill}">${statusTxt}</span></td>
+      <td style="color:var(--text-lo)">${d.role || '--'}</td>
+      <td style="color:var(--text-lo)">${timeAgo(d.last_seen)}</td>
+      <td style="color:var(--text-lo);font-size:9px">${d.windows_sn || '--'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // Update stale badge in the Device Audit nav item
+  const n = ST.devices.filter(d => d.status === 'stale').length;
+  const b = document.getElementById('stale-badge');
+  if (b) { b.textContent = n > 0 ? `${n}` : ''; b.style.display = n > 0 ? 'inline' : 'none'; }
+}
+
+// ── SPACE WEATHER ─────────────────────────────────────────────────────────────
+function renderWeather() {
+  const grid = document.getElementById('wx-grid');
+  const rows = [...ST.weather].reverse().slice(0, 24);
+  if (!rows.length) {
+    grid.innerHTML = '<div class="state-msg">NO DATA — NOAA SYNC PENDING</div>';
+    return;
+  }
+  grid.innerHTML = '';
+  rows.forEach((r, i) => {
+    const k   = r.k_index;
+    const cls = k >= 5 ? 'storm' : k >= 3 ? 'minor' : 'quiet';
+    const dt  = new Date(r.recorded_at);
+    const c   = document.createElement('div');
+    c.className = 'wx-card' + (i === 0 ? ' wx-current' : '');
+    c.innerHTML = `
+      <div class="wx-time">${dt.toLocaleDateString()} ${dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+      <div class="wx-k ${cls}">${k}</div>
+      <div class="wx-lbl">${r.condition_label || 'Quiet'}</div>
+      ${r.solar_flux_10cm != null ? `<div class="wx-lbl" style="margin-top:4px">FLUX: ${r.solar_flux_10cm}</div>` : ''}
+    `;
+    grid.appendChild(c);
+  });
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
+function switchView(v) {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-lnk[data-v]').forEach(el => el.classList.remove('active'));
+  const vEl = document.getElementById(`view-${v}`);
+  if (vEl) vEl.classList.add('active');
+  const nEl = document.querySelector(`.nav-lnk[data-v="${v}"]`);
+  if (nEl) nEl.classList.add('active');
+}
+
+document.querySelectorAll('.nav-lnk[data-v]').forEach(el => {
+  el.addEventListener('click', () => switchView(el.dataset.v));
+});
+
+// ── WEBSOCKET ─────────────────────────────────────────────────────────────────
+function connectWS() {
+  const url = API_BASE.replace(/^http/, 'ws') + '?token=' + encodeURIComponent(TOKEN);
+  try {
+    const ws = new WebSocket(url);
+    ST.ws = ws;
+    ws.onmessage = e => {
+      try {
+        const msg = JSON.parse(e.data);
+
+        // Live signal update from ingest
+        if (msg.type === 'signal_update' && msg.site_id) {
+          const site = ST.sites.find(s => s.id === msg.site_id);
+          if (site) {
+            site.signal = { ...site.signal, ...msg.signal };
+            ST.alerts = buildAlerts(ST.sites);
+            renderHeader(); renderPins(); renderAlerts(); renderSatCon();
+          }
+        }
+
+        // A laptop came online
+        if (msg.type === 'device_online') {
+          // Refresh devices list to pick up new status
+          apiFetch('/api/devices').then(d => {
+            ST.devices = d;
+            renderDevices();
+          }).catch(() => {});
+        }
+
+        // Stage 5 watchdog: stale device broadcast
+        if (msg.type === 'stale_devices') {
+          ST.staleDevices = msg.devices || [];
+          // Merge stale status into ST.devices
+          const staleIds = new Set(ST.staleDevices.map(d => d.device_id));
+          ST.devices = ST.devices.map(d => ({
+            ...d,
+            status: staleIds.has(d.id) ? 'stale' : d.status,
+            stale_min: staleIds.has(d.id)
+              ? (ST.staleDevices.find(x => x.device_id === d.id)?.stale_min ?? null)
+              : null,
+          }));
+          renderDevices();
+          // Update header stale counter
+          const badge = document.getElementById('stale-badge');
+          if (badge) {
+            badge.textContent = ST.staleDevices.length > 0 ? `⚠ ${ST.staleDevices.length} STALE` : '';
+            badge.style.display = ST.staleDevices.length > 0 ? 'inline' : 'none';
+          }
+        }
+
+      } catch { /* ignore malformed frames */ }
+    };
+    ws.onclose = () => setTimeout(connectWS, 5000);
+    ws.onerror = () => {};
+  } catch { /* WS unavailable — polling will keep data fresh */ }
+}
+
+// ── SYS-DIAGNOSTIC ────────────────────────────────────────────────────────────
+document.getElementById('btn-diag').addEventListener('click', async () => {
+  try {
+    const h = await apiFetch('/health');
+    alert(
+      `ISOMO STARFLEET — SYSTEM DIAGNOSTIC\n` +
+      `─────────────────────────────────────\n` +
+      `BACKEND : ${(h.status||'').toUpperCase()}\n` +
+      `DATABASE: ${(h.db||'').toUpperCase()}\n` +
+      `API     : ${API_BASE}\n` +
+      `SITES   : ${ST.sites.length}\n` +
+      `NODES   : ${ST.devices.length}\n` +
+      `ALERTS  : ${ST.alerts.length}\n` +
+      `WX RDG  : ${ST.weather.length}`
+    );
+  } catch (err) {
+    alert('DIAGNOSTIC FAILED: ' + err.message);
+  }
+});
+
+// Security nav (placeholder)
+document.getElementById('nav-security').addEventListener('click', () =>
+  alert('SECURITY MODULE — Coming in v4.2')
+);
+
+// ── SYSTEM LOAD SIMULATION ────────────────────────────────────────────────────
+function tickSysLoad() {
+  setInterval(() => {
+    const pct = (Math.random() * 7 + 8).toFixed(2);
+    document.getElementById('sl-pct').textContent  = pct + '% CPU';
+    document.getElementById('sl-fill').style.width = pct + '%';
+  }, 3500);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+appId: com.isomo.starfleet
+productName: Starfleet Monitor
+copyright: Copyright © 2026 Isomo
+
+directories:
+  output: dist-installers
+  buildResources: build
+
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  icon: build/icon.icns
+  category: public.app-category.utilities
+
+linux:
+  target: AppImage
+
+publish:
+  provider: github
+  owner: isomo-circles
+  repo: starfleet-monitor
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico

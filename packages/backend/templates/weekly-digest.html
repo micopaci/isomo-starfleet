@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Isomo Starfleet — Weekly Signal Digest</title>
+  <style>
+    /* Reset */
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f0f4f8;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #1a202c;
+    }
+
+    .wrapper {
+      width: 100%;
+      background-color: #f0f4f8;
+      padding: 32px 0;
+    }
+
+    .container {
+      max-width: 620px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+      padding: 28px 32px;
+      text-align: left;
+    }
+    .header-logo {
+      font-size: 13px;
+      color: #93c5fd;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .header-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #ffffff;
+      margin: 0;
+    }
+    .header-subtitle {
+      font-size: 13px;
+      color: #bfdbfe;
+      margin-top: 4px;
+    }
+
+    /* Summary bar */
+    .summary-bar {
+      background-color: #eff6ff;
+      border-bottom: 1px solid #dbeafe;
+      padding: 16px 32px;
+      display: flex;
+      gap: 24px;
+    }
+    .stat-item {
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1e3a5f;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Section */
+    .section {
+      padding: 24px 32px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #94a3b8;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin: 0 0 14px 0;
+    }
+
+    /* Score badge */
+    .score-badge {
+      display: inline-block;
+      min-width: 40px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .score-good    { background: #dcfce7; color: #166534; }
+    .score-warn    { background: #fef9c3; color: #854d0e; }
+    .score-bad     { background: #fee2e2; color: #991b1b; }
+
+    /* Site rows */
+    .site-row {
+      display: flex;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #f8fafc;
+      gap: 12px;
+    }
+    .site-row:last-child { border-bottom: none; }
+    .site-name {
+      flex: 1;
+      font-size: 14px;
+      font-weight: 600;
+      color: #1e293b;
+    }
+    .site-meta {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    .site-delta {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .delta-up   { color: #16a34a; }
+    .delta-down { color: #dc2626; }
+
+    /* Cause pill */
+    .cause-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      background: #f1f5f9;
+      border-radius: 20px;
+      font-size: 11px;
+      color: #475569;
+      margin-top: 2px;
+    }
+
+    /* Alert banner */
+    .alert-banner {
+      background: #fef2f2;
+      border-left: 4px solid #ef4444;
+      padding: 12px 16px;
+      border-radius: 0 6px 6px 0;
+      margin-bottom: 12px;
+    }
+    .alert-banner-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #991b1b;
+    }
+    .alert-banner-body {
+      font-size: 12px;
+      color: #7f1d1d;
+      margin-top: 2px;
+    }
+
+    /* Footer */
+    .footer {
+      padding: 20px 32px;
+      background-color: #f8fafc;
+      text-align: center;
+    }
+    .footer-text {
+      font-size: 11px;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+    .footer-link {
+      color: #2563eb;
+      text-decoration: none;
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: #e2e8f0;
+      margin: 0 32px;
+    }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-logo">Isomo Starfleet</div>
+    <h1 class="header-title">Weekly Signal Digest</h1>
+    <div class="header-subtitle">{{WEEK_LABEL}} &nbsp;·&nbsp; {{SITE_COUNT}} sites monitored</div>
+  </div>
+
+  <!-- Fleet Summary Bar -->
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#eff6ff;border-bottom:1px solid #dbeafe;">
+    <tr>
+      <td align="center" style="padding:18px 0;">
+        <table cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="padding:0 20px;text-align:center;border-right:1px solid #bfdbfe;">
+              <div style="font-size:26px;font-weight:700;color:#1e3a5f;">{{FLEET_AVG}}</div>
+              <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Fleet Avg Score</div>
+            </td>
+            <td style="padding:0 20px;text-align:center;border-right:1px solid #bfdbfe;">
+              <div style="font-size:26px;font-weight:700;color:#1e3a5f;">{{ANOMALY_COUNT}}</div>
+              <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Anomaly Days</div>
+            </td>
+            <td style="padding:0 20px;text-align:center;border-right:1px solid #bfdbfe;">
+              <div style="font-size:26px;font-weight:700;color:#1e3a5f;">{{STALE_DEVICE_COUNT}}</div>
+              <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Stale Devices</div>
+            </td>
+            <td style="padding:0 20px;text-align:center;">
+              <div style="font-size:26px;font-weight:700;color:#1e3a5f;">{{LOW_DATA_COUNT}}</div>
+              <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Low Data Days</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- Alerts / Anomalies -->
+  {{#if HAS_ALERTS}}
+  <div class="section">
+    <div class="section-title">⚠ Anomalies This Week</div>
+    {{ALERT_ITEMS}}
+  </div>
+  <div class="divider"></div>
+  {{/if}}
+
+  <!-- Worst Performing Sites -->
+  <div class="section">
+    <div class="section-title">📉 Bottom 3 Sites</div>
+    {{WORST_SITES}}
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Most Improved Sites -->
+  <div class="section">
+    <div class="section-title">📈 Most Improved Sites</div>
+    {{IMPROVED_SITES}}
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- All Sites Table -->
+  <div class="section">
+    <div class="section-title">All Sites — 7-Day Summary</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;">
+      <tr style="border-bottom:2px solid #e2e8f0;">
+        <th align="left"  style="padding:6px 4px;color:#64748b;font-weight:600;">Site</th>
+        <th align="center" style="padding:6px 4px;color:#64748b;font-weight:600;">Avg</th>
+        <th align="center" style="padding:6px 4px;color:#64748b;font-weight:600;">Best</th>
+        <th align="center" style="padding:6px 4px;color:#64748b;font-weight:600;">Worst</th>
+        <th align="left"  style="padding:6px 4px;color:#64748b;font-weight:600;">Top Cause</th>
+      </tr>
+      {{ALL_SITE_ROWS}}
+    </table>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <p class="footer-text">
+      Isomo Starfleet Fleet Intelligence Platform<br>
+      This digest was sent automatically every Monday at 08:00.<br>
+      <a href="{{DASHBOARD_URL}}" class="footer-link">Open Dashboard</a>
+      &nbsp;·&nbsp;
+      <a href="{{UNSUBSCRIBE_URL}}" class="footer-link">Manage notifications</a>
+    </p>
+  </div>
+
+</div>
+</div>
+</body>
+</html>
