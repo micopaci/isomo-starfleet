@@ -443,7 +443,7 @@
       <!-- ── OVERVIEW ── -->
       <div id="view-overview" class="view active">
         <div class="map-wrap">
-          <svg id="rw-map" viewBox="0 0 660 580" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+          <svg id="rw-map" viewBox="0 0 760 645" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
             <defs>
               <!-- Terrain gradient: lighter in the volcanic NW highlands -->
               <radialGradient id="tg" cx="32%" cy="38%" r="58%">
@@ -461,54 +461,65 @@
             </defs>
 
             <!-- Background + grid -->
-            <rect width="660" height="580" fill="#0c1210"/>
-            <rect width="660" height="580" fill="url(#dots)"/>
+            <rect width="760" height="645" fill="#0c1210"/>
+            <rect width="760" height="645" fill="url(#dots)"/>
 
-            <!--
-              Rwanda boundary — accurate ~24-point outline projected from decimal-degree coordinates.
-              Lng range [28.86, 30.90], Lat range [-1.05, -2.84]
-              SVG 660×580, pad 30 → usable 600×520
-              x = 30 + (lng - 28.86) / 2.04 * 600
-              y = 30 + (lat + 1.05) / (-1.79) * 520   (north=-1.05→y=30, south=-2.84→y=550)
-
-              Key border points (clockwise from NW near Rubavu/Gisenyi):
-              DRC/RW NW (29.09,-1.48)→(98,155)  Cyanika/UG (29.63,-1.05)→(257,30)
-              Gatuna/UG (29.95,-1.07)→(351,36)   NE/TZ (30.90,-1.13)→(630,53)
-              TZ east (30.82,-2.01)→(607,309)    SE corner (30.49,-2.84)→(509,550)
-              S Burundi (29.82,-2.84)→(312,550)  SW (29.11,-2.43)→(104,431)
-              DRC/Kivu (28.86,-2.00)→(30,306)    NW back (29.09,-1.48)→(98,155)
-            -->
+            <!-- Rwanda boundary — hand-traced from actual map, 213 points including Lake Kivu shore -->
             <path id="rw-outline"
-              d="M 98,155
-                 L 174,36  L 257,30  L 351,36  L 427,47  L 509,68  L 630,53
-                 L 621,146 L 615,213 L 607,309 L 580,364
-                 L 509,550 L 389,550 L 312,550
-                 L 233,518 L 171,466 L 104,431
-                 L 86,396  L 48,350  L 30,306
-                 L 30,263  L 30,219  L 33,175 Z"
+              d="M 234,179 L 265,178 L 275,170 L 283,156 L 291,151 L 306,142 L 322,142
+                 L 338,139 L 349,130 L 360,129 L 365,129 L 369,129 L 373,133 L 376,133
+                 L 385,118 L 388,121 L 398,126 L 400,133 L 402,138 L 403,145 L 404,152
+                 L 409,160 L 414,163 L 420,164 L 432,164 L 442,164 L 453,154 L 459,149
+                 L 465,143 L 477,137 L 489,137 L 495,125 L 497,113 L 502,108 L 516,102
+                 L 522,96 L 533,89 L 540,79 L 544,70 L 548,67 L 553,63 L 557,52 L 560,40
+                 L 572,36 L 582,36 L 589,36 L 604,37 L 592,43 L 591,51 L 597,59 L 597,64
+                 L 596,74 L 606,72 L 613,80 L 615,88 L 615,94 L 618,100 L 622,110 L 624,117
+                 L 629,125 L 636,127 L 648,134 L 656,143 L 667,149 L 681,155 L 683,168
+                 L 684,178 L 689,188 L 694,202 L 701,211 L 711,223 L 713,235 L 711,249
+                 L 712,258 L 713,273 L 713,287 L 713,298 L 711,310 L 710,320 L 712,330
+                 L 724,336 L 724,346 L 727,354 L 730,367 L 730,379 L 728,393 L 722,399
+                 L 722,412 L 721,422 L 721,437 L 719,446 L 718,454 L 706,463 L 700,464
+                 L 686,464 L 671,458 L 665,462 L 664,466 L 654,475 L 637,473 L 628,473
+                 L 613,473 L 609,469 L 601,462 L 591,454 L 587,445 L 575,444 L 565,448
+                 L 556,454 L 539,454 L 534,456 L 520,459 L 507,470 L 500,484 L 491,484
+                 L 467,478 L 457,465 L 446,457 L 438,455 L 435,453 L 428,445 L 423,456
+                 L 423,475 L 425,489 L 425,499 L 420,508 L 419,515 L 419,530 L 415,546
+                 L 413,557 L 410,576 L 405,577 L 400,589 L 390,589 L 383,595 L 371,589
+                 L 368,589 L 364,595 L 357,610 L 343,607 L 332,604 L 324,600 L 314,598
+                 L 311,603 L 302,604 L 298,606 L 293,612 L 283,611 L 275,610 L 263,607
+                 L 254,603 L 250,605 L 245,613 L 237,610 L 230,603 L 227,591 L 227,580
+                 L 226,571 L 224,562 L 218,556 L 211,553 L 197,550 L 186,544 L 175,541
+                 L 167,538 L 160,537 L 145,535 L 134,540 L 131,548 L 130,561 L 131,569
+                 L 127,584 L 118,574 L 104,571 L 94,566 L 85,560 L 79,553 L 82,536
+                 L 78,524 L 70,515 L 70,507 L 66,495 L 61,485 L 61,473 L 63,467 L 70,460
+                 L 85,451 L 97,444 L 103,429 L 102,427 L 92,438 L 87,443 L 88,429 L 87,420
+                 L 85,420 L 84,421 L 74,423 L 71,415 L 71,399 L 82,390 L 72,388 L 74,379
+                 L 85,377 L 92,372 L 99,364 L 106,349 L 101,343 L 93,337 L 83,344 L 90,348
+                 L 87,354 L 79,358 L 78,347 L 84,337 L 87,328 L 97,326 L 100,317 L 104,309
+                 L 107,296 L 110,288 L 122,275 L 118,270 L 121,264 L 129,259 L 133,252
+                 L 137,247 L 141,240 L 144,233 L 144,226 L 138,220 L 133,228 L 125,237
+                 L 124,228 L 126,216 L 135,209 L 138,207 L 143,211 L 149,214 L 153,218
+                 L 159,219 L 166,221 L 170,228 L 177,231 L 182,234 L 188,238 L 192,240
+                 L 200,226 L 208,220 L 217,213 L 225,204 Z"
               fill="url(#tg)" stroke="#243c26" stroke-width="1.5" stroke-linejoin="round"/>
 
-            <!-- Lake Kivu — western border water body (DRC/Rwanda) -->
-            <path id="lake-kivu"
-              d="M 33,175 Q 62,165 78,190 Q 88,225 82,270 Q 76,318 62,358 Q 48,385 30,376
-                 L 30,306 L 30,263 L 30,219 Z"
-              fill="#0d1e2e" stroke="#163040" stroke-width="0.8" opacity="0.75"/>
-            <text x="46" y="278" fill="#1a3a4a" font-size="6" font-family="JetBrains Mono,monospace"
-                  transform="rotate(-80,46,278)" opacity="0.55">LAKE KIVU</text>
+            <!-- Lake Kivu label (western border area) -->
+            <text x="88" y="390" fill="#1a3a4a" font-size="6" font-family="JetBrains Mono,monospace"
+                  transform="rotate(-75,88,390)" opacity="0.65">LAKE KIVU</text>
 
-            <!-- Elevation contours — Albertine Rift highlands (NW) and central plateau -->
-            <path d="M 105,155 Q 148,120 210,112 Q 278,100 340,108 Q 400,118 440,148
-                     Q 472,182 462,228 Q 444,272 408,302 Q 364,330 314,334
-                     Q 262,336 218,316 Q 174,294 150,260 Q 122,224 120,182 Q 112,158 105,155"
-                  fill="none" stroke="#1c3020" stroke-width="0.9" opacity="0.50"/>
-            <path d="M 148,195 Q 195,175 258,183 Q 322,182 372,202
-                     Q 408,225 402,262 Q 390,295 358,314 Q 316,330 274,326
-                     Q 232,320 200,300 Q 170,278 158,248 Q 145,220 148,195"
-                  fill="none" stroke="#1c3020" stroke-width="0.6" opacity="0.30"/>
+            <!-- Elevation contours — Albertine Rift highlands / central plateau -->
+            <path d="M 260,145 Q 230,172 215,210 Q 205,252 220,292 Q 242,336 290,360
+                     Q 344,382 400,374 Q 454,364 490,326 Q 520,286 514,244
+                     Q 506,198 468,170 Q 426,142 374,136 Q 316,130 278,136 Q 264,140 260,145"
+                  fill="none" stroke="#1c3020" stroke-width="0.9" opacity="0.38"/>
+            <path d="M 290,178 Q 268,200 272,232 Q 282,266 316,288
+                     Q 354,308 396,304 Q 436,298 458,270 Q 474,244 464,214
+                     Q 450,184 414,168 Q 372,154 334,158 Q 306,162 290,178"
+                  fill="none" stroke="#1c3020" stroke-width="0.6" opacity="0.22"/>
 
-            <!-- Province guide lines (very faint — N/S divider and E/W divider) -->
-            <line x1="268" y1="42"  x2="238" y2="530" stroke="#192819" stroke-width="0.4" opacity="0.35" stroke-dasharray="4,10"/>
-            <line x1="110" y1="160" x2="560" y2="410" stroke="#192819" stroke-width="0.4" opacity="0.25" stroke-dasharray="4,10"/>
+            <!-- Province guide lines (very faint) -->
+            <line x1="360" y1="50"  x2="310" y2="595" stroke="#192819" stroke-width="0.4" opacity="0.25" stroke-dasharray="4,10"/>
+            <line x1="125" y1="200" x2="650" y2="460" stroke="#192819" stroke-width="0.4" opacity="0.18" stroke-dasharray="4,10"/>
 
             <!-- Site pins injected by JS -->
             <g id="site-pins"></g>
@@ -638,14 +649,17 @@
 // SVG viewBox 660×580, padding 30px → usable 600×520
 const LNG_MIN = 28.86, LNG_MAX = 30.90;
 const LAT_N   = -1.05, LAT_S   = -2.84;
-const SVG_W   = 660,   SVG_H   = 580, PAD = 30;
+// Coordinate space matches hand-traced polygon: x∈[61,730], y∈[36,613]
+// x = 61 + (lng - LNG_MIN) / (LNG_MAX - LNG_MIN) * 669
+// y = 36 + (lat - LAT_N)  / (LAT_S  - LAT_N)  * 577
+const X_ORIG = 61, X_RANGE = 669;
+const Y_ORIG = 36, Y_RANGE = 577;
 
 function lngToX(lng) {
-  return PAD + (lng - LNG_MIN) / (LNG_MAX - LNG_MIN) * (SVG_W - 2 * PAD);
+  return X_ORIG + (lng - LNG_MIN) / (LNG_MAX - LNG_MIN) * X_RANGE;
 }
 function latToY(lat) {
-  // Northern lat (-1.05) → top (y=PAD), Southern lat (-2.84) → bottom (y=SVG_H-PAD)
-  return PAD + (lat - LAT_N) / (LAT_S - LAT_N) * (SVG_H - 2 * PAD);
+  return Y_ORIG + (lat - LAT_N) / (LAT_S - LAT_N) * Y_RANGE;
 }
 
 // Fallback GPS coordinates derived from known Rwandan location names
@@ -981,8 +995,8 @@ function showTip(e, site, st) {
   const col = STATUS_COLOR[st];
   const snr  = site.signal?.snr?.toFixed(1) ?? '--';
   const drop = site.signal?.ping_drop_pct?.toFixed(2) ?? '--';
-  const lat  = site.lat?.toFixed(4) ?? geoHint(site)?.[0]?.toFixed(4) ?? '--';
-  const lng  = site.lng?.toFixed(4) ?? geoHint(site)?.[1]?.toFixed(4) ?? '--';
+  const lat  = site.lat?.toFixed(7) ?? geoHint(site)?.[0]?.toFixed(7) ?? '--';
+  const lng  = site.lng?.toFixed(7) ?? geoHint(site)?.[1]?.toFixed(7) ?? '--';
   tipEl.innerHTML = `
     <div style="color:${col};font-weight:700;margin-bottom:5px;letter-spacing:1px">${site.name.toUpperCase()} [${st.toUpperCase()}]</div>
     <div>SNR: ${snr} dB &nbsp;|&nbsp; DROP: ${drop}%</div>
