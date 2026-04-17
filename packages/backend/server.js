@@ -81,6 +81,15 @@ app.post('/internal/run-score-cron', authMiddleware, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Internal — force-run space weather sync ───────────────────────────────────
+const { fetchSpaceWeather } = require('./services/spaceWeather');
+app.post('/internal/run-space-weather', authMiddleware, async (req, res, next) => {
+  try {
+    await fetchSpaceWeather();
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 // ── Error handler ─────────────────────────────────────────────────────────────
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
