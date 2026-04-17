@@ -465,30 +465,50 @@
             <rect width="660" height="580" fill="url(#dots)"/>
 
             <!--
-              Rwanda boundary — computed from decimal-degree coordinates:
+              Rwanda boundary — accurate ~24-point outline projected from decimal-degree coordinates.
               Lng range [28.86, 30.90], Lat range [-1.05, -2.84]
-              SVG: 660×580, padding 30px each side → usable 600×520
+              SVG 660×580, pad 30 → usable 600×520
               x = 30 + (lng - 28.86) / 2.04 * 600
-              y = 30 + (lat - (-1.05)) / (-2.84 - (-1.05)) * 520
-                = 30 + (lat + 1.05) / 1.79 * 520   [note: lat is negative, so more-negative = larger y]
+              y = 30 + (lat + 1.05) / (-1.79) * 520   (north=-1.05→y=30, south=-2.84→y=550)
+
+              Key border points (clockwise from NW near Rubavu/Gisenyi):
+              DRC/RW NW (29.09,-1.48)→(98,155)  Cyanika/UG (29.63,-1.05)→(257,30)
+              Gatuna/UG (29.95,-1.07)→(351,36)   NE/TZ (30.90,-1.13)→(630,53)
+              TZ east (30.82,-2.01)→(607,309)    SE corner (30.49,-2.84)→(509,550)
+              S Burundi (29.82,-2.84)→(312,550)  SW (29.11,-2.43)→(104,431)
+              DRC/Kivu (28.86,-2.00)→(30,306)    NW back (29.09,-1.48)→(98,155)
             -->
             <path id="rw-outline"
-              d="M 70,36
-                 L 148,33 L 236,52 L 332,35 L 395,44 L 455,52
-                 L 494,79 L 546,120 L 594,221 L 603,310
-                 L 583,411 L 489,495 L 399,531
-                 L 304,520 L 233,509 L 153,489 L 94,467
-                 L 37,408 L 34,338 L 51,280
-                 L 34,221 L 34,157 L 34,115 Z"
+              d="M 98,155
+                 L 174,36  L 257,30  L 351,36  L 427,47  L 509,68  L 630,53
+                 L 621,146 L 615,213 L 607,309 L 580,364
+                 L 509,550 L 389,550 L 312,550
+                 L 233,518 L 171,466 L 104,431
+                 L 86,396  L 48,350  L 30,306
+                 L 30,263  L 30,219  L 33,175 Z"
               fill="url(#tg)" stroke="#243c26" stroke-width="1.5" stroke-linejoin="round"/>
 
-            <!-- Elevation contours (ultra-subtle highland ridgelines) -->
-            <path d="M 115,105 Q 195,84 278,100 Q 350,82 418,102 Q 476,132 496,182 Q 488,232 458,272 Q 418,302 378,322 Q 318,342 268,332 Q 208,320 168,292 Q 130,264 118,222 Q 108,170 115,105" fill="none" stroke="#1c3020" stroke-width="0.9" opacity="0.55"/>
-            <path d="M 158,162 Q 228,142 298,157 Q 368,147 428,172 Q 458,202 448,242 Q 428,282 388,302 Q 338,322 288,317 Q 238,312 198,287 Q 163,262 158,222 Q 153,187 158,162" fill="none" stroke="#1c3020" stroke-width="0.6" opacity="0.35"/>
+            <!-- Lake Kivu — western border water body (DRC/Rwanda) -->
+            <path id="lake-kivu"
+              d="M 33,175 Q 62,165 78,190 Q 88,225 82,270 Q 76,318 62,358 Q 48,385 30,376
+                 L 30,306 L 30,263 L 30,219 Z"
+              fill="#0d1e2e" stroke="#163040" stroke-width="0.8" opacity="0.75"/>
+            <text x="46" y="278" fill="#1a3a4a" font-size="6" font-family="JetBrains Mono,monospace"
+                  transform="rotate(-80,46,278)" opacity="0.55">LAKE KIVU</text>
 
-            <!-- Province guide lines (very faint dashes) -->
-            <line x1="278" y1="48"  x2="248" y2="502" stroke="#192819" stroke-width="0.4" opacity="0.4" stroke-dasharray="4,10"/>
-            <line x1="196" y1="98"  x2="478" y2="442" stroke="#192819" stroke-width="0.4" opacity="0.3" stroke-dasharray="4,10"/>
+            <!-- Elevation contours — Albertine Rift highlands (NW) and central plateau -->
+            <path d="M 105,155 Q 148,120 210,112 Q 278,100 340,108 Q 400,118 440,148
+                     Q 472,182 462,228 Q 444,272 408,302 Q 364,330 314,334
+                     Q 262,336 218,316 Q 174,294 150,260 Q 122,224 120,182 Q 112,158 105,155"
+                  fill="none" stroke="#1c3020" stroke-width="0.9" opacity="0.50"/>
+            <path d="M 148,195 Q 195,175 258,183 Q 322,182 372,202
+                     Q 408,225 402,262 Q 390,295 358,314 Q 316,330 274,326
+                     Q 232,320 200,300 Q 170,278 158,248 Q 145,220 148,195"
+                  fill="none" stroke="#1c3020" stroke-width="0.6" opacity="0.30"/>
+
+            <!-- Province guide lines (very faint — N/S divider and E/W divider) -->
+            <line x1="268" y1="42"  x2="238" y2="530" stroke="#192819" stroke-width="0.4" opacity="0.35" stroke-dasharray="4,10"/>
+            <line x1="110" y1="160" x2="560" y2="410" stroke="#192819" stroke-width="0.4" opacity="0.25" stroke-dasharray="4,10"/>
 
             <!-- Site pins injected by JS -->
             <g id="site-pins"></g>
@@ -876,18 +896,34 @@ function renderPins() {
   const g = document.getElementById('site-pins');
   g.innerHTML = '';
 
-  ST.sites.forEach(site => {
-    // Resolve GPS: from DB first, then name/location lookup
+  // Priority order for label claiming: crit > deg > nom > dark
+  const PRIO = { crit: 0, deg: 1, nom: 2, dark: 3 };
+  const STATUS_PRIO = s => PRIO[s] ?? 4;
+
+  // Resolve all positions first, then sort by priority so high-severity sites
+  // claim label slots before dark/nominal ones
+  const resolved = ST.sites.map(site => {
     let lat = site.lat, lng = site.lng;
     if (lat == null || lng == null) {
       const hint = geoHint(site);
-      if (!hint) return; // skip unmappable
+      if (!hint) return null;
       [lat, lng] = hint;
     }
+    const st = siteStatus(site);
+    return { site, x: lngToX(lng), y: latToY(lat), st };
+  }).filter(Boolean).sort((a, b) => STATUS_PRIO(a.st) - STATUS_PRIO(b.st));
 
-    const x   = lngToX(lng);
-    const y   = latToY(lat);
-    const st  = siteStatus(site);
+  // Label collision grid — track claimed label centres
+  const LABEL_CLEAR = 32; // min px between label centres
+  const claimedLabels = [];
+  function canPlaceLabel(x, y) {
+    return !claimedLabels.some(p => {
+      const dx = p.x - x, dy = p.y - y;
+      return Math.sqrt(dx * dx + dy * dy) < LABEL_CLEAR;
+    });
+  }
+
+  resolved.forEach(({ site, x, y, st }) => {
     const col = STATUS_COLOR[st];
 
     const pin = document.createElementNS(NS, 'g');
@@ -914,16 +950,19 @@ function renderPins() {
     if (st === 'nom')  dia.setAttribute('filter', 'url(#gg)');
     pin.appendChild(dia);
 
-    // Label
-    const lbl = document.createElementNS(NS, 'text');
-    lbl.setAttribute('x', x); lbl.setAttribute('y', y + 21);
-    lbl.setAttribute('text-anchor', 'middle');
-    lbl.setAttribute('fill', '#7a9e80');
-    lbl.setAttribute('font-family', 'JetBrains Mono, monospace');
-    lbl.setAttribute('font-size', '7.5');
-    lbl.setAttribute('letter-spacing', '0.3');
-    lbl.textContent = site.name.toUpperCase().replace(/ /g,'_').slice(0, 14);
-    pin.appendChild(lbl);
+    // Label — only render if no other label is too close
+    if (canPlaceLabel(x, y + 21)) {
+      claimedLabels.push({ x, y: y + 21 });
+      const lbl = document.createElementNS(NS, 'text');
+      lbl.setAttribute('x', x); lbl.setAttribute('y', y + 21);
+      lbl.setAttribute('text-anchor', 'middle');
+      lbl.setAttribute('fill', '#7a9e80');
+      lbl.setAttribute('font-family', 'JetBrains Mono, monospace');
+      lbl.setAttribute('font-size', '7.5');
+      lbl.setAttribute('letter-spacing', '0.3');
+      lbl.textContent = site.name.toUpperCase().replace(/ /g,'_').slice(0, 14);
+      pin.appendChild(lbl);
+    }
 
     // Events
     pin.addEventListener('mouseenter', e => showTip(e, site, st));
