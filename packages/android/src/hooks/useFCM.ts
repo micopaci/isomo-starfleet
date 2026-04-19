@@ -1,64 +1,22 @@
 /**
- * Firebase Cloud Messaging hook.
- * - Requests notification permission on first launch.
- * - Listens for foreground messages and dark-site notifications.
- * - Handles notification taps (background / killed state) to deep-link to a site.
+ * Firebase Cloud Messaging hook — currently a no-op stub.
+ *
+ * The real implementation lived here before we stripped @react-native-firebase
+ * until google-services.json is provisioned. See docs/SITE_AUTO_DETECTION.md
+ * for the push flow this hook will wire back up.
+ *
+ * To re-enable:
+ *   1. Add @react-native-firebase/app + @react-native-firebase/messaging to
+ *      package.json.
+ *   2. Drop google-services.json into android/app/.
+ *   3. Restore the original implementation from git history (permission
+ *      request, onMessage, onNotificationOpenedApp, getInitialNotification,
+ *      deep-link to SiteDetail on tap).
  */
-import { useEffect } from 'react';
-import messaging from '@react-native-firebase/messaging';
 import { NavigationContainerRef } from '@react-navigation/native';
 
 export function useFCM(
-  navRef: React.RefObject<NavigationContainerRef<any>>,
+  _navRef: React.RefObject<NavigationContainerRef<any>>,
 ): void {
-  useEffect(() => {
-    // 1. Request permission (Android 13+ requires explicit permission)
-    const requestPermission = async () => {
-      const authStatus = await messaging().requestPermission();
-      const enabled =
-        authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-        authStatus === messaging.AuthorizationStatus.PROVISIONAL;
-      if (enabled) {
-        const token = await messaging().getToken();
-        console.log('[FCM] Token:', token);
-        // TODO: send token to backend POST /api/fcm-token
-      }
-    };
-    requestPermission();
-
-    // 2. Foreground messages
-    const unsubForeground = messaging().onMessage(async remoteMessage => {
-      console.log('[FCM] Foreground message:', remoteMessage);
-      // Notifee handles the local notification display
-    });
-
-    // 3. App opened from a notification (background → foreground)
-    const unsubOpened = messaging().onNotificationOpenedApp(remoteMessage => {
-      const siteId = remoteMessage?.data?.site_id;
-      if (siteId && navRef.current) {
-        navRef.current.navigate('Sites' as any, {
-          screen: 'SiteDetail',
-          params: { siteId: Number(siteId) },
-        } as any);
-      }
-    });
-
-    // 4. App opened from a notification (killed state)
-    messaging()
-      .getInitialNotification()
-      .then(remoteMessage => {
-        const siteId = remoteMessage?.data?.site_id;
-        if (siteId && navRef.current) {
-          navRef.current.navigate('Sites' as any, {
-            screen: 'SiteDetail',
-            params: { siteId: Number(siteId) },
-          } as any);
-        }
-      });
-
-    return () => {
-      unsubForeground();
-      unsubOpened();
-    };
-  }, [navRef]);
+  // No-op until Firebase is re-added.
 }

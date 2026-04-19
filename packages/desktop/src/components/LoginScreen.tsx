@@ -34,9 +34,9 @@ export function LoginScreen({ onLogin }: Props) {
     <div className="login-screen">
       <div className="login-card">
         <div className="login-logo">
-          <span className="login-icon">🛰</span>
-          <h1>Starfleet Monitor</h1>
-          <p>Isomo Fleet Management</p>
+          <div className="login-logo__mark" aria-hidden>S</div>
+          <h1>Starfleet</h1>
+          <p>Isomo Ops</p>
         </div>
         <form onSubmit={handleSubmit}>
           <label>

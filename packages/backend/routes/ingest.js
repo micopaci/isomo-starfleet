@@ -10,6 +10,7 @@ const express = require('express');
 const pool    = require('../db');
 const { broadcast } = require('../services/websocket');
 const { currentSignal } = require('../services/cache');
+const { resolveAndMaybeNotify } = require('../services/siteResolver');
 const {
   heartbeatLimiter,
   signalLimiter,
@@ -77,14 +78,28 @@ router.post('/heartbeat', heartbeatLimiter, async (req, res, next) => {
 });
 
 // ── POST /ingest/signal ───────────────────────────────────────────────────────
+// NEW: accepts lat/lon/throughput. The authoritative site_id comes from
+// resolveAndMaybeNotify() — `req.body.site_id` is only used as a fallback when
+// GPS is unavailable (e.g. Starlink "access locations" toggle off).
 router.post('/signal', signalLimiter, async (req, res, next) => {
   try {
-    const { device_sn, site_id, timestamp_utc, pop_latency_ms, snr, obstruction_pct, ping_drop_pct } = req.body;
+    const {
+      device_sn, site_id: hintedSiteId, timestamp_utc,
+      pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
+      download_mbps, upload_mbps,
+      lat, lon,
+    } = req.body;
     if (!require400(res, req.body, ['device_sn', 'site_id'])) return;
 
     const client = await pool.connect();
     try {
-      const device_id = await autoRegisterDevice(client, device_sn, site_id, null);
+      const device_id = await autoRegisterDevice(client, device_sn, hintedSiteId, null);
+
+      // Resolve authoritative site from GPS. Updates devices.site_id and fires
+      // notifications if the site changed.
+      const site_id = await resolveAndMaybeNotify(
+        client, device_id, lat ?? null, lon ?? null, hintedSiteId
+      );
 
       // Count unique reporters in last 10 min
       const window = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -98,26 +113,34 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
 
       await client.query(
         `INSERT INTO signal_readings
-           (site_id, device_id, recorded_at, pop_latency_ms, snr, obstruction_pct, ping_drop_pct, reporter_count, confidence)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+           (site_id, device_id, recorded_at,
+            pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
+            download_mbps, upload_mbps,
+            reporter_count, confidence)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [site_id, device_id, timestamp_utc || new Date().toISOString(),
-         pop_latency_ms, snr, obstruction_pct, ping_drop_pct, reporterCount, confidence]
+         pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
+         download_mbps ?? null, upload_mbps ?? null,
+         reporterCount, confidence]
       );
 
       // Compute median across all reporters in last 2 min
       const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
       const recentRes = await client.query(
-        `SELECT pop_latency_ms, snr, obstruction_pct, ping_drop_pct
+        `SELECT pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
+                download_mbps, upload_mbps
          FROM signal_readings
          WHERE site_id = $1 AND recorded_at > $2`,
         [site_id, twoMinAgo]
       );
       const rows = recentRes.rows;
       const aggregated = {
-        snr:             median(rows.map(r => parseFloat(r.snr)).filter(v => v != null)),
-        pop_latency_ms:  median(rows.map(r => parseFloat(r.pop_latency_ms)).filter(v => v != null)),
-        obstruction_pct: median(rows.map(r => parseFloat(r.obstruction_pct)).filter(v => v != null)),
-        ping_drop_pct:   median(rows.map(r => parseFloat(r.ping_drop_pct)).filter(v => v != null)),
+        snr:             median(rows.map(r => parseFloat(r.snr)).filter(v => !Number.isNaN(v))),
+        pop_latency_ms:  median(rows.map(r => parseFloat(r.pop_latency_ms)).filter(v => !Number.isNaN(v))),
+        obstruction_pct: median(rows.map(r => parseFloat(r.obstruction_pct)).filter(v => !Number.isNaN(v))),
+        ping_drop_pct:   median(rows.map(r => parseFloat(r.ping_drop_pct)).filter(v => !Number.isNaN(v))),
+        download_mbps:   median(rows.map(r => parseFloat(r.download_mbps)).filter(v => !Number.isNaN(v))),
+        upload_mbps:     median(rows.map(r => parseFloat(r.upload_mbps)).filter(v => !Number.isNaN(v))),
         confidence,
         updatedAt:       new Date().toISOString(),
       };

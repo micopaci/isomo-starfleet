@@ -17,8 +17,15 @@ try {
         exit 1
     }
 
-    $lastHeartbeatStr = Get-Content $HeartbeatFile -Raw
-    $lastHeartbeat    = [datetime]::Parse($lastHeartbeatStr.Trim())
+    $lastHeartbeatStr = (Get-Content $HeartbeatFile -Raw).Trim()
+    # Use ParseExact with ISO 8601 format to avoid culture-dependent parsing failures
+    # on non-English Windows installations common in Rwanda
+    $lastHeartbeat = [datetime]::ParseExact(
+        $lastHeartbeatStr,
+        'yyyy-MM-ddTHH:mm:ssZ',
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::AssumeUniversal
+    )
     $ageMinutes       = (Get-Date).ToUniversalTime().Subtract($lastHeartbeat).TotalMinutes
 
     if ($ageMinutes -gt $MaxAgeMinutes) {
