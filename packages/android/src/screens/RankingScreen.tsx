@@ -6,7 +6,8 @@ import {
 import { useFleetSummary, Site } from '@starfleet/shared';
 import { light, dark, Colors, latencyColor, scoreColor } from '../theme/colors';
 
-// ── Available ranking metrics ───────────────────────────────────────────────
+// ── Metric definitions ───────────────────────────────────────────────────────
+
 type MetricKey =
   | 'score'
   | 'latency'
@@ -17,17 +18,13 @@ type MetricKey =
   | 'ping_drop';
 
 interface MetricDef {
-  key:       MetricKey;
-  label:     string;
-  shortLabel:string;
-  /** Extract the numeric value to sort by. */
-  extract:   (s: Site) => number | null;
-  /** `asc` means lower = better (latency, ping_drop); else higher = better. */
-  direction: 'asc' | 'desc';
-  /** How to format the value for display. */
-  format:    (v: number | null) => string;
-  /** Colour logic: pass value, return hex. */
-  colorFor:  (v: number | null) => string;
+  key:        MetricKey;
+  label:      string;
+  shortLabel: string;
+  direction:  'asc' | 'desc';
+  extract:    (s: Site) => number | null;
+  format:     (v: number | null) => string;
+  colorFor:   (v: number | null, C: Colors) => string;
 }
 
 const METRICS: MetricDef[] = [
@@ -38,7 +35,7 @@ const METRICS: MetricDef[] = [
     direction: 'desc',
     extract:  s => (s as any).score ?? s.latest_signal?.score ?? null,
     format:   v => v == null ? '—' : String(Math.round(v)),
-    colorFor: v => v == null ? '#94a3b8' : scoreColor(v),
+    colorFor: (v, C) => v == null ? C.muted : scoreColor(v, C),
   },
   {
     key: 'latency',
@@ -47,7 +44,7 @@ const METRICS: MetricDef[] = [
     direction: 'asc',
     extract:  s => s.latest_signal?.pop_latency_ms ?? null,
     format:   v => v == null ? '— ms' : `${Math.round(v)} ms`,
-    colorFor: v => latencyColor(v),
+    colorFor: (v, C) => latencyColor(v, C),
   },
   {
     key: 'download',
@@ -55,8 +52,8 @@ const METRICS: MetricDef[] = [
     shortLabel: 'DOWN',
     direction: 'desc',
     extract:  s => (s as any).download_mbps ?? null,
-    format:   v => v == null ? '—'  : `${v.toFixed(1)} Mbps`,
-    colorFor: v => v == null ? '#94a3b8' : v >= 100 ? '#22c55e' : v >= 25 ? '#f59e0b' : '#ef4444',
+    format:   v => v == null ? '—' : `${v.toFixed(1)} Mbps`,
+    colorFor: (v, C) => v == null ? C.muted : v >= 100 ? C.ok : v >= 25 ? C.warn : C.bad,
   },
   {
     key: 'upload',
@@ -64,8 +61,8 @@ const METRICS: MetricDef[] = [
     shortLabel: 'UP',
     direction: 'desc',
     extract:  s => (s as any).upload_mbps ?? null,
-    format:   v => v == null ? '—'  : `${v.toFixed(1)} Mbps`,
-    colorFor: v => v == null ? '#94a3b8' : v >= 15 ? '#22c55e' : v >= 5 ? '#f59e0b' : '#ef4444',
+    format:   v => v == null ? '—' : `${v.toFixed(1)} Mbps`,
+    colorFor: (v, C) => v == null ? C.muted : v >= 15 ? C.ok : v >= 5 ? C.warn : C.bad,
   },
   {
     key: 'data',
@@ -78,7 +75,7 @@ const METRICS: MetricDef[] = [
       if (v >= 1024) return `${(v / 1024).toFixed(2)} GB`;
       return `${Math.round(v)} MB`;
     },
-    colorFor: () => '#10b981',
+    colorFor: (_v, C) => C.ok,
   },
   {
     key: 'uptime',
@@ -87,7 +84,7 @@ const METRICS: MetricDef[] = [
     direction: 'desc',
     extract:  s => (s as any).uptime_pct ?? null,
     format:   v => v == null ? '—' : `${v.toFixed(1)} %`,
-    colorFor: v => v == null ? '#94a3b8' : v >= 98 ? '#22c55e' : v >= 90 ? '#f59e0b' : '#ef4444',
+    colorFor: (v, C) => v == null ? C.muted : v >= 98 ? C.ok : v >= 90 ? C.warn : C.bad,
   },
   {
     key: 'ping_drop',
@@ -96,13 +93,15 @@ const METRICS: MetricDef[] = [
     direction: 'asc',
     extract:  s => s.latest_signal?.ping_drop_pct ?? null,
     format:   v => v == null ? '—' : `${v.toFixed(1)} %`,
-    colorFor: v => v == null ? '#94a3b8' : v <= 0.5 ? '#22c55e' : v <= 2 ? '#f59e0b' : '#ef4444',
+    colorFor: (v, C) => v == null ? C.muted : v <= 0.5 ? C.ok : v <= 2 ? C.warn : C.bad,
   },
 ];
 
+// ── Component ────────────────────────────────────────────────────────────────
+
 export function RankingScreen() {
   const scheme = useColorScheme();
-  const colors: Colors = scheme === 'dark' ? dark : light;
+  const C: Colors = scheme === 'dark' ? dark : light;
 
   const [metricKey, setMetricKey] = useState<MetricKey>('score');
   const metric = METRICS.find(m => m.key === metricKey)!;
@@ -114,7 +113,6 @@ export function RankingScreen() {
     return [...sites].sort((a, b) => {
       const va = metric.extract(a);
       const vb = metric.extract(b);
-      // Nulls sink to the bottom regardless of direction
       if (va == null && vb == null) return 0;
       if (va == null) return 1;
       if (vb == null) return -1;
@@ -124,19 +122,20 @@ export function RankingScreen() {
 
   if (loading && sites.length === 0) {
     return (
-      <View style={[styles.center, { backgroundColor: colors.bg }]}>
-        <ActivityIndicator color={colors.accent} size="large" />
+      <View style={[styles.center, { backgroundColor: C.bg }]}>
+        <ActivityIndicator color={C.accent} size="large" />
       </View>
     );
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.bg }]}>
+    <View style={[styles.screen, { backgroundColor: C.bg }]}>
+
       {/* Metric selector */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chips}
+        contentContainerStyle={[styles.chips, { borderBottomColor: C.rule }]}
       >
         {METRICS.map(m => {
           const active = m.key === metricKey;
@@ -147,15 +146,12 @@ export function RankingScreen() {
               style={[
                 styles.chip,
                 {
-                  backgroundColor: active ? colors.accent : colors.bg2,
-                  borderColor:     active ? colors.accent : colors.border,
+                  backgroundColor: active ? C.accent : C.surface2,
+                  borderColor:     active ? C.accent : C.rule,
                 },
               ]}
             >
-              <Text style={[
-                styles.chipText,
-                { color: active ? '#fff' : colors.text2 },
-              ]}>
+              <Text style={[styles.chipText, { color: active ? '#fff' : C.ink3 }]}>
                 {m.shortLabel}
               </Text>
             </TouchableOpacity>
@@ -163,7 +159,7 @@ export function RankingScreen() {
         })}
       </ScrollView>
 
-      <Text style={[styles.header, { color: colors.text2 }]}>
+      <Text style={[styles.header, { color: C.ink3 }]}>
         {metric.label} · {metric.direction === 'asc' ? 'lower is better' : 'higher is better'}
       </Text>
 
@@ -175,12 +171,12 @@ export function RankingScreen() {
             item={item}
             rank={index + 1}
             metric={metric}
-            colors={colors}
+            colors={C}
           />
         )}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          <Text style={[styles.empty, { color: colors.text2 }]}>No data yet</Text>
+          <Text style={[styles.empty, { color: C.ink3 }]}>No data yet</Text>
         }
       />
     </View>
@@ -188,37 +184,44 @@ export function RankingScreen() {
 }
 
 function RankRow({
-  item, rank, metric, colors,
+  item, rank, metric, colors: C,
 }: {
   item: Site; rank: number; metric: MetricDef; colors: Colors;
 }) {
-  const v          = metric.extract(item);
-  const display    = metric.format(v);
-  const dotColor   = metric.colorFor(v);
+  const v       = metric.extract(item);
+  const display = metric.format(v);
+  const dotColor = metric.colorFor(v, C);
+
+  // Rank badge styling
+  const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null;
 
   return (
-    <View style={[styles.row, { backgroundColor: colors.bg2, borderColor: colors.border }]}>
-      <Text style={[styles.rank, { color: colors.text2 }]}>#{rank}</Text>
+    <View style={[styles.row, { backgroundColor: C.surface, borderColor: C.rule }]}>
+      {medal
+        ? <Text style={styles.medal}>{medal}</Text>
+        : <Text style={[styles.rank, { color: C.muted }]}>#{rank}</Text>}
       <View style={[styles.dot, { backgroundColor: dotColor }]} />
-      <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
-      <Text style={[styles.value, { color: colors.text }]}>{display}</Text>
+      <Text style={[styles.name, { color: C.ink }]} numberOfLines={1}>{item.name}</Text>
+      <Text style={[styles.value, { color: dotColor }]}>{display}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen:  { flex: 1 },
-  header:  { fontSize: 11, textAlign: 'center', paddingVertical: 6, letterSpacing: 0.5 },
-  chips:   { paddingHorizontal: 12, paddingVertical: 10, gap: 6 },
-  chip:    { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99, borderWidth: 1, marginRight: 6 },
-  chipText:{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6 },
-  list:    { paddingHorizontal: 16, paddingBottom: 16 },
-  center:  { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  empty:   { textAlign: 'center', marginTop: 40 },
-  row:     { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 8,
-             borderWidth: 1, padding: 12, marginBottom: 8 },
-  rank:    { width: 28, fontSize: 13 },
-  dot:     { width: 8, height: 8, borderRadius: 99 },
-  name:    { flex: 1, fontSize: 13 },
-  value:   { fontWeight: '600', fontSize: 13 },
+  screen:   { flex: 1 },
+  header:   { fontSize: 11, textAlign: 'center', paddingVertical: 6, letterSpacing: 0.5 },
+  chips:    { paddingHorizontal: 12, paddingVertical: 10, gap: 6,
+              borderBottomWidth: StyleSheet.hairlineWidth },
+  chip:     { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99, borderWidth: 1 },
+  chipText: { fontSize: 11, fontWeight: '600', letterSpacing: 0.6 },
+  list:     { paddingHorizontal: 12, paddingVertical: 8, paddingBottom: 24 },
+  center:   { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  empty:    { textAlign: 'center', marginTop: 40 },
+  row:      { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 8,
+              borderWidth: 1, padding: 12, marginBottom: 8 },
+  rank:     { width: 30, fontSize: 12 },
+  medal:    { width: 30, fontSize: 16, textAlign: 'center' },
+  dot:      { width: 8, height: 8, borderRadius: 99 },
+  name:     { flex: 1, fontSize: 13 },
+  value:    { fontWeight: '700', fontSize: 13 },
 });

@@ -3,18 +3,18 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '../theme/colors';
 
 interface Props {
-  label: string;
-  value: string | number | null | undefined;
-  unit?: string;
+  label:  string;
+  value:  string | number | null | undefined;
+  unit?:  string;
   colors: Colors;
 }
 
 export function MetricTile({ label, value, unit, colors }: Props) {
   const display = value != null ? `${value}${unit ?? ''}` : '—';
   return (
-    <View style={[styles.tile, { backgroundColor: colors.bg3 }]}>
-      <Text style={[styles.label, { color: colors.text2 }]}>{label}</Text>
-      <Text style={[styles.value, { color: colors.text }]}>{display}</Text>
+    <View style={[styles.tile, { backgroundColor: colors.surface2 }]}>
+      <Text style={[styles.label, { color: colors.ink3 }]}>{label}</Text>
+      <Text style={[styles.value, { color: colors.ink }]}>{display}</Text>
     </View>
   );
 }
