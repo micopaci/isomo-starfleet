@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { TabParamList } from './types';
 import { SitesStack }      from './SitesStack';
+import { MapScreen }       from '../screens/MapScreen';
 import { RankingScreen }   from '../screens/RankingScreen';
 import { SettingsScreen }  from '../screens/SettingsScreen';
 import { Colors } from '../theme/colors';
@@ -30,6 +31,17 @@ export function AppNavigator({ colors, onLogout, role, email }: Props) {
         component={SitesStack}
         options={{
           tabBarIcon: ({ color }) => <TabIcon label="📡" color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="Map"
+        component={MapScreen}
+        options={{
+          tabBarIcon: ({ color }) => <TabIcon label="🗺️" color={color} />,
+          headerShown: true,
+          headerTitle: 'Fleet Map',
+          headerStyle: { backgroundColor: colors.bg2 },
+          headerTintColor: colors.ink,
         }}
       />
       <Tab.Screen
