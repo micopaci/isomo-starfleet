@@ -2,20 +2,20 @@ import React, { useRef } from 'react';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from './types';
-import { AppNavigator } from './AppNavigator';
-import { LoginScreen }  from '../screens/LoginScreen';
-import { Colors }       from '../theme/colors';
-import { useFCM }       from '../hooks/useFCM';
+import { AppNavigator }  from './AppNavigator';
+import { LoginScreen }   from '../screens/LoginScreen';
+import { Colors }        from '../theme/colors';
+import { useFCM }        from '../hooks/useFCM';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 interface Props {
-  authed: boolean;
-  colors: Colors;
+  authed:   boolean;
+  colors:   Colors;
   onLogin:  () => void;
   onLogout: () => void;
-  role:  string;
-  email: string;
+  role:     string;
+  email:    string;
 }
 
 export function RootNavigator({ authed, colors, onLogin, onLogout, role, email }: Props) {
@@ -26,14 +26,20 @@ export function RootNavigator({ authed, colors, onLogin, onLogout, role, email }
     <NavigationContainer
       ref={navRef}
       theme={{
-        dark: false,
+        dark: colors === require('../theme/colors').dark,
         colors: {
           primary:      colors.accent,
           background:   colors.bg,
-          card:         colors.bg2,
-          text:         colors.text,
-          border:       colors.border,
+          card:         colors.surface,
+          text:         colors.ink,
+          border:       colors.rule,
           notification: colors.accent,
+        },
+        fonts: {
+          regular: { fontFamily: 'System', fontWeight: '400' },
+          medium:  { fontFamily: 'System', fontWeight: '500' },
+          bold:    { fontFamily: 'System', fontWeight: '700' },
+          heavy:   { fontFamily: 'System', fontWeight: '900' },
         },
       }}
     >
