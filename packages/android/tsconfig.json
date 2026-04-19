@@ -5,7 +5,8 @@
     "baseUrl": ".",
     "paths": {
       "@starfleet/shared": ["../shared/src/index.ts"]
-    }
+    },
+    "types": ["react-native"]
   },
   "include": ["src", "index.js"]
 }
