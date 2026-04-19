@@ -4,6 +4,7 @@ import type { BottomTabScreenProps }    from '@react-navigation/bottom-tabs';
 // ─── Bottom tabs ──────────────────────────────────────────────────────────────
 export type TabParamList = {
   Sites:    undefined;
+  Map:      undefined;
   Ranking:  undefined;
   Settings: undefined;
 };
