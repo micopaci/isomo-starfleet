@@ -106,7 +106,7 @@ export function SignalChart({ scores, hasAnomalies, hasLowData }: Props) {
           <Line
             type="monotone"
             dataKey="score"
-            stroke="#6366f1"
+            stroke="#10b981"
             strokeWidth={2}
             dot={({ cx, cy, payload }) => (
               <circle

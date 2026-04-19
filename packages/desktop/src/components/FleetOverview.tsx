@@ -1,55 +1,77 @@
-import { Site, computeSignalScore, siteStatus, SiteStatusValue } from '@starfleet/shared';
+import { Site, computeSignalScore, siteStatus } from '@starfleet/shared';
+import { StatusChip } from './StatusChip';
 
 interface Props {
   sites: Site[];
   onSelect: (id: number) => void;
 }
 
-const STATUS_COLOR: Record<SiteStatusValue, string> = {
-  online:   '#22c55e',
-  degraded: '#f59e0b',
-  dark:     '#ef4444',
-};
-
 export function FleetOverview({ sites, onSelect }: Props) {
   // Sort by score ascending (worst first)
   const sorted = [...sites].sort((a, b) => {
-    const scoreA = a.signal ? computeSignalScore({ ping_drop_pct: a.signal.ping_drop_pct ?? 0, obstruction_pct: a.signal.obstruction_pct ?? 0, snr: a.signal.snr ?? 9.5, pop_latency_ms: a.signal.pop_latency_ms ?? 35 }) : -1;
-    const scoreB = b.signal ? computeSignalScore({ ping_drop_pct: b.signal.ping_drop_pct ?? 0, obstruction_pct: b.signal.obstruction_pct ?? 0, snr: b.signal.snr ?? 9.5, pop_latency_ms: b.signal.pop_latency_ms ?? 35 }) : -1;
-    return scoreA - scoreB;
+    const sa = a.signal ? computeSignalScore({ ping_drop_pct: a.signal.ping_drop_pct ?? 0, obstruction_pct: a.signal.obstruction_pct ?? 0, snr: a.signal.snr ?? 9.5, pop_latency_ms: a.signal.pop_latency_ms ?? 35 }) : -1;
+    const sb = b.signal ? computeSignalScore({ ping_drop_pct: b.signal.ping_drop_pct ?? 0, obstruction_pct: b.signal.obstruction_pct ?? 0, snr: b.signal.snr ?? 9.5, pop_latency_ms: b.signal.pop_latency_ms ?? 35 }) : -1;
+    return sa - sb;
   });
 
   return (
-    <div className="fleet-overview">
-      <h2>Fleet Overview <span className="muted">— worst first</span></h2>
-      <div className="site-grid">
+    <div className="card">
+      <div className="card-header">
+        <h2 className="card-title">Sites</h2>
+        <span className="muted" style={{ fontSize: 12 }}>sorted by health score · worst first</span>
+      </div>
+      <div className="campus-grid">
         {sorted.map(site => {
           const status = siteStatus(site);
           const score = site.signal
             ? computeSignalScore({ ping_drop_pct: site.signal.ping_drop_pct ?? 0, obstruction_pct: site.signal.obstruction_pct ?? 0, snr: site.signal.snr ?? 9.5, pop_latency_ms: site.signal.pop_latency_ms ?? 35 })
             : null;
 
+          const tone = status === 'online' ? 'ok' : status === 'degraded' ? 'warn' : 'bad';
+
           return (
-            <button
+            <div
               key={site.id}
-              className="site-card"
+              className="campus-card"
+              style={{ cursor: 'pointer' }}
               onClick={() => onSelect(site.id)}
-              style={{ borderLeft: `4px solid ${STATUS_COLOR[status]}` }}
             >
-              <div className="site-card-name">{site.name}</div>
-              <div className="site-card-score">
-                {score !== null
-                  ? <span style={{ color: STATUS_COLOR[status] }}>Score {score}</span>
-                  : <span className="muted">No data</span>
-                }
+              <div className="campus-card-head">
+                <div>
+                  <div className="campus-card-name">{site.name}</div>
+                  <StatusChip status={status} />
+                </div>
+                <div className="campus-card-count" style={{ color: `var(--${tone})` }}>
+                  {score !== null ? score : '—'}
+                  <span>score</span>
+                </div>
               </div>
-              <div className="site-card-cause muted">{site.signal ? '' : 'Awaiting first reading'}</div>
-              <div className="site-card-laptops">
-                💻 {site.online_laptops}/{site.total_laptops} online
+              <div className="campus-stat-row">
+                <div>
+                  <dt>Latency</dt>
+                  <dd style={{ fontFamily: 'var(--font-mono)', fontSize: 14 }}>
+                    {site.signal?.pop_latency_ms != null ? `${site.signal.pop_latency_ms}ms` : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Obstruct.</dt>
+                  <dd style={{ fontFamily: 'var(--font-mono)', fontSize: 14 }}>
+                    {site.signal?.obstruction_pct != null ? `${site.signal.obstruction_pct.toFixed(1)}%` : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Laptops</dt>
+                  <dd style={{ fontFamily: 'var(--font-mono)', fontSize: 14 }}>
+                    {site.online_laptops}/{site.total_laptops}
+                  </dd>
+                </div>
               </div>
-            </button>
+            </div>
           );
         })}
+        {sorted.length === 0 && (
+          <div className="empty-state" style={{ gridColumn: '1/-1' }}>No sites loaded.</div>
+        )}
       </div>
     </div>
   );

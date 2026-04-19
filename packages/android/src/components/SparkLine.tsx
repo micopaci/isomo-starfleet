@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { VictoryLine, VictoryChart, VictoryAxis } from 'victory-native';
+import { CartesianChart with Line, VictoryChart, CartesianChart with Axis, VictoryAxis } from 'victory-native';
 import { DailyScore } from '@starfleet/shared';
 import { Colors, scoreColor } from '../theme/colors';
 

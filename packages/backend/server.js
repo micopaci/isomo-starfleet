@@ -7,6 +7,7 @@ require('dotenv').config();
 
 const express = require('express');
 const http    = require('http');
+const path    = require('path');
 const pool    = require('./db');
 
 const { authMiddleware }  = require('./middleware/auth');
@@ -52,6 +53,14 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   next();
 });
+
+// ── Web dashboard (static) ────────────────────────────────────────────────────
+// Serve packages/web/index.html at GET / so the dashboard runs at the same
+// origin as the API — eliminates CORS friction when running locally.
+app.use(express.static(path.resolve(__dirname, '../web')));
+app.get('/', (req, res) =>
+  res.sendFile(path.resolve(__dirname, '../web/index.html'))
+);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', async (req, res) => {
@@ -113,5 +122,6 @@ graphClient.startTriggerPoller();
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Starlink Fleet Monitor backend running on port ${PORT}`);
-  console.log(`Health: http://localhost:${PORT}/health`);
+  console.log(`Dashboard: http://localhost:${PORT}/`);
+  console.log(`Health:    http://localhost:${PORT}/health`);
 });

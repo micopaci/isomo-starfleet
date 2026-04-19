@@ -4,11 +4,17 @@ import { LoginScreen } from './components/LoginScreen';
 import { Sidebar } from './components/Sidebar';
 import { MetricCards } from './components/MetricCards';
 import { FleetOverview } from './components/FleetOverview';
+import { OverviewView } from './components/OverviewView';
+import { StarlinksView } from './components/StarlinksView';
+import { ComputersView } from './components/ComputersView';
+import { AlertsView } from './components/AlertsView';
+import { MapView } from './components/MapView';
 import { SiteDetail } from './components/SiteDetail';
 import { DarkBanner } from './components/DarkBanner';
 import { isLoggedIn, initClients, logout, getStoredToken } from './store/auth';
 
 type FilterValue = 'all' | 'online' | 'degraded' | 'dark';
+type NavTab = 'overview' | 'starlinks' | 'computers' | 'students' | 'alerts' | 'campuses' | 'map';
 
 export function App() {
   const [authed, setAuthed]             = useState(isLoggedIn());
@@ -37,6 +43,16 @@ export function App() {
     (window as any).electronAPI?.onDarkModeChanged?.((d: boolean) => setDark(d));
   }, []);
 
+  // Inject Google Fonts for the new design system
+  useEffect(() => {
+    if (document.getElementById('starfleet-fonts')) return;
+    const link = document.createElement('link');
+    link.id = 'starfleet-fonts';
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap';
+    document.head.appendChild(link);
+  }, []);
+
   function handleLogin() {
     const token = getStoredToken()!;
     initClients(token, () => { logout(); setAuthed(false); });
@@ -45,19 +61,25 @@ export function App() {
 
   if (!authed) return <LoginScreen onLogin={handleLogin} />;
 
-  return <AuthedApp
-    selectedSiteId={selectedSiteId}
-    setSelectedId={setSelectedId}
-    filter={filter}
-    setFilter={setFilter}
-    darkSiteBanner={darkSiteBanner}
-    setDarkBanner={setDarkBanner}
-  />;
+  return (
+    <AuthedApp
+      selectedSiteId={selectedSiteId}
+      setSelectedId={setSelectedId}
+      filter={filter}
+      setFilter={setFilter}
+      darkSiteBanner={darkSiteBanner}
+      setDarkBanner={setDarkBanner}
+    />
+  );
 }
 
-// ─── Authed shell — uses hooks that need the API client to be initialised ─────
+// ─── Authed shell ──────────────────────────────────────────────────────────────
 
-function AuthedApp({ selectedSiteId, setSelectedId, filter, setFilter, darkSiteBanner, setDarkBanner }: {
+function AuthedApp({
+  selectedSiteId, setSelectedId,
+  filter, setFilter,
+  darkSiteBanner, setDarkBanner,
+}: {
   selectedSiteId: number | null;
   setSelectedId: (id: number | null) => void;
   filter: FilterValue;
@@ -66,6 +88,8 @@ function AuthedApp({ selectedSiteId, setSelectedId, filter, setFilter, darkSiteB
   setDarkBanner: (s: string | null) => void;
 }) {
   const { sites, summary, loading } = useFleetSummary();
+  const [activeTab, setActiveTab] = useState<NavTab>('overview');
+
   const [role] = useState<'admin' | 'viewer'>(() => {
     try {
       const token = getStoredToken();
@@ -84,15 +108,20 @@ function AuthedApp({ selectedSiteId, setSelectedId, filter, setFilter, darkSiteB
     });
   }, [sites, setDarkBanner]);
 
-  async function handleTrigger(deviceId: number, type: string) {
-    try {
-      const { StarfleetApi } = await import('@starfleet/shared');
-      // Use global api via import — already initialised
-      console.log(`Trigger ${type} on device ${deviceId}`);
-    } catch (e) {
-      console.error('Trigger failed', e);
-    }
+  // When a site is selected from the overview, switch to site-detail mode
+  function handleSelectSite(id: number) {
+    setSelectedId(id);
+    setActiveTab('overview');
   }
+
+  // Fleet stats for sidebar
+  const onlineDishes = sites.filter(s => siteStatus(s) === 'online').length;
+  const openAlerts   = sites.filter(s => siteStatus(s) !== 'online').length;
+
+  const tabLabel: Record<NavTab, string> = {
+    overview: 'Overview', starlinks: 'Starlinks', computers: 'Computers',
+    students: 'Students', alerts: 'Alerts', campuses: 'Campuses', map: 'Map',
+  };
 
   return (
     <div className="app-shell">
@@ -104,27 +133,112 @@ function AuthedApp({ selectedSiteId, setSelectedId, filter, setFilter, darkSiteB
         sites={sites}
         selectedId={selectedSiteId}
         filter={filter as any}
-        onSelect={setSelectedId}
+        activeTab={activeTab}
+        onSelect={id => { setSelectedId(id); if (id !== null) setActiveTab('overview'); }}
         onFilter={f => setFilter(f as FilterValue)}
+        onTabChange={tab => { setActiveTab(tab); setSelectedId(null); }}
+        onlineDishes={onlineDishes}
+        totalDishes={sites.length}
+        openAlerts={openAlerts}
       />
 
       <main className="main-area">
-        <MetricCards summary={summary} />
+        {/* Top bar */}
+        <header className="topbar">
+          <div className="topbar__crumbs">
+            <strong>Isomo Academy</strong>
+            <span style={{ color: 'var(--rule)' }}>/</span>
+            <span>{tabLabel[activeTab]}</span>
+            {selectedSiteId !== null && (
+              <>
+                <span style={{ color: 'var(--rule)' }}>/</span>
+                <span>{sites.find(s => s.id === selectedSiteId)?.name}</span>
+              </>
+            )}
+          </div>
+          <div className="topbar__spacer" />
+          <div className="topbar__status">
+            <span>Status</span>
+            <span className="val">
+              {openAlerts > 0 ? `⚠ ${openAlerts} issues` : 'All systems normal'}
+            </span>
+          </div>
+        </header>
 
         {loading && sites.length === 0 && (
           <div className="loading-state">Loading fleet data…</div>
         )}
 
-        {selectedSiteId === null ? (
-          <FleetOverview sites={sites} onSelect={setSelectedId} />
-        ) : (
+        {/* Tab routing */}
+        {activeTab === 'overview' && selectedSiteId === null && (
+          <OverviewView sites={sites} summary={summary} onSelectSite={handleSelectSite} />
+        )}
+
+        {activeTab === 'overview' && selectedSiteId !== null && (
           <SiteDetail
             siteId={selectedSiteId}
             isAdmin={role === 'admin'}
-            onTrigger={handleTrigger}
+            onTrigger={async (deviceId, type) => {
+              console.log(`Trigger ${type} on device ${deviceId}`);
+            }}
+          />
+        )}
+
+        {/* Placeholder views for tabs not yet wired to live API */}
+        {activeTab === 'starlinks' && (
+          <StarlinksView sites={sites} onSelectSite={handleSelectSite} />
+        )}
+
+        {activeTab === 'computers' && (
+          <ComputersView />
+        )}
+
+        {activeTab === 'alerts' && (
+          <AlertsView sites={sites} onSelectSite={handleSelectSite} />
+        )}
+
+        {activeTab === 'map' && (
+          <MapView sites={sites} onSelectSite={handleSelectSite} />
+        )}
+
+        {activeTab === 'campuses' && (
+          <PlaceholderView
+            title="Campuses"
+            lede="Per-campus breakdown — dishes, computers, and student signals."
+            body={<FleetOverview sites={sites} onSelect={handleSelectSite} />}
+          />
+        )}
+
+        {activeTab === 'students' && (
+          <PlaceholderView
+            title="Students"
+            lede="Student connectivity and learning metrics — requires student data integration."
           />
         )}
       </main>
+    </div>
+  );
+}
+
+function PlaceholderView({
+  title,
+  lede,
+  body,
+}: {
+  title: string;
+  lede: string;
+  body?: React.ReactNode;
+}) {
+  return (
+    <div className="view">
+      <div className="view__header">
+        <div>
+          <div className="eyebrow">Starfleet</div>
+          <h1 className="view__title">{title}</h1>
+          <p className="view__lede">{lede}</p>
+        </div>
+      </div>
+      {body}
     </div>
   );
 }

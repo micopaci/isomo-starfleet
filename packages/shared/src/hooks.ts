@@ -247,3 +247,51 @@ export function useStaleDevices(): {
 
   return { devices, loading, refresh: load };
 }
+
+// ─── useDevices ───────────────────────────────────────────────────────────────
+// Fetches all devices (or stale-only). No WS subscriptions — use useStaleDevices
+// for real-time stale tracking. Intended for the Computers view full list.
+
+export function useDevices(filter?: 'stale'): {
+  devices: Device[];
+  loading: boolean;
+  error: string | null;
+  refresh: () => void;
+} {
+  const api = useApi();
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api.getDevices(filter);
+      setDevices(data);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [api, filter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Keep stale markers live when watching all devices
+  useEffect(() => {
+    if (!_ws || filter === 'stale') return;
+    const unsub = _ws.on('stale_devices', (evt: WsStaleDevicesEvent) => {
+      const staleIds = new Set(evt.devices.map(d => d.device_id));
+      const staleMins = new Map(evt.devices.map(d => [d.device_id, d.stale_min]));
+      setDevices(prev => prev.map(d =>
+        staleIds.has(d.id)
+          ? { ...d, status: 'stale' as const, stale_min: staleMins.get(d.id) ?? null }
+          : d,
+      ));
+    });
+    return unsub;
+  }, [filter]);
+
+  return { devices, loading, error, refresh: load };
+}
