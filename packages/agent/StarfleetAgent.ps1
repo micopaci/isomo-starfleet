@@ -1,270 +1,106 @@
-/**
- * Stage 1B — Ingest API endpoints (v5.6 Final)
- * POST /ingest/heartbeat - Updates BIOS sn, Hostname, and OS/Model metadata
- * POST /ingest/signal    - Haversine-based Site Discovery
- * POST /ingest/health    - Battery, RAM, and Disk % metrics
- */
-const express = require('express');
-const pool    = require('../db');
-const { broadcast } = require('../services/websocket');
-const { currentSignal } = require('../services/cache');
-const { resolveAndMaybeNotify } = require('../services/siteResolver');
-const {
-  heartbeatLimiter,
-  signalLimiter,
-  latencyLimiter,
-  healthLimiter,
-  usageLimiter,
-} = require('../middleware/ingestRateLimit');
+#Requires -Version 5.1
+# Starfleet Agent v5.6 - Production Build
 
-const router = express.Router();
+# --- CONFIGURATION ---
+$ApiBase     = "https://api.starfleet.icircles.rw"
+$ApiToken    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImVtYWlsIjoiYWRtaW4AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NzY2OTEwMjMsImV4cCI6MTgwODIyNzAyM30.lKvEgZlhZku-L6bOsEGqJjBnrhNrLcm5FR8BMbVI588"
+$DataDir     = "C:\ProgramData\Starfleet"
+$DeviceFile  = "$DataDir\device.json"
+$QueueDir    = "$DataDir\queue"
+$LogFile     = "$DataDir\agent.log"
+$GrpcurlPath = "$DataDir\grpcurl.exe"
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+# Ensure TLS Compatibility
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
 
-function require400(res, body, fields) {
-  for (const f of fields) {
-    if (body[f] === undefined || body[f] === null || body[f] === '') {
-      res.status(400).json({ error: `${f} is required` });
-      return false;
-    }
-  }
-  return true;
+# --- UTILITIES ---
+function Write-Log {
+    param([string]$Level = "INFO", [string]$Message)
+    $ts = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $line = "[$ts] [$Level] $Message"
+    if (-not (Test-Path $DataDir)) { New-Item $DataDir -ItemType Directory -Force | Out-Null }
+    Write-Host $line -ForegroundColor ($Level -eq "ERROR" ? "Red" : "Cyan")
+    Add-Content -Path $LogFile -Value $line -Encoding UTF8
 }
 
-/**
- * Maps agent device_sn (BIOS) to database windows_sn.
- * Updates OS and Model metadata on every check-in.
- */
-async function autoRegisterDevice(client, device_sn, site_id, hostname, metadata = {}) {
-  const { os, model, manufacturer } = metadata;
-  
-  const result = await client.query(
-    `INSERT INTO devices (windows_sn, site_id, hostname, os, model, manufacturer)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT (windows_sn)
-     DO UPDATE SET 
-       site_id = EXCLUDED.site_id, 
-       hostname = COALESCE(EXCLUDED.hostname, devices.hostname),
-       os = COALESCE(EXCLUDED.os, devices.os),
-       model = COALESCE(EXCLUDED.model, devices.model),
-       manufacturer = COALESCE(EXCLUDED.manufacturer, devices.manufacturer)
-     RETURNING id`,
-    [device_sn, site_id, hostname || null, os || null, model || null, manufacturer || null]
-  );
-  return result.rows[0].id;
+function Get-Distance {
+    param([double]$lat1, [double]$lon1, [double]$lat2, [double]$lon2)
+    $r = 6371 # km
+    $dLat = [Math]::PI / 180 * ($lat2 - $lat1); $dLon = [Math]::PI / 180 * ($lon2 - $lon1)
+    $a = [Math]::Sin($dLat/2) * [Math]::Sin($dLat/2) + [Math]::Cos([Math]::PI / 180 * $lat1) * [Math]::Cos([Math]::PI / 180 * $lat2) * [Math]::Sin($dLon/2) * [Math]::Sin($dLon/2)
+    return $r * (2 * [Math]::Atan2([Math]::Sqrt($a), [Math]::Sqrt(1-$a)))
 }
 
-function median(values) {
-  if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 !== 0
-    ? sorted[mid]
-    : (sorted[mid - 1] + sorted[mid]) / 2;
+# --- TELEMETRY ---
+function Get-LocationData {
+    $loc = @{ lat=$null; lon=$null }
+    $cmd = if (Get-Command grpcurl -ErrorAction SilentlyContinue) { "grpcurl" } else { $GrpcurlPath }
+    if (-not (Test-Path $cmd) -and $cmd -ne "grpcurl") { return $loc }
+    try {
+        # Using verified --% stop-parsing for raw JSON delivery
+        $raw = & $cmd --% -plaintext -d "{\"get_location\":{}}" 192.168.100.1:9200 SpaceX.API.Device.Device/Handle | ConvertFrom-Json
+        if ($raw.getLocation.lla.lat) {
+            $loc.lat = [math]::Round($raw.getLocation.lla.lat, 6)
+            $loc.lon = [math]::Round($raw.getLocation.lla.lon, 6)
+        }
+    } catch { Write-Log "WARN" "gRPC Location fetch failed." }
+    return $loc
 }
 
-// ── POST /ingest/heartbeat ────────────────────────────────────────────────────
-router.post('/heartbeat', heartbeatLimiter, async (req, res, next) => {
-  try {
-    const { 
-      device_sn, site_id, hostname, timestamp_utc,
-      os, model, manufacturer 
-    } = req.body;
-    
-    if (!require400(res, req.body, ['device_sn', 'site_id'])) return;
+# --- MAIN EXECUTION ---
+Write-Log "INFO" "Cycle Start"
+foreach ($dir in @($DataDir, $QueueDir)) { if (-not (Test-Path $dir)) { New-Item $dir -ItemType Directory -Force | Out-Null } }
 
-    const client = await pool.connect();
+# 1. Load/Create Identity
+$config = if (Test-Path $DeviceFile) { Get-Content $DeviceFile -Raw | ConvertFrom-Json } else { $null }
+$deviceSN = if ($config) { $config.device_sn } else { (Get-CimInstance Win32_BIOS).SerialNumber.Trim() }
+$siteId = if ($config) { $config.site_id } else { 0 }
+
+# 2. Gather Dashboard Metrics
+$os = (Get-CimInstance Win32_OperatingSystem).Caption
+$disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
+$storagePct = [math]::Round((($disk.Size - $disk.FreeSpace) / $disk.Size) * 100, 0)
+$battery = (Get-CimInstance Win32_Battery).EstimatedChargeRemaining
+$loc = Get-LocationData
+
+# 3. Handle Auto-Discovery (Site 0 Fix)
+if ($siteId -eq 0 -and $loc.lat -and $loc.lon) {
     try {
-      const device_id = await autoRegisterDevice(client, device_sn, site_id, hostname, {
-        os, model, manufacturer
-      });
+        $headers = @{ Authorization = "Bearer $ApiToken"; "Accept" = "application/json" }
+        $sites = Invoke-RestMethod -Uri "$ApiBase/api/sites" -Headers $headers -TimeoutSec 30
+        $minDist = [double]::MaxValue; $foundId = 0
+        foreach ($site in $sites) {
+            if ($null -eq $site.lat -or $null -eq $site.lng -or $site.id -eq 0) { continue }
+            $dist = Get-Distance -lat1 $loc.lat -lon1 $loc.lon -lat2 $site.lat -lon2 $site.lng
+            if ($dist -lt $minDist) { $minDist = $dist; $foundId = $site.id }
+        }
+        if ($foundId -ne 0) {
+            $siteId = $foundId
+            @{ device_sn = $deviceSN; site_id = $siteId } | ConvertTo-Json | Set-Content $DeviceFile
+            Write-Log "INFO" "Discovered Site ID: $siteId"
+        }
+    } catch { Write-Log "ERROR" "Discovery request failed." }
+}
 
-      await client.query(
-        `UPDATE devices SET last_seen = $1 WHERE id = $2`,
-        [timestamp_utc || new Date().toISOString(), device_id]
-      );
-      broadcast('device_online', { device_id, site_id });
-    } finally {
-      client.release();
-    }
+# 4. Prepare & Send Heartbeat
+$body = @{
+    device_sn      = $deviceSN
+    site_id        = [int]$siteId
+    timestamp_utc  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    hostname       = $env:COMPUTERNAME
+    os             = $os
+    model          = (Get-CimInstance Win32_ComputerSystem).Model
+    manufacturer   = (Get-CimInstance Win32_ComputerSystem).Manufacturer
+    battery_pct    = if ($null -eq $battery) { 100 } else { $battery }
+    disk_usage_pct = $storagePct
+}
 
-    res.status(201).json({ ok: true });
-  } catch (err) { next(err); }
-});
-
-// ── POST /ingest/signal ───────────────────────────────────────────────────────
-router.post('/signal', signalLimiter, async (req, res, next) => {
-  try {
-    const {
-      device_sn, site_id: hintedSiteId, timestamp_utc,
-      pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
-      download_mbps, upload_mbps,
-      lat, lon,
-    } = req.body;
-    if (!require400(res, req.body, ['device_sn', 'site_id'])) return;
-
-    const client = await pool.connect();
-    try {
-      const device_id = await autoRegisterDevice(client, device_sn, hintedSiteId, null);
-
-      // GPS Site Discovery: Associates unassigned laptops with the nearest school.
-      const site_id = await resolveAndMaybeNotify(
-        client, device_id, lat ?? null, lon ?? null, hintedSiteId
-      );
-
-      const window = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const reportersRes = await client.query(
-        `SELECT COUNT(DISTINCT device_id) AS cnt FROM signal_readings
-         WHERE site_id = $1 AND recorded_at > $2`,
-        [site_id, window]
-      );
-      const reporterCount = parseInt(reportersRes.rows[0].cnt) + 1;
-      const confidence    = reporterCount === 1 ? 'low' : 'high';
-
-      await client.query(
-        `INSERT INTO signal_readings
-           (site_id, device_id, recorded_at,
-            pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
-            download_mbps, upload_mbps,
-            reporter_count, confidence)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-        [site_id, device_id, timestamp_utc || new Date().toISOString(),
-         pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
-         download_mbps ?? null, upload_mbps ?? null,
-         reporterCount, confidence]
-      );
-
-      const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-      const recentRes = await client.query(
-        `SELECT pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
-                download_mbps, upload_mbps
-         FROM signal_readings
-         WHERE site_id = $1 AND recorded_at > $2`,
-        [site_id, twoMinAgo]
-      );
-      const rows = recentRes.rows;
-      const aggregated = {
-        snr:             median(rows.map(r => parseFloat(r.snr)).filter(v => !Number.isNaN(v))),
-        pop_latency_ms:  median(rows.map(r => parseFloat(r.pop_latency_ms)).filter(v => !Number.isNaN(v))),
-        obstruction_pct: median(rows.map(r => parseFloat(r.obstruction_pct)).filter(v => !Number.isNaN(v))),
-        ping_drop_pct:   median(rows.map(r => parseFloat(r.ping_drop_pct)).filter(v => !Number.isNaN(v))),
-        download_mbps:   median(rows.map(r => parseFloat(r.download_mbps)).filter(v => !Number.isNaN(v))),
-        upload_mbps:     median(rows.map(r => parseFloat(r.upload_mbps)).filter(v => !Number.isNaN(v))),
-        confidence,
-        updatedAt:       new Date().toISOString(),
-      };
-
-      currentSignal.set(String(site_id), aggregated);
-      broadcast('signal_update', { site_id, signal: aggregated });
-    } finally {
-      client.release();
-    }
-
-    res.status(201).json({ ok: true });
-  } catch (err) { next(err); }
-});
-
-// ── POST /ingest/latency ──────────────────────────────────────────────────────
-router.post('/latency', latencyLimiter, async (req, res, next) => {
-  try {
-    const { device_sn, site_id, timestamp_utc, p50_ms, p95_ms } = req.body;
-    if (!require400(res, req.body, ['device_sn', 'site_id', 'p50_ms', 'p95_ms'])) return;
-
-    const client = await pool.connect();
-    try {
-      const device_id = await autoRegisterDevice(client, device_sn, site_id, null);
-
-      const window15 = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-      const medRes = await client.query(
-        `SELECT p50_ms FROM latency_readings
-         WHERE site_id = $1 AND recorded_at > $2`,
-        [site_id, window15]
-      );
-      const siteMedian = median(medRes.rows.map(r => parseFloat(r.p50_ms)));
-      const isOutlier  = siteMedian !== null && parseFloat(p50_ms) > 2 * siteMedian;
-
-      const spreadRes = await client.query(
-        `SELECT MAX(p50_ms) - MIN(p50_ms) AS spread FROM latency_readings
-         WHERE site_id = $1 AND recorded_at > $2`,
-        [site_id, window15]
-      );
-      const spread_ms = spreadRes.rows[0].spread ? parseFloat(spreadRes.rows[0].spread) : 0;
-
-      await client.query(
-        `INSERT INTO latency_readings (device_id, site_id, recorded_at, p50_ms, p95_ms, spread_ms, is_outlier)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [device_id, site_id, timestamp_utc || new Date().toISOString(),
-         p50_ms, p95_ms, spread_ms, isOutlier]
-      );
-
-      const cached = currentSignal.get(String(site_id)) || {};
-      currentSignal.set(String(site_id), { ...cached, spread_ms });
-
-    } finally {
-      client.release();
-    }
-
-    res.status(201).json({ ok: true });
-  } catch (err) { next(err); }
-});
-
-// ── POST /ingest/health ───────────────────────────────────────────────────────
-router.post('/health', healthLimiter, async (req, res, next) => {
-  try {
-    const required = ['device_sn', 'site_id'];
-    if (!require400(res, req.body, required)) return;
-
-    const { device_sn, site_id, timestamp_utc,
-            battery_pct, battery_health_pct, disk_free_gb,
-            disk_total_gb, disk_usage_pct, ram_used_mb, ram_total_mb } = req.body;
-
-    const client = await pool.connect();
-    try {
-      const device_id = await autoRegisterDevice(client, device_sn, site_id, null);
-
-      await client.query(
-        `INSERT INTO device_health
-           (device_id, recorded_at, battery_pct, battery_health_pct,
-            disk_free_gb, disk_total_gb, disk_usage_pct, ram_used_mb, ram_total_mb)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [device_id, timestamp_utc || new Date().toISOString(),
-         battery_pct, battery_health_pct, disk_free_gb,
-         disk_total_gb, disk_usage_pct || null, ram_used_mb, ram_total_mb]
-      );
-    } finally {
-      client.release();
-    }
-
-    res.status(201).json({ ok: true });
-  } catch (err) { next(err); }
-});
-
-// ── POST /ingest/usage ────────────────────────────────────────────────────────
-router.post('/usage', usageLimiter, async (req, res, next) => {
-  try {
-    const { device_sn, site_id, date, bytes_down_delta, bytes_up_delta } = req.body;
-    if (!require400(res, req.body, ['device_sn', 'site_id', 'date'])) return;
-
-    const client = await pool.connect();
-    try {
-      const device_id = await autoRegisterDevice(client, device_sn, site_id, null);
-
-      await client.query(
-        `INSERT INTO data_usage (device_id, site_id, date, bytes_down, bytes_up)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (device_id, date)
-         DO UPDATE SET
-           bytes_down = data_usage.bytes_down + EXCLUDED.bytes_down,
-           bytes_up   = data_usage.bytes_up   + EXCLUDED.bytes_up`,
-        [device_id, site_id, date,
-         bytes_down_delta || 0, bytes_up_delta || 0]
-      );
-    } finally {
-      client.release();
-    }
-
-    res.status(201).json({ ok: true });
-  } catch (err) { next(err); }
-});
-
-module.exports = router;
+try {
+    $headers = @{ Authorization = "Bearer $ApiToken"; "Content-Type" = "application/json" }
+    Invoke-RestMethod -Uri "$ApiBase/ingest/heartbeat" -Method POST -Headers $headers -Body ($body | ConvertTo-Json -Compress) -TimeoutSec 30 | Out-Null
+    Write-Log "INFO" "Sync Success (Site $siteId)"
+} catch {
+    Write-Log "WARN" "Sync failed. Payload queued."
+    $body | ConvertTo-Json -Compress | Set-Content "$QueueDir\$((Get-Date).Ticks).json"
+}
+Write-Log "INFO" "Cycle Complete"
