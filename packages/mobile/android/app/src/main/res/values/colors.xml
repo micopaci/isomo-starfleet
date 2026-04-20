@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Isomo Starfleet — warm off-white / terracotta palette -->
+    <color name="brand_primary">#c8553d</color>       <!-- terracotta accent (light mode) -->
+    <color name="brand_primary_dark">#e8856f</color>  <!-- terracotta softened (dark mode) -->
+    <color name="splash_bg_light">#f6f3ec</color>     <!-- warm off-white -->
+    <color name="splash_bg_dark">#0b1220</color>      <!-- deep navy ink -->
+    <color name="status_ok">#3e7d4a</color>
+    <color name="status_warn">#b7791f</color>
+    <color name="status_bad">#b13c3c</color>
+</resources>

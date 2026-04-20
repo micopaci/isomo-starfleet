@@ -2,17 +2,43 @@
   "name": "starlink-fleet-monitor",
   "version": "1.0.0",
   "private": true,
-  "workspaces": [
-    "packages/backend",
-    "packages/desktop",
-    "packages/shared",
-    "packages/web"
-  ],
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ],
+    "nohoist": [
+      "**/react",
+      "**/react/**",
+      "**/react-native",
+      "**/react-native/**",
+      "**/@react-native-community/**",
+      "**/@react-native/**",
+      "**/react-native-svg",
+      "**/react-native-svg/**",
+      "**/@shopify/react-native-skia",
+      "**/@shopify/react-native-skia/**",
+      "**/react-native-reanimated",
+      "**/react-native-reanimated/**",
+      "**/react-native-vector-icons",
+      "**/react-native-vector-icons/**",
+      "**/react-native-gesture-handler",
+      "**/react-native-screens",
+      "**/react-native-safe-area-context"
+    ]
+  },
+  "resolutions": {
+    "react": "18.2.0",
+    "react-native": "0.74.2",
+    "react-native-svg": "15.2.0"
+  },
   "scripts": {
-    "dev":     "concurrently -k -n BACKEND,DESKTOP -c cyan,magenta \"npm run start --workspace=packages/backend\" \"npm run dev --workspace=packages/desktop\"",
+    "dev": "concurrently -k -n BACKEND,DESKTOP -c cyan,magenta \"npm run start --workspace=packages/backend\" \"npm run dev --workspace=packages/desktop\"",
     "backend": "npm run start --workspace=packages/backend",
     "backend:dev": "npm run dev --workspace=packages/backend",
     "desktop": "npm run dev --workspace=packages/desktop",
     "migrate": "npm run migrate --workspace=packages/backend"
+  },
+  "devDependencies": {
+    "babel-plugin-module-resolver": "^5.0.3"
   }
 }

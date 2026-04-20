@@ -19,8 +19,14 @@
 param(
     [Parameter(Mandatory=$true)]  [string]$ApiToken,
     [Parameter(Mandatory=$true)]  [string]$SiteId,
-    [Parameter(Mandatory=$false)] [string]$ApiBase = "https://starfleet.yourdomain.com"
+    [Parameter(Mandatory=$false)] [string]$ApiBase = "https://api.starfleet.icircles.rw"
 )
+
+# Validate SiteId is a positive integer
+if ($SiteId -notmatch '^\d+$' -or [int]$SiteId -le 0) {
+    Write-Host "REMEDIATION: ERROR — SiteId '$SiteId' is not a valid positive integer. Aborting."
+    exit 1
+}
 
 $DataDir    = "C:\ProgramData\Starfleet"
 $AgentDest  = "$DataDir\StarfleetAgent.ps1"
@@ -59,10 +65,15 @@ $action  = New-ScheduledTaskAction `
     -Execute "powershell.exe" `
     -Argument "-ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File `"$AgentDest`""
 
-# Trigger: start at boot + repeat every 5 minutes indefinitely
-$trigger = New-ScheduledTaskTrigger -AtStartup
-$trigger.RepetitionInterval = (New-TimeSpan -Minutes 5)
-$trigger.RepetitionDuration = [System.TimeSpan]::MaxValue
+# Trigger: run once at a past time and repeat every 5 minutes forever.
+# Using -Once with RepetitionInterval is more reliable than -AtStartup + RepetitionInterval
+# across all Windows 10/11 builds. A separate AtStartup trigger ensures the task
+# also fires on reboot so no heartbeats are missed after a restart.
+$triggerRepeat  = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(-1) `
+                      -RepetitionInterval (New-TimeSpan -Minutes 5) `
+                      -RepetitionDuration ([System.TimeSpan]::MaxValue)
+$triggerStartup = New-ScheduledTaskTrigger -AtStartup
+$trigger        = @($triggerRepeat, $triggerStartup)
 
 # Run as SYSTEM, works on AC and battery
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest

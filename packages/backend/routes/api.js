@@ -18,9 +18,17 @@ const { checkCoverageGap } = require('../services/orbitalSync');
 const router = express.Router();
 
 // ── GET /api/sites ────────────────────────────────────────────────────────────
+// Enriched with throughput (download/upload Mbps), today's data usage, and
+// uptime % so the Ranking screen can sort on any metric without more round-trips.
 router.get('/sites', async (req, res, next) => {
   try {
     const sitesRes = await pool.query(`SELECT id, name, starlink_sn, kit_id, location, lat, lng FROM sites ORDER BY id`);
+
+    // Hydrate uptime + data-today maps in two flat queries (views from migration 015)
+    const uptimeRes = await pool.query(`SELECT site_id, uptime_pct FROM site_uptime_today`);
+    const dataRes   = await pool.query(`SELECT site_id, data_mb_today FROM site_data_today`);
+    const uptimeBy  = Object.fromEntries(uptimeRes.rows.map(r => [r.site_id, Number(r.uptime_pct)]));
+    const dataBy    = Object.fromEntries(dataRes.rows.map(r => [r.site_id, Number(r.data_mb_today)]));
 
     const sites = await Promise.all(sitesRes.rows.map(async (site) => {
       const signal = currentSignal.get(String(site.id)) || null;
@@ -45,6 +53,11 @@ router.get('/sites', async (req, res, next) => {
         total_laptops:  parseInt(laptopsRes.rows[0].total),
         score:          scoreRes.rows[0]?.score  ?? null,
         cause:          scoreRes.rows[0]?.cause  ?? null,
+        // Ranking metrics
+        download_mbps:  signal?.download_mbps ?? null,
+        upload_mbps:    signal?.upload_mbps   ?? null,
+        data_mb_today:  dataBy[site.id]   ?? 0,
+        uptime_pct:     uptimeBy[site.id] ?? null,
       };
     }));
 
@@ -194,6 +207,53 @@ router.post('/trigger', requireAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+
+// ── GET /api/site-changes ─────────────────────────────────────────────────────
+// List recent site-change events for the admin UI.
+// Query:  ?unack=1   → only unacknowledged events
+//         ?limit=N   → default 50, max 200
+router.get('/site-changes', async (req, res, next) => {
+  try {
+    const unack = req.query.unack === '1';
+    const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+    const where = unack ? 'WHERE e.acknowledged_at IS NULL' : '';
+    const result = await pool.query(
+      `SELECT e.id, e.device_id, e.from_site_id, e.to_site_id,
+              e.reported_lat, e.reported_lon, e.distance_km,
+              e.detected_at, e.notified_at, e.acknowledged_at, e.acknowledged_by,
+              d.hostname, d.windows_sn,
+              fs.name AS from_site_name,
+              ts.name AS to_site_name
+       FROM site_change_events e
+       JOIN devices d      ON d.id = e.device_id
+       LEFT JOIN sites fs  ON fs.id = e.from_site_id
+       LEFT JOIN sites ts  ON ts.id = e.to_site_id
+       ${where}
+       ORDER BY e.detected_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+    res.json(result.rows);
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/site-changes/:id/ack (admin only) ───────────────────────────────
+router.post('/site-changes/:id/ack', requireAdmin, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `UPDATE site_change_events
+       SET acknowledged_at = NOW(), acknowledged_by = $1
+       WHERE id = $2 AND acknowledged_at IS NULL
+       RETURNING id`,
+      [req.user.id, id]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Event not found or already acknowledged' });
+    }
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
 
 // ── GET /api/intel/space-weather ──────────────────────────────────────────────
 // Returns the last 24 NOAA K-index readings (≈ 3 days at 3-hour cadence).

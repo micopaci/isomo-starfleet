@@ -15,7 +15,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION  (injected by Intune remediation script)
 # ─────────────────────────────────────────────────────────────────────────────
-$ApiBase     = "https://starfleet.yourdomain.com"
+$ApiBase     = "https://api.starfleet.icircles.rw"
 $ApiToken    = "JWT_PLACEHOLDER"
 $SiteId      = "SITE_ID_PLACEHOLDER"
 $IntervalSec = 300
@@ -132,7 +132,8 @@ function Replay-Queue {
 # ─────────────────────────────────────────────────────────────────────────────
 function Get-DeviceSN {
     try {
-        return (Get-WmiObject Win32_BIOS).SerialNumber.Trim()
+        # Get-CimInstance preferred over deprecated Get-WmiObject (PS 3+)
+        return (Get-CimInstance -ClassName Win32_BIOS).SerialNumber.Trim()
     }
     catch {
         Write-Log "ERROR" "Could not read BIOS serial: $($_.Exception.Message)"
@@ -160,7 +161,7 @@ function Register-Device {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STARLINK SIGNAL — gRPC fallback to HTTP status page
+# STARLINK SIGNAL + LOCATION + THROUGHPUT — gRPC fallback to HTTP status page
 # ─────────────────────────────────────────────────────────────────────────────
 function Get-StarlinkSignal {
     $dishIp = "192.168.100.1"
@@ -172,28 +173,50 @@ function Get-StarlinkSignal {
 
         $dish = $status.dishGetStatus
         if ($dish) {
-            return @{
+            $result = @{
                 pop_latency_ms  = [math]::Round($dish.popPingLatencyMs, 1)
                 snr             = [math]::Round($dish.snr, 2)
                 obstruction_pct = [math]::Round($dish.obstructionStats.fractionObstructed * 100, 2)
                 ping_drop_pct   = [math]::Round($dish.popPingDropRate * 100, 2)
+                download_mbps   = if ($dish.downlinkThroughputBps) { [math]::Round($dish.downlinkThroughputBps / 1e6, 2) } else { $null }
+                upload_mbps     = if ($dish.uplinkThroughputBps)   { [math]::Round($dish.uplinkThroughputBps   / 1e6, 2) } else { $null }
+                # HTTP endpoint does not expose GPS — location comes from gRPC below
+                lat             = $null
+                lon             = $null
             }
+            return $result
         }
     }
     catch {
         Write-Log "WARN" "Starlink HTTP status unreachable: $($_.Exception.Message)"
     }
 
-    # Try starlink_grpc Python tool if installed
+    # Try starlink_grpc Python tool — this one DOES expose lat/lon via get_location
     try {
         $grpcOut = & python -m starlink_grpc -t dish_status 2>$null | ConvertFrom-Json
         if ($grpcOut) {
-            return @{
+            $result = @{
                 pop_latency_ms  = [math]::Round($grpcOut.pop_ping_latency_ms, 1)
                 snr             = [math]::Round($grpcOut.snr, 2)
                 obstruction_pct = [math]::Round($grpcOut.obstruction_stats.fraction_obstructed * 100, 2)
                 ping_drop_pct   = [math]::Round($grpcOut.pop_ping_drop_rate * 100, 2)
+                download_mbps   = if ($grpcOut.downlink_throughput_bps) { [math]::Round($grpcOut.downlink_throughput_bps / 1e6, 2) } else { $null }
+                upload_mbps     = if ($grpcOut.uplink_throughput_bps)   { [math]::Round($grpcOut.uplink_throughput_bps   / 1e6, 2) } else { $null }
+                lat             = $null
+                lon             = $null
             }
+
+            # Separate gRPC call for GPS (requires "access locations" toggle in Starlink app)
+            try {
+                $locOut = & python -m starlink_grpc -t location 2>$null | ConvertFrom-Json
+                if ($locOut -and $locOut.latitude -and $locOut.longitude) {
+                    $result.lat = [math]::Round($locOut.latitude,  6)
+                    $result.lon = [math]::Round($locOut.longitude, 6)
+                }
+            }
+            catch { Write-Log "WARN" "Starlink location gRPC failed: $($_.Exception.Message)" }
+
+            return $result
         }
     }
     catch { }
@@ -238,7 +261,7 @@ function Get-DeviceHealth {
 
     # Battery
     try {
-        $bat = Get-WmiObject Win32_Battery
+        $bat = Get-CimInstance -ClassName Win32_Battery
         if ($bat) {
             $health.battery_pct        = $bat.EstimatedChargeRemaining
             $health.battery_health_pct = if ($bat.DesignCapacity -gt 0) {
@@ -260,7 +283,7 @@ function Get-DeviceHealth {
 
     # RAM
     try {
-        $os = Get-WmiObject Win32_OperatingSystem
+        $os = Get-CimInstance -ClassName Win32_OperatingSystem
         $health.ram_total_mb = [math]::Round($os.TotalVisibleMemorySize / 1KB, 0)
         $health.ram_used_mb  = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1KB, 0)
     }
@@ -356,16 +379,21 @@ if (Invoke-ApiPost -Endpoint "/ingest/heartbeat" -Body $hbBody) {
 $signal = Get-StarlinkSignal
 if ($signal) {
     $sigBody = @{
-        device_sn      = $deviceSN
-        site_id        = [int]$SiteId
-        timestamp_utc  = $timestamp
-        pop_latency_ms = $signal.pop_latency_ms
-        snr            = $signal.snr
+        device_sn       = $deviceSN
+        site_id         = [int]$SiteId   # retained as a hint; backend verifies via lat/lon
+        timestamp_utc   = $timestamp
+        pop_latency_ms  = $signal.pop_latency_ms
+        snr             = $signal.snr
         obstruction_pct = $signal.obstruction_pct
-        ping_drop_pct  = $signal.ping_drop_pct
+        ping_drop_pct   = $signal.ping_drop_pct
+        download_mbps   = $signal.download_mbps
+        upload_mbps     = $signal.upload_mbps
+        lat             = $signal.lat
+        lon             = $signal.lon
     }
     if (Invoke-ApiPost -Endpoint "/ingest/signal" -Body $sigBody) {
-        Write-Log "INFO" "Signal posted: SNR=$($signal.snr), PoP=$($signal.pop_latency_ms)ms"
+        $locStr = if ($signal.lat) { "  GPS=$($signal.lat),$($signal.lon)" } else { "" }
+        Write-Log "INFO" "Signal posted: SNR=$($signal.snr), PoP=$($signal.pop_latency_ms)ms$locStr"
     }
 } else {
     Write-Log "WARN" "Starlink dish unreachable — skipping signal payload"

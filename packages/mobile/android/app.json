@@ -1,0 +1,7 @@
+{
+  "name": "StarfleetMonitor",
+  "displayName": "Starfleet Monitor",
+  "android": {
+    "package": "com.isomo.starfleet"
+  }
+}
