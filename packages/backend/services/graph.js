@@ -97,15 +97,43 @@ async function requestWithRetry(url, options, body, maxRetries = 3) {
   }
 }
 
+// Map internal remediation type → Intune Device Health Script policy GUID.
+// These GUIDs are provisioned once in Intune Admin Center → Endpoint security
+// → Device remediations → Scripts. Keep this map in sync with the portal.
+// Override any entry via env (e.g. REMEDIATION_POLICY_RESTART_STARLINK) for
+// tenants that recreate scripts and get new GUIDs.
+const REMEDIATION_POLICY_IDS = {
+  'restart-starlink': process.env.REMEDIATION_POLICY_RESTART_STARLINK || null,
+  'clear-cache':      process.env.REMEDIATION_POLICY_CLEAR_CACHE      || null,
+  'reinstall-agent':  process.env.REMEDIATION_POLICY_REINSTALL_AGENT  || null,
+};
+
 async function triggerRemediationScript(device_id, type, trigger_id) {
-  // Get Intune device ID from devices table (stored as windows_sn or a dedicated column)
-  const devRes = await pool.query(`SELECT windows_sn FROM devices WHERE id = $1`, [device_id]);
+  // Read the Azure-side UUID (intune_device_id), NOT the BIOS serial (windows_sn).
+  // Graph's managedDevices/{id} path parameter is the Azure device GUID.
+  const devRes = await pool.query(
+    `SELECT intune_device_id FROM devices WHERE id = $1`,
+    [device_id]
+  );
   if (!devRes.rows.length) throw new Error(`Device ${device_id} not found`);
-  const intuneDeviceId = devRes.rows[0].windows_sn;
+  const intuneDeviceId = devRes.rows[0].intune_device_id;
+  if (!intuneDeviceId) {
+    throw new Error(`Device ${device_id} has no intune_device_id — cannot trigger remediation`);
+  }
+
+  const scriptPolicyId = REMEDIATION_POLICY_IDS[type];
+  if (!scriptPolicyId) {
+    throw new Error(
+      `Unknown remediation type "${type}". ` +
+      `Set REMEDIATION_POLICY_${type.toUpperCase().replace(/-/g, '_')} env var to the policy GUID.`
+    );
+  }
 
   const token = await getAccessToken();
+  // On-demand proactive remediation lives on the /beta endpoint and requires
+  // the DeviceManagementManagedDevices.PrivilegedOperations.All app permission.
   const result = await requestWithRetry(
-    `https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/${intuneDeviceId}/runRemediationScript`,
+    `https://graph.microsoft.com/beta/deviceManagement/managedDevices/${intuneDeviceId}/initiateOnDemandProactiveRemediation`,
     {
       method:  'POST',
       headers: {
@@ -113,7 +141,7 @@ async function triggerRemediationScript(device_id, type, trigger_id) {
         'Content-Type': 'application/json',
       },
     },
-    { scriptType: type }
+    { scriptPolicyId }
   );
 
   // Update trigger status
@@ -139,11 +167,14 @@ function startTriggerPoller() {
       if (!token) return;
 
       for (const row of pending.rows) {
-        const devRes = await pool.query(`SELECT windows_sn FROM devices WHERE id = $1`, [row.device_id]);
-        if (!devRes.rows.length) continue;
+        const devRes = await pool.query(
+          `SELECT intune_device_id FROM devices WHERE id = $1`,
+          [row.device_id]
+        );
+        if (!devRes.rows.length || !devRes.rows[0].intune_device_id) continue;
 
         const result = await requestWithRetry(
-          `https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/${devRes.rows[0].windows_sn}`,
+          `https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/${devRes.rows[0].intune_device_id}`,
           { headers: { Authorization: `Bearer ${token}` } }
         ).catch(() => null);
 

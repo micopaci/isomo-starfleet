@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Isomo Starfleet — Android Preview</title>
+<style>
+  :root {
+    /* Dark theme (default) — forest */
+    --bg:        #0a1a10;
+    --bg2:      #0f2518;
+    --bg3:      #14321f;
+    --border:   #1c4228;
+    --text:     #e8f0ea;
+    --text2:    #8fb89c;
+    --accent:   #10b981;
+    --online:   #22c55e;
+    --degraded: #f59e0b;
+    --down:     #ef4444;
+    --page-bg:  #05100a;
+  }
+  [data-theme="light"] {
+    --bg:        #f0f5f1;
+    --bg2:      #ffffff;
+    --bg3:      #e4ede6;
+    --border:   #b8d0bc;
+    --text:     #0a1e10;
+    --text2:    #5a7a64;
+    --accent:   #047857;
+    --online:   #22c55e;
+    --degraded: #b45309;
+    --down:     #c62828;
+    --page-bg:  #dce8df;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--page-bg);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--text);
+    padding: 30px 20px;
+    transition: background 0.2s ease;
+  }
+
+  .banner {
+    text-align: center;
+    margin-bottom: 28px;
+    color: var(--text);
+  }
+  .banner h1 { font-size: 20px; letter-spacing: 1px; margin-bottom: 4px; }
+  .banner .sub { font-size: 12px; color: var(--text2); letter-spacing: 2px; }
+
+  .toolbar {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .tb-btn {
+    background: var(--bg2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.15s ease;
+  }
+  .tb-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .tb-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  .phone-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 320px));
+    gap: 32px;
+    justify-content: center;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .phone {
+    width: 300px;
+    height: 620px;
+    background: #111;
+    border-radius: 36px;
+    padding: 12px;
+    position: relative;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.35), 0 0 0 2px #222;
+  }
+  .phone::before {
+    content: '';
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90px;
+    height: 18px;
+    background: #000;
+    border-radius: 10px;
+    z-index: 10;
+  }
+
+  .screen {
+    background: var(--bg);
+    height: 100%;
+    width: 100%;
+    border-radius: 26px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .status-bar {
+    height: 36px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 0 20px 4px;
+    font-size: 10px;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .status-icons { display: flex; gap: 3px; align-items: center; }
+  .status-icons span { font-size: 9px; }
+
+  .app-bar {
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .app-bar .title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.5px;
+  }
+  .app-bar .actions {
+    display: flex;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--text2);
+  }
+
+  .body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+  }
+  .body::-webkit-scrollbar { display: none; }
+
+  /* Bottom nav */
+  .nav {
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    display: flex;
+    padding: 6px 0 8px;
+  }
+  .nav-item {
+    flex: 1;
+    text-align: center;
+    padding: 4px;
+    color: var(--text2);
+    font-size: 9px;
+    letter-spacing: 0.5px;
+  }
+  .nav-item.active { color: var(--accent); font-weight: 600; }
+  .nav-icon {
+    font-size: 16px;
+    margin-bottom: 2px;
+    display: block;
+  }
+
+  /* ─── Site card ─── */
+  .site-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+  .site-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .site-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .site-cause {
+    font-size: 11px;
+    color: var(--text2);
+  }
+  .pill {
+    padding: 3px 10px;
+    border-radius: 99px;
+    color: #fff;
+    font-weight: 600;
+    font-size: 11px;
+  }
+  .pill-lg {
+    padding: 10px 24px;
+    border-radius: 12px;
+    font-size: 32px;
+    font-weight: 700;
+  }
+  .pill-green  { background: var(--online); }
+  .pill-amber  { background: var(--degraded); }
+  .pill-red    { background: var(--down); }
+  .pill-gray   { background: var(--text2); }
+
+  .site-foot {
+    display: flex;
+    align-items: center;
+    margin-top: 8px;
+    color: var(--text2);
+    font-size: 11px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 99px; margin-right: 6px; }
+  .dot-green  { background: var(--online); }
+  .dot-amber  { background: var(--degraded); }
+  .dot-red    { background: var(--down); }
+  .dot-gray   { background: var(--text2); }
+
+  /* Site detail */
+  .hero {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  .hero .cause {
+    color: var(--text2);
+    font-size: 12px;
+    margin-top: 8px;
+  }
+  .badge {
+    display: inline-block;
+    border: 1px solid var(--degraded);
+    color: var(--degraded);
+    padding: 2px 10px;
+    border-radius: 99px;
+    font-size: 10px;
+    margin-top: 8px;
+  }
+  .tiles {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .tile {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+  }
+  .tile-label { color: var(--text2); font-size: 10px; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.6px; }
+  .tile-value { color: var(--text); font-size: 16px; font-weight: 700; }
+  .tile-unit  { color: var(--text2); font-size: 12px; font-weight: 500; }
+
+  .panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .panel-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .refresh-btn {
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    background: transparent;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  /* Sparkline */
+  .spark {
+    height: 70px;
+    width: 100%;
+  }
+
+  .laptop-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+  }
+  .laptop-row:last-child { border-bottom: none; }
+  .laptop-name { flex: 1; color: var(--text); margin-left: 2px; }
+  .laptop-time { color: var(--text2); font-size: 10px; }
+
+  /* Rank row */
+  .rank-row {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+  }
+  .rank-num { width: 20px; color: var(--text2); font-size: 11px; }
+  .rank-name { flex: 1; color: var(--text); }
+  .rank-lat  { color: var(--text); font-weight: 600; font-size: 12px; }
+
+  .ranking-hdr {
+    text-align: center;
+    color: var(--text2);
+    font-size: 10px;
+    padding: 8px 0;
+    letter-spacing: 1px;
+  }
+
+  /* Settings */
+  .setting-group {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .setting-group-title {
+    font-size: 10px;
+    color: var(--text2);
+    padding: 8px 12px 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .setting-row {
+    padding: 10px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-label { color: var(--text); font-size: 12px; }
+  .setting-val { color: var(--text2); font-size: 11px; }
+  .toggle {
+    width: 32px;
+    height: 18px;
+    border-radius: 99px;
+    background: var(--bg3);
+    position: relative;
+    transition: 0.2s;
+  }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 99px;
+    background: #fff;
+    transition: 0.2s;
+  }
+  .toggle.on { background: var(--accent); }
+  .toggle.on::after { left: 16px; }
+
+  .user-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  .avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 99px;
+    background: var(--accent);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 8px;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .user-email { font-size: 12px; color: var(--text); }
+  .user-role { font-size: 10px; color: var(--text2); margin-top: 2px; letter-spacing: 1px; }
+
+  .logout-btn {
+    background: transparent;
+    border: 1px solid var(--down);
+    color: var(--down);
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 12px;
+  }
+
+  /* Offline banner */
+  .offline-banner {
+    background: var(--degraded);
+    color: #fff;
+    padding: 4px 12px;
+    font-size: 10px;
+    text-align: center;
+    font-weight: 500;
+  }
+
+  .screen-label {
+    text-align: center;
+    color: var(--text2);
+    font-size: 11px;
+    letter-spacing: 2px;
+    margin-top: 10px;
+    color: #fff;
+    opacity: 0.6;
+  }
+  [data-theme="light"] .screen-label { color: #0f172a; opacity: 0.55; }
+
+  /* Login */
+  .login-wrap {
+    flex: 1;
+    padding: 40px 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .login-logo {
+    width: 62px;
+    height: 62px;
+    margin: 0 auto 16px;
+    border-radius: 14px;
+    background: var(--accent);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 22px;
+  }
+  .login-title {
+    text-align: center;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .login-sub {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text2);
+    margin-bottom: 28px;
+    letter-spacing: 1px;
+  }
+  .input {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 11px 12px;
+    color: var(--text);
+    font-size: 13px;
+    margin-bottom: 10px;
+    width: 100%;
+  }
+  .login-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    width: 100%;
+    cursor: pointer;
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="banner">
+  <h1>ISOMO STARFLEET — ANDROID PREVIEW</h1>
+  <div class="sub">companion app · 45 sites · rwanda</div>
+</div>
+
+<div class="toolbar">
+  <button class="tb-btn active" id="btn-dark"  onclick="setTheme('dark')">◑  DARK</button>
+  <button class="tb-btn"        id="btn-light" onclick="setTheme('light')">☀  LIGHT</button>
+</div>
+
+<div class="phone-grid">
+
+  <!-- ─────────────── Screen 1 — SITES LIST ─────────────── -->
+  <div>
+    <div class="phone">
+      <div class="screen">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="status-icons"><span>●●●</span><span>5G</span><span>🔋</span></div>
+        </div>
+        <div class="app-bar">
+          <div class="title">Sites</div>
+          <div class="actions">⟳  ⚙</div>
+        </div>
+        <div class="offline-banner">Last updated 4m ago</div>
+        <div class="body">
+
+          <div class="site-card">
+            <div class="site-row">
+              <div>
+                <div class="site-name">GS Juru</div>
+                <div class="site-cause">SNR nominal · link healthy</div>
+              </div>
+              <div class="pill pill-green">92</div>
+            </div>
+            <div class="site-foot">
+              <div class="dot dot-green"></div>5/5 online · 2m ago
+            </div>
+          </div>
+
+          <div class="site-card">
+            <div class="site-row">
+              <div>
+                <div class="site-name">ES Rwamagana</div>
+                <div class="site-cause">Good signal, stable latency</div>
+              </div>
+              <div class="pill pill-green">88</div>
+            </div>
+            <div class="site-foot">
+              <div class="dot dot-green"></div>5/5 online · just now
+            </div>
+          </div>
+
+          <div class="site-card">
+            <div class="site-row">
+              <div>
+                <div class="site-name">GS Nyarugenge</div>
+                <div class="site-cause">Elevated obstruction — check dish</div>
+              </div>
+              <div class="pill pill-amber">64</div>
+            </div>
+            <div class="site-foot">
+              <div class="dot dot-amber"></div>4/5 online · 3m ago
+            </div>
+          </div>
+
+          <div class="site-card">
+            <div class="site-row">
+              <div>
+                <div class="site-name">ASYV Rubona</div>
+                <div class="site-cause">Storm activity · degraded link</div>
+              </div>
+              <div class="pill pill-amber">58</div>
+            </div>
+            <div class="site-foot">
+              <div class="dot dot-amber"></div>3/5 online · 6m ago
+            </div>
+          </div>
+
+          <div class="site-card">
+            <div class="site-row">
+              <div>
+                <div class="site-name">GS Musanze</div>
+                <div class="site-cause">No heartbeat in 24m</div>
+              </div>
+              <div class="pill pill-red">12</div>
+            </div>
+            <div class="site-foot">
+              <div class="dot dot-red"></div>0/5 online · 24m ago
+            </div>
+          </div>
+
+          <div class="site-card">
+            <div class="site-row">
+              <div>
+                <div class="site-name">Bridge2Rwanda HQ</div>
+                <div class="site-cause">Link nominal, all endpoints healthy</div>
+              </div>
+              <div class="pill pill-green">96</div>
+            </div>
+            <div class="site-foot">
+              <div class="dot dot-green"></div>8/8 online · just now
+            </div>
+          </div>
+        </div>
+
+        <div class="nav">
+          <div class="nav-item active"><span class="nav-icon">⌂</span>SITES</div>
+          <div class="nav-item"><span class="nav-icon">↕</span>RANKING</div>
+          <div class="nav-item"><span class="nav-icon">⚙</span>SETTINGS</div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">SITES LIST</div>
+  </div>
+
+  <!-- ─────────────── Screen 2 — SITE DETAIL ─────────────── -->
+  <div>
+    <div class="phone">
+      <div class="screen">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="status-icons"><span>●●●</span><span>5G</span><span>🔋</span></div>
+        </div>
+        <div class="app-bar">
+          <div class="title">← GS Nyarugenge</div>
+          <div class="actions">⟳</div>
+        </div>
+        <div class="body">
+
+          <div class="hero">
+            <div class="pill pill-lg pill-amber">64</div>
+            <div class="cause">Elevated obstruction — check dish</div>
+            <div class="badge">Low confidence</div>
+          </div>
+
+          <div class="tiles">
+            <div class="tile">
+              <div class="tile-label">SNR</div>
+              <div class="tile-value">8.2<span class="tile-unit"> dB</span></div>
+            </div>
+            <div class="tile">
+              <div class="tile-label">Ping Drop</div>
+              <div class="tile-value">3.1<span class="tile-unit">%</span></div>
+            </div>
+            <div class="tile">
+              <div class="tile-label">Obstruction</div>
+              <div class="tile-value">14.6<span class="tile-unit">%</span></div>
+            </div>
+            <div class="tile">
+              <div class="tile-label">PoP Latency</div>
+              <div class="tile-value">78<span class="tile-unit"> ms</span></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">7-day Signal Score</div>
+            <svg class="spark" viewBox="0 0 260 70" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"  stop-color="var(--accent)" stop-opacity="0.35"/>
+                  <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path d="M 0,15 L 40,10 L 80,20 L 120,18 L 160,35 L 200,42 L 240,36 L 260,30 L 260,70 L 0,70 Z"
+                    fill="url(#sparkfill)"/>
+              <path d="M 0,15 L 40,10 L 80,20 L 120,18 L 160,35 L 200,42 L 240,36 L 260,30"
+                    fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+            </svg>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">
+              Laptops — 4/5 online
+              <button class="refresh-btn">Refresh all</button>
+            </div>
+            <div class="laptop-row">
+              <div class="dot dot-green"></div>
+              <div class="laptop-name">LAPTOP-NYAR-01</div>
+              <div class="laptop-time">2m ago</div>
+            </div>
+            <div class="laptop-row">
+              <div class="dot dot-green"></div>
+              <div class="laptop-name">LAPTOP-NYAR-02</div>
+              <div class="laptop-time">3m ago</div>
+            </div>
+            <div class="laptop-row">
+              <div class="dot dot-green"></div>
+              <div class="laptop-name">LAPTOP-NYAR-03</div>
+              <div class="laptop-time">1m ago</div>
+            </div>
+            <div class="laptop-row">
+              <div class="dot dot-green"></div>
+              <div class="laptop-name">LAPTOP-NYAR-04</div>
+              <div class="laptop-time">4m ago</div>
+            </div>
+            <div class="laptop-row">
+              <div class="dot dot-gray"></div>
+              <div class="laptop-name">LAPTOP-NYAR-05</div>
+              <div class="laptop-time">47m ago</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="nav">
+          <div class="nav-item active"><span class="nav-icon">⌂</span>SITES</div>
+          <div class="nav-item"><span class="nav-icon">↕</span>RANKING</div>
+          <div class="nav-item"><span class="nav-icon">⚙</span>SETTINGS</div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">SITE DETAIL</div>
+  </div>
+
+  <!-- ─────────────── Screen 3 — RANKING ─────────────── -->
+  <div>
+    <div class="phone">
+      <div class="screen">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="status-icons"><span>●●●</span><span>5G</span><span>🔋</span></div>
+        </div>
+        <div class="app-bar">
+          <div class="title">Ranking</div>
+          <div class="actions">⟳</div>
+        </div>
+        <div class="ranking-hdr">SORTED BY PoP LATENCY</div>
+        <div class="body">
+
+          <div class="rank-row">
+            <div class="rank-num">#1</div>
+            <div class="dot dot-green"></div>
+            <div class="rank-name">Bridge2Rwanda HQ</div>
+            <div class="rank-lat">31 ms</div>
+          </div>
+          <div class="rank-row">
+            <div class="rank-num">#2</div>
+            <div class="dot dot-green"></div>
+            <div class="rank-name">GS Juru</div>
+            <div class="rank-lat">34 ms</div>
+          </div>
+          <div class="rank-row">
+            <div class="rank-num">#3</div>
+            <div class="dot dot-green"></div>
+            <div class="rank-name">ES Rwamagana</div>
+            <div class="rank-lat">37 ms</div>
+          </div>
+          <div class="rank-row">
+            <div class="rank-num">#4</div>
+            <div class="dot dot-green"></div>
+            <div class="rank-name">GS Huye</div>
+            <div class="rank-lat">42 ms</div>
+          </div>
+          <div class="rank-row">
+            <div class="rank-num">#5</div>
+            <div class="dot dot-green"></div>
+            <div class="rank-name">ES Kimironko</div>
+            <div class="rank-lat">45 ms</div>
+          </div>
+          <div class="rank-row">
+            <div class="rank-num">#6</div>
+            <div class="dot dot-amber"></div>
+            <div class="rank-name">GS Nyarugenge</div>
+            <div class="rank-lat">78 ms</div>
+          </div>
+          <div class="rank-row">
+            <div class="rank-num">#7</div>
+            <div class="dot dot-amber"></div>
+            <div class="rank-name">ASYV Rubona</div>
+            <div class="rank-lat">94 ms</div>
+          </div>
+          <div class="rank-row">
+            <div class="rank-num">#8</div>
+            <div class="dot dot-red"></div>
+            <div class="rank-name">GS Musanze</div>
+            <div class="rank-lat">— ms</div>
+          </div>
+          <div class="rank-row">
+            <div class="rank-num">#9</div>
+            <div class="dot dot-green"></div>
+            <div class="rank-name">GS Gisagara</div>
+            <div class="rank-lat">48 ms</div>
+          </div>
+          <div class="rank-row">
+            <div class="rank-num">#10</div>
+            <div class="dot dot-green"></div>
+            <div class="rank-name">ES Nyanza</div>
+            <div class="rank-lat">51 ms</div>
+          </div>
+        </div>
+
+        <div class="nav">
+          <div class="nav-item"><span class="nav-icon">⌂</span>SITES</div>
+          <div class="nav-item active"><span class="nav-icon">↕</span>RANKING</div>
+          <div class="nav-item"><span class="nav-icon">⚙</span>SETTINGS</div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">LATENCY RANKING</div>
+  </div>
+
+  <!-- ─────────────── Screen 4 — SETTINGS ─────────────── -->
+  <div>
+    <div class="phone">
+      <div class="screen">
+        <div class="status-bar">
+          <span>9:41</span>
+          <div class="status-icons"><span>●●●</span><span>5G</span><span>🔋</span></div>
+        </div>
+        <div class="app-bar">
+          <div class="title">Settings</div>
+          <div class="actions"></div>
+        </div>
+        <div class="body">
+
+          <div class="user-card">
+            <div class="avatar">R</div>
+            <div class="user-email">romethoataske@gmail.com</div>
+            <div class="user-role">ADMIN</div>
+          </div>
+
+          <div class="setting-group">
+            <div class="setting-group-title">Notifications</div>
+            <div class="setting-row">
+              <div class="setting-label">Push alerts</div>
+              <div class="toggle on"></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">Site down alerts</div>
+              <div class="toggle on"></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">Degraded signal</div>
+              <div class="toggle on"></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">Space weather</div>
+              <div class="toggle"></div>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <div class="setting-group-title">Display</div>
+            <div class="setting-row">
+              <div class="setting-label">Theme</div>
+              <div class="setting-val">System default ›</div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">Use Isomo palette</div>
+              <div class="toggle on"></div>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <div class="setting-group-title">Data</div>
+            <div class="setting-row">
+              <div class="setting-label">Cached sites</div>
+              <div class="setting-val">41 · 82 KB</div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">Clear cache</div>
+              <div class="setting-val">›</div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-label">API endpoint</div>
+              <div class="setting-val">api.starfleet...</div>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <div class="setting-group-title">About</div>
+            <div class="setting-row">
+              <div class="setting-label">Version</div>
+              <div class="setting-val">1.0.0 (build 42)</div>
+            </div>
+          </div>
+
+          <button class="logout-btn">Log out</button>
+        </div>
+
+        <div class="nav">
+          <div class="nav-item"><span class="nav-icon">⌂</span>SITES</div>
+          <div class="nav-item"><span class="nav-icon">↕</span>RANKING</div>
+          <div class="nav-item active"><span class="nav-icon">⚙</span>SETTINGS</div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">SETTINGS</div>
+  </div>
+
+</div>
+
+<script>
+  function setTheme(t) {
+    document.body.setAttribute('data-theme', t);
+    document.getElementById('btn-dark').classList.toggle('active', t === 'dark');
+    document.getElementById('btn-light').classList.toggle('active', t === 'light');
+  }
+</script>
+</body>
+</html>

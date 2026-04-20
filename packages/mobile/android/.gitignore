@@ -1,0 +1,49 @@
+# Dependencies
+../../node_modules/
+.pnp
+.pnp.js
+
+# Environment — NEVER commit secrets
+.env
+.env.local
+.env.*.local
+packages/backend/.env
+packages/desktop/.env
+packages/web/.env
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+packages/desktop/dist/
+packages/desktop/out/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+*.suo
+*.swp
+
+# Electron
+packages/desktop/.vite/
+
+# Android
+packages/android/.gradle/
+packages/android/build/
+packages/android/app/build/
+packages/android/*.keystore
+*.jks
+
+# Test scripts with credentials
+ingest.sh
