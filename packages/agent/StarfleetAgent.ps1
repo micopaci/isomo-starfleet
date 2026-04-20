@@ -1,455 +1,270 @@
-#Requires -Version 5.1
-<#
-.SYNOPSIS
-    Starlink Fleet Monitor — Windows Data Collection Agent
-.DESCRIPTION
-    Runs on every Isomo laptop every 5 minutes via Windows Scheduled Task.
-    Collects Starlink dish metrics, device health, latency, and data usage,
-    then POSTs to the Starfleet backend API.
-    Queues payloads locally if the network is unavailable.
-.NOTES
-    Deployed via Intune Proactive Remediation.
-    Values below are injected by the remediation script at deploy time.
-#>
+/**
+ * Stage 1B — Ingest API endpoints (v5.6 Final)
+ * POST /ingest/heartbeat - Updates BIOS sn, Hostname, and OS/Model metadata
+ * POST /ingest/signal    - Haversine-based Site Discovery
+ * POST /ingest/health    - Battery, RAM, and Disk % metrics
+ */
+const express = require('express');
+const pool    = require('../db');
+const { broadcast } = require('../services/websocket');
+const { currentSignal } = require('../services/cache');
+const { resolveAndMaybeNotify } = require('../services/siteResolver');
+const {
+  heartbeatLimiter,
+  signalLimiter,
+  latencyLimiter,
+  healthLimiter,
+  usageLimiter,
+} = require('../middleware/ingestRateLimit');
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION  (injected by Intune remediation script)
-# ─────────────────────────────────────────────────────────────────────────────
-$ApiBase     = "https://api.starfleet.icircles.rw"
-$ApiToken    = "JWT_PLACEHOLDER"
-$SiteId      = "SITE_ID_PLACEHOLDER"
-$IntervalSec = 300
+const router = express.Router();
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PATHS
-# ─────────────────────────────────────────────────────────────────────────────
-$DataDir       = "C:\ProgramData\Starfleet"
-$DeviceFile    = "$DataDir\device.json"
-$UsageBaseline = "$DataDir\usage_baseline.json"
-$HeartbeatFile = "$DataDir\last_heartbeat.txt"
-$QueueDir      = "$DataDir\queue"
-$LogFile       = "$DataDir\agent.log"
-$LogMaxBytes   = 5MB
+// ── helpers ──────────────────────────────────────────────────────────────────
 
-# ─────────────────────────────────────────────────────────────────────────────
-# LOGGING
-# ─────────────────────────────────────────────────────────────────────────────
-function Write-Log {
-    param([string]$Level = "INFO", [string]$Message)
-    $ts      = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-    $line    = "[$ts] [$Level] $Message"
-    Write-Host $line
-
-    # Rotate if log exceeds 5 MB
-    if (Test-Path $LogFile) {
-        if ((Get-Item $LogFile).Length -ge $LogMaxBytes) {
-            $rotated = "$DataDir\agent.log.1"
-            if (Test-Path $rotated) { Remove-Item $rotated -Force }
-            Rename-Item $LogFile $rotated -Force
-        }
+function require400(res, body, fields) {
+  for (const f of fields) {
+    if (body[f] === undefined || body[f] === null || body[f] === '') {
+      res.status(400).json({ error: `${f} is required` });
+      return false;
     }
-    Add-Content -Path $LogFile -Value $line -Encoding UTF8
+  }
+  return true;
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# INITIALISE DIRECTORIES
-# ─────────────────────────────────────────────────────────────────────────────
-foreach ($dir in @($DataDir, $QueueDir)) {
-    if (-not (Test-Path $dir)) {
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
-    }
+/**
+ * Maps agent device_sn (BIOS) to database windows_sn.
+ * Updates OS and Model metadata on every check-in.
+ */
+async function autoRegisterDevice(client, device_sn, site_id, hostname, metadata = {}) {
+  const { os, model, manufacturer } = metadata;
+  
+  const result = await client.query(
+    `INSERT INTO devices (windows_sn, site_id, hostname, os, model, manufacturer)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (windows_sn)
+     DO UPDATE SET 
+       site_id = EXCLUDED.site_id, 
+       hostname = COALESCE(EXCLUDED.hostname, devices.hostname),
+       os = COALESCE(EXCLUDED.os, devices.os),
+       model = COALESCE(EXCLUDED.model, devices.model),
+       manufacturer = COALESCE(EXCLUDED.manufacturer, devices.manufacturer)
+     RETURNING id`,
+    [device_sn, site_id, hostname || null, os || null, model || null, manufacturer || null]
+  );
+  return result.rows[0].id;
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# HTTP HELPER
-# ─────────────────────────────────────────────────────────────────────────────
-function Invoke-ApiPost {
-    param([string]$Endpoint, [hashtable]$Body)
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2;
+}
 
-    $url     = "$ApiBase$Endpoint"
-    $headers = @{ Authorization = "Bearer $ApiToken"; "Content-Type" = "application/json" }
-    $json    = $Body | ConvertTo-Json -Compress -Depth 5
+// ── POST /ingest/heartbeat ────────────────────────────────────────────────────
+router.post('/heartbeat', heartbeatLimiter, async (req, res, next) => {
+  try {
+    const { 
+      device_sn, site_id, hostname, timestamp_utc,
+      os, model, manufacturer 
+    } = req.body;
+    
+    if (!require400(res, req.body, ['device_sn', 'site_id'])) return;
 
+    const client = await pool.connect();
     try {
-        $response = Invoke-RestMethod -Uri $url -Method POST -Headers $headers `
-                        -Body $json -TimeoutSec 15 -ErrorAction Stop
-        return $true
-    }
-    catch {
-        Write-Log "WARN" "POST $Endpoint failed: $($_.Exception.Message). Queuing."
-        Queue-Payload -Endpoint $Endpoint -Body $Body
-        return $false
-    }
-}
+      const device_id = await autoRegisterDevice(client, device_sn, site_id, hostname, {
+        os, model, manufacturer
+      });
 
-# ─────────────────────────────────────────────────────────────────────────────
-# OFFLINE QUEUE
-# ─────────────────────────────────────────────────────────────────────────────
-function Queue-Payload {
-    param([string]$Endpoint, [hashtable]$Body)
-
-    # Cap at 1000 files — drop oldest if exceeded
-    $files = Get-ChildItem $QueueDir -Filter "*.json" | Sort-Object Name
-    if ($files.Count -ge 1000) {
-        $files | Select-Object -First ($files.Count - 999) | Remove-Item -Force
+      await client.query(
+        `UPDATE devices SET last_seen = $1 WHERE id = $2`,
+        [timestamp_utc || new Date().toISOString(), device_id]
+      );
+      broadcast('device_online', { device_id, site_id });
+    } finally {
+      client.release();
     }
 
-    $ts      = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssfffZ")
-    $payload = @{ endpoint = $Endpoint; body = $Body } | ConvertTo-Json -Compress -Depth 5
-    $payload | Set-Content -Path "$QueueDir\$ts.json" -Encoding UTF8
-}
+    res.status(201).json({ ok: true });
+  } catch (err) { next(err); }
+});
 
-function Replay-Queue {
-    $files = Get-ChildItem $QueueDir -Filter "*.json" | Sort-Object Name
-    if ($files.Count -eq 0) { return }
-    Write-Log "INFO" "Replaying $($files.Count) queued payload(s)…"
+// ── POST /ingest/signal ───────────────────────────────────────────────────────
+router.post('/signal', signalLimiter, async (req, res, next) => {
+  try {
+    const {
+      device_sn, site_id: hintedSiteId, timestamp_utc,
+      pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
+      download_mbps, upload_mbps,
+      lat, lon,
+    } = req.body;
+    if (!require400(res, req.body, ['device_sn', 'site_id'])) return;
 
-    foreach ($file in $files) {
-        try {
-            $item     = Get-Content $file.FullName -Raw | ConvertFrom-Json
-            $endpoint = $item.endpoint
-            $body     = @{}
-            $item.body.PSObject.Properties | ForEach-Object { $body[$_.Name] = $_.Value }
-
-            $url     = "$ApiBase$endpoint"
-            $headers = @{ Authorization = "Bearer $ApiToken"; "Content-Type" = "application/json" }
-            $json    = $body | ConvertTo-Json -Compress -Depth 5
-
-            Invoke-RestMethod -Uri $url -Method POST -Headers $headers `
-                -Body $json -TimeoutSec 15 -ErrorAction Stop | Out-Null
-            Remove-Item $file.FullName -Force
-            Write-Log "INFO" "Replayed and deleted: $($file.Name)"
-        }
-        catch {
-            Write-Log "WARN" "Replay failed for $($file.Name): $($_.Exception.Message)"
-            break  # Stop replaying on first failure (still offline)
-        }
-    }
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# DEVICE REGISTRATION
-# ─────────────────────────────────────────────────────────────────────────────
-function Get-DeviceSN {
+    const client = await pool.connect();
     try {
-        # Get-CimInstance preferred over deprecated Get-WmiObject (PS 3+)
-        return (Get-CimInstance -ClassName Win32_BIOS).SerialNumber.Trim()
+      const device_id = await autoRegisterDevice(client, device_sn, hintedSiteId, null);
+
+      // GPS Site Discovery: Associates unassigned laptops with the nearest school.
+      const site_id = await resolveAndMaybeNotify(
+        client, device_id, lat ?? null, lon ?? null, hintedSiteId
+      );
+
+      const window = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const reportersRes = await client.query(
+        `SELECT COUNT(DISTINCT device_id) AS cnt FROM signal_readings
+         WHERE site_id = $1 AND recorded_at > $2`,
+        [site_id, window]
+      );
+      const reporterCount = parseInt(reportersRes.rows[0].cnt) + 1;
+      const confidence    = reporterCount === 1 ? 'low' : 'high';
+
+      await client.query(
+        `INSERT INTO signal_readings
+           (site_id, device_id, recorded_at,
+            pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
+            download_mbps, upload_mbps,
+            reporter_count, confidence)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [site_id, device_id, timestamp_utc || new Date().toISOString(),
+         pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
+         download_mbps ?? null, upload_mbps ?? null,
+         reporterCount, confidence]
+      );
+
+      const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+      const recentRes = await client.query(
+        `SELECT pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
+                download_mbps, upload_mbps
+         FROM signal_readings
+         WHERE site_id = $1 AND recorded_at > $2`,
+        [site_id, twoMinAgo]
+      );
+      const rows = recentRes.rows;
+      const aggregated = {
+        snr:             median(rows.map(r => parseFloat(r.snr)).filter(v => !Number.isNaN(v))),
+        pop_latency_ms:  median(rows.map(r => parseFloat(r.pop_latency_ms)).filter(v => !Number.isNaN(v))),
+        obstruction_pct: median(rows.map(r => parseFloat(r.obstruction_pct)).filter(v => !Number.isNaN(v))),
+        ping_drop_pct:   median(rows.map(r => parseFloat(r.ping_drop_pct)).filter(v => !Number.isNaN(v))),
+        download_mbps:   median(rows.map(r => parseFloat(r.download_mbps)).filter(v => !Number.isNaN(v))),
+        upload_mbps:     median(rows.map(r => parseFloat(r.upload_mbps)).filter(v => !Number.isNaN(v))),
+        confidence,
+        updatedAt:       new Date().toISOString(),
+      };
+
+      currentSignal.set(String(site_id), aggregated);
+      broadcast('signal_update', { site_id, signal: aggregated });
+    } finally {
+      client.release();
     }
-    catch {
-        Write-Log "ERROR" "Could not read BIOS serial: $($_.Exception.Message)"
-        return $null
-    }
-}
 
-function Register-Device {
-    param([string]$DeviceSN)
+    res.status(201).json({ ok: true });
+  } catch (err) { next(err); }
+});
 
-    $hostname = $env:COMPUTERNAME
-    $body     = @{
-        device_sn     = $DeviceSN
-        site_id       = [int]$SiteId
-        hostname      = $hostname
-        timestamp_utc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-    }
+// ── POST /ingest/latency ──────────────────────────────────────────────────────
+router.post('/latency', latencyLimiter, async (req, res, next) => {
+  try {
+    const { device_sn, site_id, timestamp_utc, p50_ms, p95_ms } = req.body;
+    if (!require400(res, req.body, ['device_sn', 'site_id', 'p50_ms', 'p95_ms'])) return;
 
-    Write-Log "INFO" "Registering device: $hostname ($DeviceSN) at site $SiteId"
-    Invoke-ApiPost -Endpoint "/ingest/heartbeat" -Body $body | Out-Null
-
-    # Persist device info locally
-    @{ device_sn = $DeviceSN; hostname = $hostname; site_id = $SiteId } `
-        | ConvertTo-Json | Set-Content -Path $DeviceFile -Encoding UTF8
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STARLINK SIGNAL + LOCATION + THROUGHPUT — gRPC fallback to HTTP status page
-# ─────────────────────────────────────────────────────────────────────────────
-function Get-StarlinkSignal {
-    $dishIp = "192.168.100.1"
-
-    # Try HTTP status page (JSON endpoint available without gRPC tooling)
+    const client = await pool.connect();
     try {
-        $status = Invoke-RestMethod -Uri "http://$dishIp/api/status" `
-                      -TimeoutSec 5 -ErrorAction Stop
+      const device_id = await autoRegisterDevice(client, device_sn, site_id, null);
 
-        $dish = $status.dishGetStatus
-        if ($dish) {
-            $result = @{
-                pop_latency_ms  = [math]::Round($dish.popPingLatencyMs, 1)
-                snr             = [math]::Round($dish.snr, 2)
-                obstruction_pct = [math]::Round($dish.obstructionStats.fractionObstructed * 100, 2)
-                ping_drop_pct   = [math]::Round($dish.popPingDropRate * 100, 2)
-                download_mbps   = if ($dish.downlinkThroughputBps) { [math]::Round($dish.downlinkThroughputBps / 1e6, 2) } else { $null }
-                upload_mbps     = if ($dish.uplinkThroughputBps)   { [math]::Round($dish.uplinkThroughputBps   / 1e6, 2) } else { $null }
-                # HTTP endpoint does not expose GPS — location comes from gRPC below
-                lat             = $null
-                lon             = $null
-            }
-            return $result
-        }
-    }
-    catch {
-        Write-Log "WARN" "Starlink HTTP status unreachable: $($_.Exception.Message)"
+      const window15 = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const medRes = await client.query(
+        `SELECT p50_ms FROM latency_readings
+         WHERE site_id = $1 AND recorded_at > $2`,
+        [site_id, window15]
+      );
+      const siteMedian = median(medRes.rows.map(r => parseFloat(r.p50_ms)));
+      const isOutlier  = siteMedian !== null && parseFloat(p50_ms) > 2 * siteMedian;
+
+      const spreadRes = await client.query(
+        `SELECT MAX(p50_ms) - MIN(p50_ms) AS spread FROM latency_readings
+         WHERE site_id = $1 AND recorded_at > $2`,
+        [site_id, window15]
+      );
+      const spread_ms = spreadRes.rows[0].spread ? parseFloat(spreadRes.rows[0].spread) : 0;
+
+      await client.query(
+        `INSERT INTO latency_readings (device_id, site_id, recorded_at, p50_ms, p95_ms, spread_ms, is_outlier)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [device_id, site_id, timestamp_utc || new Date().toISOString(),
+         p50_ms, p95_ms, spread_ms, isOutlier]
+      );
+
+      const cached = currentSignal.get(String(site_id)) || {};
+      currentSignal.set(String(site_id), { ...cached, spread_ms });
+
+    } finally {
+      client.release();
     }
 
-    # Try starlink_grpc Python tool — this one DOES expose lat/lon via get_location
+    res.status(201).json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ── POST /ingest/health ───────────────────────────────────────────────────────
+router.post('/health', healthLimiter, async (req, res, next) => {
+  try {
+    const required = ['device_sn', 'site_id'];
+    if (!require400(res, req.body, required)) return;
+
+    const { device_sn, site_id, timestamp_utc,
+            battery_pct, battery_health_pct, disk_free_gb,
+            disk_total_gb, disk_usage_pct, ram_used_mb, ram_total_mb } = req.body;
+
+    const client = await pool.connect();
     try {
-        $grpcOut = & python -m starlink_grpc -t dish_status 2>$null | ConvertFrom-Json
-        if ($grpcOut) {
-            $result = @{
-                pop_latency_ms  = [math]::Round($grpcOut.pop_ping_latency_ms, 1)
-                snr             = [math]::Round($grpcOut.snr, 2)
-                obstruction_pct = [math]::Round($grpcOut.obstruction_stats.fraction_obstructed * 100, 2)
-                ping_drop_pct   = [math]::Round($grpcOut.pop_ping_drop_rate * 100, 2)
-                download_mbps   = if ($grpcOut.downlink_throughput_bps) { [math]::Round($grpcOut.downlink_throughput_bps / 1e6, 2) } else { $null }
-                upload_mbps     = if ($grpcOut.uplink_throughput_bps)   { [math]::Round($grpcOut.uplink_throughput_bps   / 1e6, 2) } else { $null }
-                lat             = $null
-                lon             = $null
-            }
+      const device_id = await autoRegisterDevice(client, device_sn, site_id, null);
 
-            # Separate gRPC call for GPS (requires "access locations" toggle in Starlink app)
-            try {
-                $locOut = & python -m starlink_grpc -t location 2>$null | ConvertFrom-Json
-                if ($locOut -and $locOut.latitude -and $locOut.longitude) {
-                    $result.lat = [math]::Round($locOut.latitude,  6)
-                    $result.lon = [math]::Round($locOut.longitude, 6)
-                }
-            }
-            catch { Write-Log "WARN" "Starlink location gRPC failed: $($_.Exception.Message)" }
-
-            return $result
-        }
+      await client.query(
+        `INSERT INTO device_health
+           (device_id, recorded_at, battery_pct, battery_health_pct,
+            disk_free_gb, disk_total_gb, disk_usage_pct, ram_used_mb, ram_total_mb)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [device_id, timestamp_utc || new Date().toISOString(),
+         battery_pct, battery_health_pct, disk_free_gb,
+         disk_total_gb, disk_usage_pct || null, ram_used_mb, ram_total_mb]
+      );
+    } finally {
+      client.release();
     }
-    catch { }
 
-    return $null  # Dish unreachable — do not send zeros
-}
+    res.status(201).json({ ok: true });
+  } catch (err) { next(err); }
+});
 
-# ─────────────────────────────────────────────────────────────────────────────
-# LATENCY — ping 8.8.8.8 x20, compute P50/P95
-# ─────────────────────────────────────────────────────────────────────────────
-function Get-LatencyStats {
+// ── POST /ingest/usage ────────────────────────────────────────────────────────
+router.post('/usage', usageLimiter, async (req, res, next) => {
+  try {
+    const { device_sn, site_id, date, bytes_down_delta, bytes_up_delta } = req.body;
+    if (!require400(res, req.body, ['device_sn', 'site_id', 'date'])) return;
+
+    const client = await pool.connect();
     try {
-        $pings = Test-Connection -ComputerName 8.8.8.8 -Count 20 -ErrorAction SilentlyContinue
-        $times = $pings | Where-Object { $_.ResponseTime -ne $null } `
-                        | ForEach-Object { $_.ResponseTime } `
-                        | Sort-Object
+      const device_id = await autoRegisterDevice(client, device_sn, site_id, null);
 
-        if ($times.Count -lt 5) {
-            Write-Log "WARN" "Too few ping responses ($($times.Count)) for latency stats"
-            return $null
-        }
-
-        $p50Index = [math]::Floor($times.Count * 0.50)
-        $p95Index = [math]::Floor($times.Count * 0.95)
-
-        return @{
-            p50_ms = $times[$p50Index]
-            p95_ms = $times[$p95Index]
-        }
+      await client.query(
+        `INSERT INTO data_usage (device_id, site_id, date, bytes_down, bytes_up)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (device_id, date)
+         DO UPDATE SET
+           bytes_down = data_usage.bytes_down + EXCLUDED.bytes_down,
+           bytes_up   = data_usage.bytes_up   + EXCLUDED.bytes_up`,
+        [device_id, site_id, date,
+         bytes_down_delta || 0, bytes_up_delta || 0]
+      );
+    } finally {
+      client.release();
     }
-    catch {
-        Write-Log "WARN" "Latency measurement failed: $($_.Exception.Message)"
-        return $null
-    }
-}
 
-# ─────────────────────────────────────────────────────────────────────────────
-# HEALTH — battery, disk, RAM
-# ─────────────────────────────────────────────────────────────────────────────
-function Get-DeviceHealth {
-    $health = @{}
+    res.status(201).json({ ok: true });
+  } catch (err) { next(err); }
+});
 
-    # Battery
-    try {
-        $bat = Get-CimInstance -ClassName Win32_Battery
-        if ($bat) {
-            $health.battery_pct        = $bat.EstimatedChargeRemaining
-            $health.battery_health_pct = if ($bat.DesignCapacity -gt 0) {
-                [math]::Round($bat.FullChargeCapacity / $bat.DesignCapacity * 100, 1)
-            } else { $null }
-        }
-    }
-    catch { Write-Log "WARN" "Battery read failed: $($_.Exception.Message)" }
-
-    # Disk C:\
-    try {
-        $disk = Get-PSDrive C
-        $totalGB = [math]::Round(($disk.Used + $disk.Free) / 1GB, 1)
-        $freeGB  = [math]::Round($disk.Free / 1GB, 1)
-        $health.disk_total_gb = $totalGB
-        $health.disk_free_gb  = $freeGB
-    }
-    catch { Write-Log "WARN" "Disk read failed: $($_.Exception.Message)" }
-
-    # RAM
-    try {
-        $os = Get-CimInstance -ClassName Win32_OperatingSystem
-        $health.ram_total_mb = [math]::Round($os.TotalVisibleMemorySize / 1KB, 0)
-        $health.ram_used_mb  = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1KB, 0)
-    }
-    catch { Write-Log "WARN" "RAM read failed: $($_.Exception.Message)" }
-
-    return $health
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# DATA USAGE — delta from baseline
-# ─────────────────────────────────────────────────────────────────────────────
-function Get-DataUsageDelta {
-    try {
-        $adapters = Get-NetAdapterStatistics | Where-Object { $_.ReceivedBytes -gt 0 }
-        $totalDown = ($adapters | Measure-Object ReceivedBytes -Sum).Sum
-        $totalUp   = ($adapters | Measure-Object SentBytes -Sum).Sum
-
-        $baseline  = @{ down = 0; up = 0 }
-        if (Test-Path $UsageBaseline) {
-            $baseline = Get-Content $UsageBaseline -Raw | ConvertFrom-Json
-            $baseline = @{ down = [long]$baseline.down; up = [long]$baseline.up }
-        }
-
-        $deltaDown = [math]::Max(0, $totalDown - $baseline.down)
-        $deltaUp   = [math]::Max(0, $totalUp   - $baseline.up)
-
-        # Update baseline
-        @{ down = $totalDown; up = $totalUp } `
-            | ConvertTo-Json | Set-Content -Path $UsageBaseline -Encoding UTF8
-
-        return @{ bytes_down_delta = $deltaDown; bytes_up_delta = $deltaUp }
-    }
-    catch {
-        Write-Log "WARN" "Data usage read failed: $($_.Exception.Message)"
-        return $null
-    }
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MAIN
-# ─────────────────────────────────────────────────────────────────────────────
-Write-Log "INFO" "StarfleetAgent starting (site=$SiteId)"
-
-# Replay any queued offline payloads first
-Replay-Queue
-
-# Get or register device serial number
-$deviceSN = $null
-if (Test-Path $DeviceFile) {
-    try {
-        $cfg      = Get-Content $DeviceFile -Raw | ConvertFrom-Json
-        $deviceSN = $cfg.device_sn
-    }
-    catch { }
-}
-
-if (-not $deviceSN) {
-    $deviceSN = Get-DeviceSN
-    if (-not $deviceSN) {
-        Write-Log "ERROR" "Cannot determine device serial number. Exiting."
-        exit 1
-    }
-    Register-Device -DeviceSN $deviceSN
-}
-
-$timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-$today     = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
-
-# Determine if this is a "6th interval" run (every 30 min)
-# Track interval counter in a small file
-$counterFile    = "$DataDir\interval_counter.txt"
-$intervalCount  = 0
-if (Test-Path $counterFile) {
-    try { $intervalCount = [int](Get-Content $counterFile -Raw) } catch { }
-}
-$intervalCount++
-$intervalCount | Set-Content -Path $counterFile -Encoding UTF8
-$isHealthInterval = ($intervalCount % 6 -eq 0)
-
-# ── a. HEARTBEAT ─────────────────────────────────────────────────────────────
-$hbBody = @{
-    device_sn     = $deviceSN
-    site_id       = [int]$SiteId
-    hostname      = $env:COMPUTERNAME
-    timestamp_utc = $timestamp
-}
-if (Invoke-ApiPost -Endpoint "/ingest/heartbeat" -Body $hbBody) {
-    $timestamp | Set-Content -Path $HeartbeatFile -Encoding UTF8
-    Write-Log "INFO" "Heartbeat sent"
-}
-
-# ── b. STARLINK SIGNAL ───────────────────────────────────────────────────────
-$signal = Get-StarlinkSignal
-if ($signal) {
-    $sigBody = @{
-        device_sn       = $deviceSN
-        site_id         = [int]$SiteId   # retained as a hint; backend verifies via lat/lon
-        timestamp_utc   = $timestamp
-        pop_latency_ms  = $signal.pop_latency_ms
-        snr             = $signal.snr
-        obstruction_pct = $signal.obstruction_pct
-        ping_drop_pct   = $signal.ping_drop_pct
-        download_mbps   = $signal.download_mbps
-        upload_mbps     = $signal.upload_mbps
-        lat             = $signal.lat
-        lon             = $signal.lon
-    }
-    if (Invoke-ApiPost -Endpoint "/ingest/signal" -Body $sigBody) {
-        $locStr = if ($signal.lat) { "  GPS=$($signal.lat),$($signal.lon)" } else { "" }
-        Write-Log "INFO" "Signal posted: SNR=$($signal.snr), PoP=$($signal.pop_latency_ms)ms$locStr"
-    }
-} else {
-    Write-Log "WARN" "Starlink dish unreachable — skipping signal payload"
-}
-
-# ── c. LATENCY ───────────────────────────────────────────────────────────────
-$latency = Get-LatencyStats
-if ($latency) {
-    $latBody = @{
-        device_sn     = $deviceSN
-        site_id       = [int]$SiteId
-        timestamp_utc = $timestamp
-        p50_ms        = $latency.p50_ms
-        p95_ms        = $latency.p95_ms
-    }
-    if (Invoke-ApiPost -Endpoint "/ingest/latency" -Body $latBody) {
-        Write-Log "INFO" "Latency posted: P50=$($latency.p50_ms)ms P95=$($latency.p95_ms)ms"
-    }
-}
-
-# ── d. HEALTH (every 6th interval = 30 min) ──────────────────────────────────
-if ($isHealthInterval) {
-    $health = Get-DeviceHealth
-    if ($health.Count -gt 0) {
-        $healthBody = @{
-            device_sn          = $deviceSN
-            site_id            = [int]$SiteId
-            timestamp_utc      = $timestamp
-            battery_pct        = $health.battery_pct
-            battery_health_pct = $health.battery_health_pct
-            disk_free_gb       = $health.disk_free_gb
-            disk_total_gb      = $health.disk_total_gb
-            ram_used_mb        = $health.ram_used_mb
-            ram_total_mb       = $health.ram_total_mb
-        }
-        if (Invoke-ApiPost -Endpoint "/ingest/health" -Body $healthBody) {
-            Write-Log "INFO" "Health posted: Battery=$($health.battery_pct)% Disk=$($health.disk_free_gb)GB free"
-        }
-    }
-}
-
-# ── e. DATA USAGE (every 6th interval) ───────────────────────────────────────
-if ($isHealthInterval) {
-    $usage = Get-DataUsageDelta
-    if ($usage) {
-        $usageBody = @{
-            device_sn        = $deviceSN
-            site_id          = [int]$SiteId
-            date             = $today
-            bytes_down_delta = $usage.bytes_down_delta
-            bytes_up_delta   = $usage.bytes_up_delta
-        }
-        if (Invoke-ApiPost -Endpoint "/ingest/usage" -Body $usageBody) {
-            Write-Log "INFO" "Usage posted: Down=$([math]::Round($usage.bytes_down_delta/1MB,1))MB Up=$([math]::Round($usage.bytes_up_delta/1MB,1))MB"
-        }
-    }
-}
-
-Write-Log "INFO" "StarfleetAgent run complete"
+module.exports = router;
