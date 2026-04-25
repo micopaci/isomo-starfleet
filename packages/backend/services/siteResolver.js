@@ -6,7 +6,9 @@
  * MAX_SITE_RADIUS_KM. If no site is within range the resolver returns
  * `null` — the caller should keep the existing site_id and log a warning.
  *
- * When the resolved site differs from `devices.site_id` we:
+ * When the resolved site differs from `devices.site_id` we stage a candidate.
+ * Reassignment is confirmed only after GPS evidence appears on at least
+ * REQUIRED_MOVE_DAYS distinct days (default: 2), then we:
  *   1. UPDATE devices.site_id
  *   2. INSERT into site_change_events (audit log)
  *   3. Enqueue an email + FCM notification (via services/notifier.js)
@@ -22,6 +24,7 @@ const { broadcast }        = require('./websocket');
 
 const MAX_SITE_RADIUS_KM = Number(process.env.MAX_SITE_RADIUS_KM || 2.0);
 const MIN_MOVE_KM        = Number(process.env.MIN_MOVE_KM        || 0.3);
+const REQUIRED_MOVE_DAYS = Number(process.env.REQUIRED_SITE_MOVE_DAYS || 2);
 
 // In-memory site list. Loaded on first call, refreshed every 5 minutes.
 let siteCache     = null;
@@ -99,7 +102,10 @@ async function resolveAndMaybeNotify(client, device_id, lat, lon, hintedSiteId) 
   if (!current) return resolved.site_id;
 
   // No change, or not enough movement to trigger a reassignment
-  if (current.site_id === resolved.site_id) return resolved.site_id;
+  if (current.site_id === resolved.site_id) {
+    await client.query(`DELETE FROM site_move_candidates WHERE device_id = $1`, [device_id]);
+    return resolved.site_id;
+  }
 
   // If we have a previous GPS fix, require at least MIN_MOVE_KM of movement
   if (current.last_lat != null && current.last_lon != null) {
@@ -110,7 +116,36 @@ async function resolveAndMaybeNotify(client, device_id, lat, lon, hintedSiteId) 
     if (moved < MIN_MOVE_KM) return current.site_id;
   }
 
-  // ── SITE CHANGE DETECTED ──
+  // ── SITE CHANGE CANDIDATE (must be observed across distinct days) ──
+  const today = new Date().toISOString().slice(0, 10);
+  const candRes = await client.query(
+    `INSERT INTO site_move_candidates
+       (device_id, from_site_id, to_site_id, first_seen_date, last_seen_date, seen_days,
+        last_reported_lat, last_reported_lon, last_distance_km, updated_at)
+     VALUES ($1, $2, $3, $4, $4, 1, $5, $6, $7, NOW())
+     ON CONFLICT (device_id, to_site_id)
+     DO UPDATE SET
+       from_site_id      = EXCLUDED.from_site_id,
+       seen_days         = CASE
+                            WHEN site_move_candidates.last_seen_date < EXCLUDED.last_seen_date
+                            THEN site_move_candidates.seen_days + 1
+                            ELSE site_move_candidates.seen_days
+                          END,
+       last_seen_date    = GREATEST(site_move_candidates.last_seen_date, EXCLUDED.last_seen_date),
+       last_reported_lat = EXCLUDED.last_reported_lat,
+       last_reported_lon = EXCLUDED.last_reported_lon,
+       last_distance_km  = EXCLUDED.last_distance_km,
+       updated_at        = NOW()
+     RETURNING seen_days`,
+    [device_id, current.site_id, resolved.site_id, today, lat, lon, resolved.distance_km]
+  );
+
+  const seenDays = Number(candRes.rows[0]?.seen_days || 1);
+  if (seenDays < REQUIRED_MOVE_DAYS) {
+    return current.site_id;
+  }
+
+  // ── SITE CHANGE CONFIRMED ──
   await client.query(
     `UPDATE devices SET site_id = $1 WHERE id = $2`,
     [resolved.site_id, device_id]
@@ -143,6 +178,9 @@ async function resolveAndMaybeNotify(client, device_id, lat, lon, hintedSiteId) 
     to_site_name: resolved.name,
     distance_km:  resolved.distance_km,
   });
+
+  // Clear any outstanding candidate rows now that reassignment is confirmed.
+  await client.query(`DELETE FROM site_move_candidates WHERE device_id = $1`, [device_id]);
 
   return resolved.site_id;
 }

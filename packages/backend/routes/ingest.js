@@ -15,6 +15,7 @@ const {
   latencyLimiter,
   healthLimiter,
   usageLimiter,
+  agentHealthLimiter,
 } = require('../middleware/ingestRateLimit');
 
 const router = express.Router();
@@ -43,7 +44,7 @@ async function autoRegisterDevice(client, device_sn, site_id, hostname, metadata
      VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (windows_sn)
      DO UPDATE SET 
-       site_id = EXCLUDED.site_id, 
+       site_id = COALESCE(devices.site_id, EXCLUDED.site_id),
        hostname = COALESCE(EXCLUDED.hostname, devices.hostname),
        os = COALESCE(EXCLUDED.os, devices.os),
        model = COALESCE(EXCLUDED.model, devices.model),
@@ -52,6 +53,41 @@ async function autoRegisterDevice(client, device_sn, site_id, hostname, metadata
     [device_sn, site_id, hostname || null, os || null, model || null, manufacturer || null]
   );
   return result.rows[0].id;
+}
+
+function enforceAgentSiteScope(req, res, postedSiteId) {
+  if (req.user?.role !== 'agent') return true;
+  const tokenSite = Number(req.user?.site_id || 0);
+  const bodySite = Number(postedSiteId || 0);
+  if (!tokenSite || !bodySite || tokenSite !== bodySite) {
+    res.status(403).json({ error: 'Forbidden — agent token site scope mismatch' });
+    return false;
+  }
+  return true;
+}
+
+async function getCanonicalSiteId(client, device_id, fallbackSiteId) {
+  const r = await client.query(`SELECT site_id FROM devices WHERE id = $1`, [device_id]);
+  return r.rows[0]?.site_id ?? fallbackSiteId;
+}
+
+async function markIngestSuccess(client, device_id, timestampIso) {
+  await client.query(
+    `UPDATE devices SET last_ingest_ok_at = $1 WHERE id = $2`,
+    [timestampIso || new Date().toISOString(), device_id]
+  );
+}
+
+async function isDuplicatePayload(client, endpoint, device_id, payload_id) {
+  if (!payload_id) return false;
+  const dedup = await client.query(
+    `INSERT INTO ingest_payload_dedup (endpoint, device_id, payload_id)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (endpoint, device_id, payload_id) DO NOTHING
+     RETURNING id`,
+    [endpoint, device_id, payload_id]
+  );
+  return dedup.rows.length === 0;
 }
 
 function median(values) {
@@ -68,22 +104,30 @@ router.post('/heartbeat', heartbeatLimiter, async (req, res, next) => {
   try {
     const {
       device_sn, site_id, hostname, timestamp_utc,
-      os, model, manufacturer
+      os, model, manufacturer, payload_id,
     } = req.body;
 
     if (!require400(res, req.body, ['device_sn', 'site_id'])) return;
+    if (!enforceAgentSiteScope(req, res, site_id)) return;
 
     const client = await pool.connect();
     try {
       const device_id = await autoRegisterDevice(client, device_sn, site_id, hostname, {
         os, model, manufacturer
       });
+      if (await isDuplicatePayload(client, 'heartbeat', device_id, payload_id)) {
+        return res.status(200).json({ ok: true, duplicate: true });
+      }
+
+      const canonicalSiteId = await getCanonicalSiteId(client, device_id, site_id);
+      const seenAt = timestamp_utc || new Date().toISOString();
 
       await client.query(
         `UPDATE devices SET last_seen = $1 WHERE id = $2`,
-        [timestamp_utc || new Date().toISOString(), device_id]
+        [seenAt, device_id]
       );
-      broadcast('device_online', { device_id, site_id });
+      await markIngestSuccess(client, device_id, seenAt);
+      broadcast('device_online', { device_id, site_id: canonicalSiteId });
     } finally {
       client.release();
     }
@@ -100,12 +144,17 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
       pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
       download_mbps, upload_mbps,
       lat, lon,
+      payload_id,
     } = req.body;
     if (!require400(res, req.body, ['device_sn', 'site_id'])) return;
+    if (!enforceAgentSiteScope(req, res, hintedSiteId)) return;
 
     const client = await pool.connect();
     try {
       const device_id = await autoRegisterDevice(client, device_sn, hintedSiteId, null);
+      if (await isDuplicatePayload(client, 'signal', device_id, payload_id)) {
+        return res.status(200).json({ ok: true, duplicate: true });
+      }
 
       // GPS Site Discovery: Associates unassigned laptops with the nearest school.
       const site_id = await resolveAndMaybeNotify(
@@ -156,6 +205,7 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
 
       currentSignal.set(String(site_id), aggregated);
       broadcast('signal_update', { site_id, signal: aggregated });
+      await markIngestSuccess(client, device_id, timestamp_utc || new Date().toISOString());
     } finally {
       client.release();
     }
@@ -167,18 +217,23 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
 // ── POST /ingest/latency ──────────────────────────────────────────────────────
 router.post('/latency', latencyLimiter, async (req, res, next) => {
   try {
-    const { device_sn, site_id, timestamp_utc, p50_ms, p95_ms } = req.body;
+    const { device_sn, site_id, timestamp_utc, p50_ms, p95_ms, payload_id } = req.body;
     if (!require400(res, req.body, ['device_sn', 'site_id', 'p50_ms', 'p95_ms'])) return;
+    if (!enforceAgentSiteScope(req, res, site_id)) return;
 
     const client = await pool.connect();
     try {
       const device_id = await autoRegisterDevice(client, device_sn, site_id, null);
+      if (await isDuplicatePayload(client, 'latency', device_id, payload_id)) {
+        return res.status(200).json({ ok: true, duplicate: true });
+      }
+      const canonicalSiteId = await getCanonicalSiteId(client, device_id, site_id);
 
       const window15 = new Date(Date.now() - 15 * 60 * 1000).toISOString();
       const medRes = await client.query(
         `SELECT p50_ms FROM latency_readings
          WHERE site_id = $1 AND recorded_at > $2`,
-        [site_id, window15]
+        [canonicalSiteId, window15]
       );
       const siteMedian = median(medRes.rows.map(r => parseFloat(r.p50_ms)));
       const isOutlier = siteMedian !== null && parseFloat(p50_ms) > 2 * siteMedian;
@@ -186,19 +241,20 @@ router.post('/latency', latencyLimiter, async (req, res, next) => {
       const spreadRes = await client.query(
         `SELECT MAX(p50_ms) - MIN(p50_ms) AS spread FROM latency_readings
          WHERE site_id = $1 AND recorded_at > $2`,
-        [site_id, window15]
+        [canonicalSiteId, window15]
       );
       const spread_ms = spreadRes.rows[0].spread ? parseFloat(spreadRes.rows[0].spread) : 0;
 
       await client.query(
         `INSERT INTO latency_readings (device_id, site_id, recorded_at, p50_ms, p95_ms, spread_ms, is_outlier)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [device_id, site_id, timestamp_utc || new Date().toISOString(),
+        [device_id, canonicalSiteId, timestamp_utc || new Date().toISOString(),
           p50_ms, p95_ms, spread_ms, isOutlier]
       );
 
-      const cached = currentSignal.get(String(site_id)) || {};
-      currentSignal.set(String(site_id), { ...cached, spread_ms });
+      const cached = currentSignal.get(String(canonicalSiteId)) || {};
+      currentSignal.set(String(canonicalSiteId), { ...cached, spread_ms });
+      await markIngestSuccess(client, device_id, timestamp_utc || new Date().toISOString());
 
     } finally {
       client.release();
@@ -213,14 +269,19 @@ router.post('/health', healthLimiter, async (req, res, next) => {
   try {
     const required = ['device_sn', 'site_id'];
     if (!require400(res, req.body, required)) return;
+    if (!enforceAgentSiteScope(req, res, req.body.site_id)) return;
 
     const { device_sn, site_id, timestamp_utc,
       battery_pct, battery_health_pct, disk_free_gb,
-      disk_total_gb, disk_usage_pct, ram_used_mb, ram_total_mb } = req.body;
+      disk_total_gb, disk_usage_pct, ram_used_mb, ram_total_mb, payload_id } = req.body;
 
     const client = await pool.connect();
     try {
       const device_id = await autoRegisterDevice(client, device_sn, site_id, null);
+      if (await isDuplicatePayload(client, 'health', device_id, payload_id)) {
+        return res.status(200).json({ ok: true, duplicate: true });
+      }
+      const canonicalSiteId = await getCanonicalSiteId(client, device_id, site_id);
 
       await client.query(
         `INSERT INTO device_health
@@ -231,6 +292,12 @@ router.post('/health', healthLimiter, async (req, res, next) => {
           battery_pct, battery_health_pct, disk_free_gb,
           disk_total_gb, disk_usage_pct || null, ram_used_mb, ram_total_mb]
       );
+      await markIngestSuccess(client, device_id, timestamp_utc || new Date().toISOString());
+
+      // Keep device site canonical for downstream UI/status queries
+      if (canonicalSiteId != null) {
+        await client.query(`UPDATE devices SET site_id = $1 WHERE id = $2`, [canonicalSiteId, device_id]);
+      }
     } finally {
       client.release();
     }
@@ -242,12 +309,25 @@ router.post('/health', healthLimiter, async (req, res, next) => {
 // ── POST /ingest/usage ────────────────────────────────────────────────────────
 router.post('/usage', usageLimiter, async (req, res, next) => {
   try {
-    const { device_sn, site_id, date, bytes_down_delta, bytes_up_delta } = req.body;
+    const {
+      device_sn, site_id, date, bytes_down_delta, bytes_up_delta,
+      counter_reset_detected, payload_id,
+    } = req.body;
     if (!require400(res, req.body, ['device_sn', 'site_id', 'date'])) return;
+    if (!enforceAgentSiteScope(req, res, site_id)) return;
 
     const client = await pool.connect();
     try {
       const device_id = await autoRegisterDevice(client, device_sn, site_id, null);
+      if (await isDuplicatePayload(client, 'usage', device_id, payload_id)) {
+        return res.status(200).json({ ok: true, duplicate: true });
+      }
+      const canonicalSiteId = await getCanonicalSiteId(client, device_id, site_id);
+
+      if (counter_reset_detected === true) {
+        await markIngestSuccess(client, device_id, new Date().toISOString());
+        return res.status(202).json({ ok: true, skipped: 'counter_reset_detected' });
+      }
 
       await client.query(
         `INSERT INTO data_usage (device_id, site_id, date, bytes_down, bytes_up)
@@ -256,9 +336,57 @@ router.post('/usage', usageLimiter, async (req, res, next) => {
          DO UPDATE SET
            bytes_down = data_usage.bytes_down + EXCLUDED.bytes_down,
            bytes_up   = data_usage.bytes_up   + EXCLUDED.bytes_up`,
-        [device_id, site_id, date,
+        [device_id, canonicalSiteId, date,
           bytes_down_delta || 0, bytes_up_delta || 0]
       );
+      await markIngestSuccess(client, device_id, new Date().toISOString());
+    } finally {
+      client.release();
+    }
+
+    res.status(201).json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ── POST /ingest/agent-health ────────────────────────────────────────────────
+router.post('/agent-health', agentHealthLimiter, async (req, res, next) => {
+  try {
+    const required = ['device_sn', 'site_id'];
+    if (!require400(res, req.body, required)) return;
+    if (!enforceAgentSiteScope(req, res, req.body.site_id)) return;
+
+    const {
+      device_sn, site_id, timestamp_utc, queue_depth, oldest_queue_age_sec,
+      wifi_adapter_count, agent_version, run_id, last_error, last_success_at, payload_id,
+    } = req.body;
+
+    const client = await pool.connect();
+    try {
+      const device_id = await autoRegisterDevice(client, device_sn, site_id, null);
+      if (await isDuplicatePayload(client, 'agent-health', device_id, payload_id)) {
+        return res.status(200).json({ ok: true, duplicate: true });
+      }
+      const canonicalSiteId = await getCanonicalSiteId(client, device_id, site_id);
+
+      await client.query(
+        `INSERT INTO agent_health_snapshots
+          (device_id, site_id, recorded_at, queue_depth, oldest_queue_age_sec,
+           wifi_adapter_count, agent_version, run_id, last_error, last_success_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          device_id,
+          canonicalSiteId,
+          timestamp_utc || new Date().toISOString(),
+          queue_depth ?? null,
+          oldest_queue_age_sec ?? null,
+          wifi_adapter_count ?? null,
+          agent_version || null,
+          run_id || null,
+          last_error || null,
+          last_success_at || null,
+        ]
+      );
+      await markIngestSuccess(client, device_id, new Date().toISOString());
     } finally {
       client.release();
     }
