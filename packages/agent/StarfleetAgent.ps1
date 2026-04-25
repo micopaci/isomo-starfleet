@@ -419,6 +419,65 @@ function Invoke-StarlinkHttpHandle {
     return $null
 }
 
+function Get-CurlCommand {
+    $cmd = Get-Command "curl.exe" -ErrorAction SilentlyContinue
+    if ($null -ne $cmd) {
+        return $cmd.Source
+    }
+    return $null
+}
+
+function Invoke-StarlinkHttpHandleWithCurl {
+    param(
+        [string[]]$RequestBodies,
+        [string]$ProbeName = "probe"
+    )
+
+    $curl = Get-CurlCommand
+    if ([string]::IsNullOrWhiteSpace($curl)) {
+        return $null
+    }
+
+    $urls = @(
+        "http://192.168.100.1:9201/SpaceX.API.Device.Device/Handle",
+        "http://dishy.starlink.com:9201/SpaceX.API.Device.Device/Handle",
+        "http://192.168.100.1:9200/SpaceX.API.Device.Device/Handle"
+    )
+    $modes = @("--http2-prior-knowledge", "--http1.1", "--http0.9")
+    $lastError = $null
+
+    foreach ($url in $urls) {
+        foreach ($body in @($RequestBodies)) {
+            if ([string]::IsNullOrWhiteSpace($body)) {
+                continue
+            }
+
+            foreach ($mode in $modes) {
+                try {
+                    $raw = & $curl "--silent" "--show-error" "--max-time" "8" $mode `
+                        "-H" "Content-Type: application/json" `
+                        "-H" "Accept: application/json" `
+                        "--data" $body `
+                        $url 2>$null
+                    if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                        $obj = Try-ParseJsonFromText -Text ($raw | Out-String)
+                        if ($null -ne $obj) {
+                            return $obj
+                        }
+                    }
+                } catch {
+                    $lastError = $_.Exception.Message
+                }
+            }
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($lastError)) {
+        Write-Log "WARN" "HTTP fallback $ProbeName curl probes failed: $lastError"
+    }
+    return $null
+}
+
 function Get-StarlinkHttpStatus {
     $statusBodies = @(
         '{"get_status":{}}',
@@ -432,6 +491,15 @@ function Get-StarlinkHttpStatus {
         '{"dishGetLocation":{}}',
         '{"request":{"get_location":{}}}'
     )
+
+    $statusObj = Invoke-StarlinkHttpHandleWithCurl -RequestBodies $statusBodies -ProbeName "status"
+    $locationObj = Invoke-StarlinkHttpHandleWithCurl -RequestBodies $locationBodies -ProbeName "location"
+    if ($null -ne $statusObj -or $null -ne $locationObj) {
+        return [pscustomobject]@{
+            status = $statusObj
+            location = $locationObj
+        }
+    }
 
     $statusObj = Invoke-StarlinkHttpHandle -RequestBodies $statusBodies -ProbeName "status"
     $locationObj = Invoke-StarlinkHttpHandle -RequestBodies $locationBodies -ProbeName "location"
