@@ -7,6 +7,7 @@ require('dotenv').config();
 
 const express = require('express');
 const http    = require('http');
+const fs      = require('fs');
 const path    = require('path');
 const pool    = require('./db');
 
@@ -27,6 +28,50 @@ const { scheduleUsageArchive }      = require('./services/usageArchive');
 
 const app    = express();
 const server = http.createServer(app);
+
+async function runStartupMigrations() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        filename   TEXT PRIMARY KEY,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    const dir = path.join(__dirname, 'migrations');
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
+    const appliedRes = await client.query('SELECT filename FROM schema_migrations');
+    const applied = new Set(appliedRes.rows.map(r => r.filename));
+    const pending = files.filter(f => !applied.has(f));
+
+    if (pending.length === 0) {
+      console.log('[Migrate] No pending migrations.');
+      return;
+    }
+
+    console.log(`[Migrate] Applying ${pending.length} pending migration(s)...`);
+    for (const file of pending) {
+      const sql = fs.readFileSync(path.join(dir, file), 'utf8');
+      console.log(`[Migrate] -> ${file}`);
+      await client.query('BEGIN');
+      try {
+        await client.query(sql);
+        await client.query(
+          'INSERT INTO schema_migrations (filename) VALUES ($1)',
+          [file]
+        );
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw new Error(`${file}: ${err.message}`);
+      }
+    }
+    console.log('[Migrate] Complete.');
+  } finally {
+    client.release();
+  }
+}
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(express.json());
@@ -111,21 +156,31 @@ app.use((err, req, res, next) => {
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 wsService.init(server);
 
-// ── Cron jobs ─────────────────────────────────────────────────────────────────
-scheduleCron();                          // Daily signal score @ 23:55
-scheduleSpaceWeatherCron();              // NOAA K-index sync every 3 hours
-scheduleOrbitalCron();                   // CelesTrak TLE refresh daily @ 02:00
-scheduleWeatherCron();                   // Open-Meteo rainfall sync daily @ 01:00
-scheduleWatchdog();                      // Stale device check every 10 min
-scheduleWeeklyDigest();                  // Email digest Mondays @ 08:00 Kigali
-scheduleIngestDedupPrune();              // Cleanup dedupe keys (default 7d retention)
-scheduleUsageArchive();                  // Move data_usage older than 30d to archive
-graphClient.startTriggerPoller();
-
 // ── Start ─────────────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Starlink Fleet Monitor backend running on port ${PORT}`);
-  console.log(`Dashboard: http://localhost:${PORT}/`);
-  console.log(`Health:    http://localhost:${PORT}/health`);
-});
+async function startServer() {
+  try {
+    await runStartupMigrations();
+
+    scheduleCron();                          // Daily signal score @ 23:55
+    scheduleSpaceWeatherCron();              // NOAA K-index sync every 3 hours
+    scheduleOrbitalCron();                   // CelesTrak TLE refresh daily @ 02:00
+    scheduleWeatherCron();                   // Open-Meteo rainfall sync daily @ 01:00
+    scheduleWatchdog();                      // Stale device check every 10 min
+    scheduleWeeklyDigest();                  // Email digest Mondays @ 08:00 Kigali
+    scheduleIngestDedupPrune();              // Cleanup dedupe keys (default 7d retention)
+    scheduleUsageArchive();                  // Move data_usage older than 30d to archive
+    graphClient.startTriggerPoller();
+
+    const PORT = process.env.PORT || 3000;
+    server.listen(PORT, () => {
+      console.log(`Starlink Fleet Monitor backend running on port ${PORT}`);
+      console.log(`Dashboard: http://localhost:${PORT}/`);
+      console.log(`Health:    http://localhost:${PORT}/health`);
+    });
+  } catch (err) {
+    console.error('[Startup] Migration/bootstrap failed:', err.message);
+    process.exit(1);
+  }
+}
+
+startServer();
