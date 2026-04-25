@@ -11,11 +11,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
-  RefreshControl, StyleSheet, ScrollView, ActivityIndicator,
+  RefreshControl, StyleSheet, ScrollView,
   useColorScheme,
 } from 'react-native';
+import { Site, siteStatus } from '@starfleet/shared';
 import { getApi } from '../store/auth';
-import { light, dark, Colors, scoreColor, latencyColor } from '../theme/colors';
+import { light, dark, Colors } from '../theme/colors';
 import { DishRow } from '../components/DishRow';
 import { Skeleton } from '../components/Skeleton';
 
@@ -70,11 +71,27 @@ export function StarlinksScreen() {
     try {
       const api = getApi();
       if (!api) throw new Error('Not connected');
-      // Fetch from /api/starlinks (list of all dishes with live metrics)
-      const data = await (api as any).get('/starlinks').catch(() => null);
-      if (Array.isArray(data)) {
-        setDishes(data);
-      }
+      // Backend exposes dish metrics on /api/sites.
+      const sites = await api.getSites();
+      const mapped = sites.map((s: Site & {
+        download_mbps?: number | null;
+        upload_mbps?: number | null;
+      }): Dish => {
+        const baseStatus = siteStatus(s);
+        return {
+          id: s.id,
+          site_id: s.id,
+          site_name: s.name ?? null,
+          serial: s.starlink_sn || s.kit_id || `SITE-${s.id}`,
+          score: s.score ?? null,
+          download_mbps: s.download_mbps ?? null,
+          upload_mbps: s.upload_mbps ?? null,
+          pop_latency_ms: s.signal?.pop_latency_ms ?? null,
+          status: baseStatus === 'dark' ? 'offline' : baseStatus,
+          last_seen: s.signal?.updatedAt ?? null,
+        };
+      });
+      setDishes(mapped);
     } catch (e: any) {
       setError(e?.message ?? 'Failed to load');
     } finally {

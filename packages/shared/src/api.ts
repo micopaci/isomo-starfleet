@@ -22,6 +22,10 @@ export class StarfleetApi {
     this.onAuthError = onAuthError;
   }
 
+  private normalizePath(path: string): string {
+    return path.startsWith('/') ? path : `/${path}`;
+  }
+
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const token = this.getToken();
     const res = await fetch(`${this.baseUrl}${path}`, {
@@ -65,6 +69,19 @@ export class StarfleetApi {
     }
 
     return res.text();
+  }
+
+  /** Generic GET helper for app-specific endpoints not modeled below. */
+  get<T>(path: string): Promise<T> {
+    return this.request<T>(this.normalizePath(path));
+  }
+
+  /** Generic POST helper for app-specific endpoints not modeled below. */
+  post<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(this.normalizePath(path), {
+      method: 'POST',
+      body: body == null ? undefined : JSON.stringify(body),
+    });
   }
 
   // ── Sites ──────────────────────────────────────────────────────────────────
@@ -145,13 +162,16 @@ export class StarfleetApi {
 // ── Utility: trigger browser download from CSV string ────────────────────────
 
 export function downloadCsv(csv: string, filename: string): void {
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
+  const g = globalThis as any;
+  if (!g.URL?.createObjectURL || !g.document?.createElement) return;
+
+  const blob = new Blob([csv], { type: 'text/csv', lastModified: Date.now() });
+  const url  = g.URL.createObjectURL(blob);
+  const a    = g.document.createElement('a');
   a.href     = url;
   a.download = filename;
-  document.body.appendChild(a);
+  g.document.body.appendChild(a);
   a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  g.document.body.removeChild(a);
+  g.URL.revokeObjectURL(url);
 }

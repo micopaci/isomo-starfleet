@@ -1,0 +1,16 @@
+# Exclude the stale copied RN source tree under the Android native project.
+# These files are git-removed but still exist on disk; they are not the
+# active source of truth (packages/mobile/src/ is).
+android/src/
+
+# Exclude the local shared shim (plain JS, not TS — has its own lint config)
+shared/
+
+# Exclude root-level config files that eslint picks up unnecessarily
+babel.config.js
+index.js
+react-native.config.js
+metro.config.js
+android/babel.config.js
+android/metro.config.js
+android/react-native.config.js

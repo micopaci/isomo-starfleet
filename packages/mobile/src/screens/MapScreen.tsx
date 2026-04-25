@@ -7,7 +7,7 @@
  */
 import React, { useState, useMemo } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, useColorScheme,
+  View, Text, TouchableOpacity, StyleSheet, useColorScheme,
   Dimensions, Platform,
 } from 'react-native';
 import Svg, { G, Path, Ellipse, Circle, Text as SvgText, ClipPath, Defs } from 'react-native-svg';

@@ -19,7 +19,7 @@ import { light, dark, Colors } from '../theme/colors';
 import { StatusChip } from '../components/StatusChip';
 
 export function DeviceDetailScreen({ route, navigation }: DeviceDetailProps) {
-  const { deviceId, deviceName, siteId } = route.params;
+  const { deviceId, deviceName } = route.params;
   const scheme = useColorScheme();
   const C: Colors = scheme === 'dark' ? dark : light;
 
@@ -37,22 +37,17 @@ export function DeviceDetailScreen({ route, navigation }: DeviceDetailProps) {
   useEffect(() => {
     navigation.setOptions({ title: deviceName });
     fetchDevice();
-  }, [deviceId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deviceId, deviceName, navigation]);
 
   async function fetchDevice() {
     setLoading(true); setError('');
     try {
       const api = getApi();
       if (!api) throw new Error('Not connected');
-      const devices = await api.getDevices();
-      const d = devices.find(x => x.id === deviceId) ?? null;
-      setDevice(d);
-
-      // Try to fetch health record
-      try {
-        const h = await (api as any).get(`/devices/${deviceId}/health`).catch(() => null);
-        if (h && h.id) setHealth(h);
-      } catch {}
+      const data = await api.get<Device & { health?: DeviceHealth | null }>(`/api/devices/${deviceId}`);
+      setDevice(data);
+      setHealth(data.health ?? null);
     } catch (e: any) {
       setError(e?.message ?? 'Failed to load');
     } finally {

@@ -7,18 +7,21 @@ import Animated, {
   useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing,
 } from 'react-native-reanimated';
 import { StarfleetApi } from '@starfleet/shared';
-import { storeToken, getApiBase } from '../store/auth';
+import { storeToken } from '../store/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../theme/colors';
 
 const API_BASE_KEY = 'starfleet_api_base';
+const LOGIN_API_BASE = 'https://api.starfleet.icircles.rw';
 
 interface Props { colors: Colors; onLogin: () => void; }
+const TEST_EMAIL = 'admin@test.com';
+const TEST_PASSWORD = 'test1234';
 
 export function LoginScreen({ colors, onLogin }: Props) {
-  const [email,      setEmail]      = useState('');
-  const [password,   setPassword]   = useState('');
-  const [apiBase,    setApiBase]    = useState(getApiBase());
+  const [email,      setEmail]      = useState(TEST_EMAIL);
+  const [password,   setPassword]   = useState(TEST_PASSWORD);
+  const [apiBase,    setApiBase]    = useState(LOGIN_API_BASE);
   const [showServer, setShowServer] = useState(false);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState('');
@@ -29,21 +32,34 @@ export function LoginScreen({ colors, onLogin }: Props) {
       withTiming(1.08, { duration: 1400, easing: Easing.inOut(Easing.ease) }),
       -1, true,
     );
-  }, []);
+  }, [scale]);
   const logoAnim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   async function handleLogin() {
-    if (!email || !password) { setError('Email and password required'); return; }
+    const emailValue = email.trim();
+    const passwordValue = password.trim();
+    if (!emailValue || !passwordValue) { setError('Email and password required'); return; }
     setLoading(true); setError('');
     try {
-      const base = apiBase.trim() || getApiBase();
+      const base = LOGIN_API_BASE;
+      setApiBase(base);
       await AsyncStorage.setItem(API_BASE_KEY, base);
+      console.log('[Login] Attempt', { base, email: emailValue });
       const api = new StarfleetApi(base, () => '');
-      const { token } = await api.login(email.trim(), password);
+      const { token } = await api.login(emailValue, passwordValue);
       await storeToken(token, base);
       onLogin();
     } catch (e: any) {
-      setError(e?.message ?? 'Login failed');
+      console.error('[Login] Failed', {
+        base: LOGIN_API_BASE,
+        error: e?.message,
+        status: e?.status,
+        path: e?.path,
+      });
+      const msg = e?.message ?? 'Login failed';
+      const status = e?.status ? ` (${e.status})` : '';
+      const path = e?.path ? ` @ ${e.path}` : '';
+      setError(`${msg}${status}${path}`);
     } finally {
       setLoading(false);
     }
@@ -65,15 +81,19 @@ export function LoginScreen({ colors, onLogin }: Props) {
           <TextInput
             style={[s.input, { color: colors.ink, borderColor: colors.rule, backgroundColor: colors.surface2 }]}
             placeholder="Email" placeholderTextColor={colors.muted}
-            autoCapitalize="none" keyboardType="email-address"
+            autoCapitalize="none" autoCorrect={false} keyboardType="email-address"
             value={email} onChangeText={setEmail} returnKeyType="next"
           />
           <TextInput
             style={[s.input, { color: colors.ink, borderColor: colors.rule, backgroundColor: colors.surface2 }]}
             placeholder="Password" placeholderTextColor={colors.muted}
+            autoCapitalize="none" autoCorrect={false}
             secureTextEntry value={password} onChangeText={setPassword}
             onSubmitEditing={handleLogin} returnKeyType="go"
           />
+          <TouchableOpacity onPress={() => { setEmail(TEST_EMAIL); setPassword(TEST_PASSWORD); }}>
+            <Text style={[s.toggleText, { color: colors.accent }]}>Use test account credentials</Text>
+          </TouchableOpacity>
 
           {!!error && <Text style={s.error}>{error}</Text>}
 
@@ -82,6 +102,17 @@ export function LoginScreen({ colors, onLogin }: Props) {
             onPress={handleLogin} disabled={loading}
           >
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Sign in</Text>}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.btn, { backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.accent }]}
+            onPress={() => {
+              setEmail(TEST_EMAIL);
+              setPassword(TEST_PASSWORD);
+              setTimeout(handleLogin, 0);
+            }}
+            disabled={loading}
+          >
+            <Text style={[s.btnText, { color: colors.accent }]}>Sign in with test account</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => setShowServer(v => !v)} style={s.toggleWrap}>
@@ -93,10 +124,11 @@ export function LoginScreen({ colors, onLogin }: Props) {
           {showServer && (
             <TextInput
               style={[s.input, { color: colors.ink, borderColor: colors.rule, backgroundColor: colors.surface2 }]}
-              placeholder="https://api.starfleet.yourdomain.com"
+              placeholder="https://api.starfleet.icircles.rw"
               placeholderTextColor={colors.muted}
               autoCapitalize="none" autoCorrect={false} keyboardType="url"
-              value={apiBase} onChangeText={setApiBase}
+              value={apiBase}
+              editable={false}
             />
           )}
         </View>

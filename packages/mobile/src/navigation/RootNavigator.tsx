@@ -35,12 +35,6 @@ export function RootNavigator({ authed, colors, onLogin, onLogout, role, email }
           border:       colors.rule,
           notification: colors.accent,
         },
-        fonts: {
-          regular: { fontFamily: 'System', fontWeight: '400' },
-          medium:  { fontFamily: 'System', fontWeight: '500' },
-          bold:    { fontFamily: 'System', fontWeight: '700' },
-          heavy:   { fontFamily: 'System', fontWeight: '900' },
-        },
       }}
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { TabParamList }      from './types';
 import { SitesStack }        from './SitesStack';
@@ -30,8 +30,8 @@ export function AppNavigator({ colors, onLogout, role, email }: Props) {
       try {
         const api = getApi();
         if (!api) return;
-        const changes: any[] = await api.get('/site-changes');
-        if (!cancelled) setAlertCount(changes.filter((c: any) => !c.acknowledged_at).length);
+        const changes = await api.get<Array<{ acknowledged_at: string | null }>>('/api/site-changes');
+        if (!cancelled) setAlertCount(changes.filter(c => !c.acknowledged_at).length);
       } catch { /* silent */ }
     }
     poll();
@@ -105,5 +105,5 @@ export function AppNavigator({ colors, onLogout, role, email }: Props) {
 }
 
 function TabIcon({ icon, color }: { icon: string; color: string }) {
-  return <Text style={{ fontSize: 20 }}>{icon}</Text>;
+  return <Text style={{ fontSize: 20, color }}>{icon}</Text>;
 }

@@ -35,6 +35,11 @@ export default function App() {
     setEmail(payload?.email ?? payload?.sub ?? '');
   }
 
+  const handleAuthError = useCallback(async () => {
+    await clearToken();
+    setBoot('guest');
+  }, []);
+
   useEffect(() => {
     (async () => {
       const hasToken = await loadStoredCredentials();
@@ -46,12 +51,8 @@ export default function App() {
         setBoot('guest');
       }
     })();
-  }, []);
-
-  const handleAuthError = useCallback(async () => {
-    await clearToken();
-    setBoot('guest');
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleAuthError]);
 
   const handleLogin = useCallback(() => {
     initClients(handleAuthError);

@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, RefreshControl, StyleSheet, useColorScheme,
 } from 'react-native';
 import { useFleetSummary } from '@starfleet/shared';
-import { light, dark, Colors, scoreColor } from '../theme/colors';
+import { light, dark, Colors } from '../theme/colors';
 import { StatCard }      from '../components/StatCard';
 import { SiteCard }      from '../components/SiteCard';
 import { Skeleton }      from '../components/Skeleton';
@@ -41,13 +41,13 @@ export function OverviewScreen() {
 
   // Space weather
   useEffect(() => {
-    getApi()?.get('/intel/space-weather').then((d: any) => {
-      setSpaceKp(d?.kp_index ?? null);
-      setSpaceCondition(d?.condition ?? '');
+    getApi()?.get<Array<{ k_index: number | null; condition_label: string | null }>>('/api/intel/space-weather').then((rows) => {
+      const latest = rows?.[0];
+      setSpaceKp(latest?.k_index ?? null);
+      setSpaceCondition(latest?.condition_label ?? '');
     }).catch(() => {});
   }, []);
 
-  const alertCount = sites.filter((s: any) => !s.acknowledged_at).length;
   const sortedSites = [...sites].sort((a, b) =>
     Number((b as any).score ?? 0) - Number((a as any).score ?? 0)
   );

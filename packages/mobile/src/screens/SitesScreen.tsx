@@ -9,7 +9,7 @@ import { Skeleton }      from '../components/Skeleton';
 import { OfflineBanner } from '../components/OfflineBanner';
 import { SitesListProps } from '../navigation/types';
 import { saveFleet, loadFleet, ageLabel } from '../store/cache';
-import { light, dark, Colors, scoreColor } from '../theme/colors';
+import { light, dark, Colors } from '../theme/colors';
 
 type SortKey = 'name' | 'score' | 'status';
 
@@ -73,15 +73,15 @@ export function SitesScreen({ navigation }: SitesListProps) {
     });
   }, [displaySites, query, sort]);
 
-  function onPressSite(siteId: number) {
+  const onPressSite = useCallback((siteId: number) => {
     navigation.navigate('SiteDetail', { siteId });
-  }
+  }, [navigation]);
 
   const renderItem = useCallback(
     ({ item }: { item: Site }) => (
       <SiteCard site={item} onPress={() => onPressSite(item.id)} colors={C} />
     ),
-    [C],
+    [C, onPressSite],
   );
 
   return (

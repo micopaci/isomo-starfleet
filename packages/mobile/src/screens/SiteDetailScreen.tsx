@@ -4,18 +4,17 @@ import {
   StyleSheet, ActivityIndicator, useColorScheme,
 } from 'react-native';
 import {
-  useSite, useSignalHistory, predictCause,
+  useSite, useSignalHistory, predictCause, computeSignalScore,
 } from '@starfleet/shared';
 import { ScorePill }     from '../components/ScorePill';
 import { MetricTile }    from '../components/MetricTile';
 import { SparkLine }     from '../components/SparkLine';
 import { StatusChip }    from '../components/StatusChip';
 import { OfflineBanner } from '../components/OfflineBanner';
-import { DishRow }       from '../components/DishRow';
 import { SiteDetailProps } from '../navigation/types';
 import { saveSite, loadSite, ageLabel } from '../store/cache';
 import { getApi, getToken, decodeJwtPayload } from '../store/auth';
-import { light, dark, Colors, scoreColor } from '../theme/colors';
+import { light, dark, Colors } from '../theme/colors';
 
 export function SiteDetailScreen({ route, navigation }: SiteDetailProps) {
   const { siteId } = route.params;
@@ -84,14 +83,22 @@ export function SiteDetailScreen({ route, navigation }: SiteDetailProps) {
   if (!displaySite) return null;
 
   const sig   = displaySite.signal;
-  const cause = predictCause(sig ?? null);
+  const scoreInput = sig
+    ? {
+        ping_drop_pct: sig.ping_drop_pct ?? undefined,
+        obstruction_pct: sig.obstruction_pct ?? undefined,
+        snr: sig.snr ?? undefined,
+        pop_latency_ms: sig.pop_latency_ms ?? undefined,
+      }
+    : {};
+  const cause = predictCause(scoreInput);
 
   const onlineDevices = displaySite.devices.filter(d =>
     d.last_seen && Date.now() - new Date(d.last_seen).getTime() < 10 * 60_000,
   ).length;
   const totalDevices = displaySite.devices.length;
 
-  const scoreVal = displaySite.score ?? sig?.score ?? null;
+  const scoreVal = displaySite.score ?? (sig ? computeSignalScore(scoreInput) : null);
 
   // Site status derived from score
   const siteStatus: 'online' | 'degraded' | 'offline' =

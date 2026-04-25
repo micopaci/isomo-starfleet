@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity,
+  View, Text, TouchableOpacity,
   ScrollView, StyleSheet, useColorScheme, Alert,
 } from 'react-native';
 import { Colors, light, dark } from '../theme/colors';
@@ -8,6 +8,7 @@ import { clearToken, getApiBase, getToken, decodeJwtPayload } from '../store/aut
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_KEY = 'starfleet_api_base';
+const PINNED_API_BASE = 'https://api.starfleet.icircles.rw';
 
 interface Props {
   colors?:  Colors;
@@ -20,15 +21,13 @@ export function SettingsScreen({ colors, onLogout, role, email }: Props) {
   const scheme = useColorScheme();
   const C: Colors = colors ?? (scheme === 'dark' ? dark : light);
 
-  const [apiBase,    setApiBase]    = useState(getApiBase());
-  const [editingApi, setEditingApi] = useState(false);
+  const [apiBase,    setApiBase]    = useState(getApiBase() || PINNED_API_BASE);
   const [savedMsg,   setSavedMsg]   = useState('');
 
   async function handleSaveApiBase() {
-    if (!apiBase.trim()) return;
-    await AsyncStorage.setItem(API_BASE_KEY, apiBase.trim());
+    await AsyncStorage.setItem(API_BASE_KEY, PINNED_API_BASE);
+    setApiBase(PINNED_API_BASE);
     setSavedMsg('Saved — restart the app to reconnect.');
-    setEditingApi(false);
     setTimeout(() => setSavedMsg(''), 4000);
   }
 
@@ -69,31 +68,14 @@ export function SettingsScreen({ colors, onLogout, role, email }: Props) {
 
       {/* Server */}
       <Section title="Server" C={C}>
-        {editingApi ? (
-          <View style={styles.inputRow}>
-            <TextInput
-              style={[styles.input, { color: C.ink, borderColor: C.rule, backgroundColor: C.surface2 }]}
-              value={apiBase}
-              onChangeText={setApiBase}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              placeholder="https://your-backend.com"
-              placeholderTextColor={C.muted}
-            />
-            <TouchableOpacity
-              style={[styles.saveBtn, { backgroundColor: C.accent }]}
-              onPress={handleSaveApiBase}
-            >
-              <Text style={styles.saveBtnText}>Save</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity onPress={() => setEditingApi(true)}>
-            <InfoRow label="API Base URL" value={apiBase || '—'} C={C} />
-            <Text style={[styles.editHint, { color: C.accent }]}>Tap to edit</Text>
-          </TouchableOpacity>
-        )}
+        <InfoRow label="API Base URL" value={apiBase || PINNED_API_BASE} C={C} />
+        <Text style={[styles.editHint, { color: C.muted }]}>Pinned to production backend</Text>
+        <TouchableOpacity
+          style={[styles.saveBtn, { backgroundColor: C.accent, marginTop: 6, alignSelf: 'flex-start' }]}
+          onPress={handleSaveApiBase}
+        >
+          <Text style={styles.saveBtnText}>Re-apply URL</Text>
+        </TouchableOpacity>
         {!!savedMsg && (
           <Text style={[styles.savedMsg, { color: C.ok }]}>{savedMsg}</Text>
         )}
