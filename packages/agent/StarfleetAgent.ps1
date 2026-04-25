@@ -511,6 +511,10 @@ function Get-StarlinkHttpStatus {
     }
 
     $urls = @(
+        "http://192.168.100.1/api/status",
+        "http://dishy.starlink.com/api/status",
+        "http://192.168.100.1/api/device/status",
+        "http://dishy.starlink.com/api/device/status",
         "http://192.168.100.1/",
         "http://192.168.100.1/status",
         "http://192.168.100.1/support/diagnostics",
