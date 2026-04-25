@@ -1,4 +1,21 @@
 rootProject.name = 'StarfleetMonitor'
-apply from: file("../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesSettingsGradle(settings)
+
+def projectNodeModules = file("../node_modules")
+def workspaceNodeModules = projectNodeModules
+def projectCliAndroidDir = new File(projectNodeModules, "@react-native-community/cli-platform-android")
+def projectReactNativeCliAndroidDir = new File(projectNodeModules, "react-native/node_modules/@react-native-community/cli-platform-android")
+def workspaceCliAndroidDir = new File(workspaceNodeModules, "@react-native-community/cli-platform-android")
+def cliAndroidDir = new File(projectCliAndroidDir, "native_modules.gradle").exists()
+  ? projectCliAndroidDir
+  : new File(projectReactNativeCliAndroidDir, "native_modules.gradle").exists()
+    ? projectReactNativeCliAndroidDir
+    : workspaceCliAndroidDir
+def gradlePluginDir = new File(projectNodeModules, "@react-native/gradle-plugin").exists()
+  ? new File(projectNodeModules, "@react-native/gradle-plugin")
+  : new File(workspaceNodeModules, "@react-native/gradle-plugin")
+
+apply from: new File(cliAndroidDir, "native_modules.gradle")
+applyNativeModulesSettingsGradle(settings)
+
 include ':app'
-includeBuild('../node_modules/@react-native/gradle-plugin')
+includeBuild(gradlePluginDir)

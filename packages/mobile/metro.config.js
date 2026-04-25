@@ -2,12 +2,10 @@ const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 const path = require('path');
 
 const mobileRoot = __dirname;
-const monorepoRoot = path.resolve(mobileRoot, '../..');
 
 const config = {
   watchFolders: [
-    monorepoRoot,
-    path.resolve(mobileRoot, '../shared'),
+    path.resolve(mobileRoot, 'shared'),
   ],
   resolver: {
     // Explicitly force React and React-Native to the mobile node_modules
@@ -21,7 +19,6 @@ const config = {
     }),
     nodeModulesPaths: [
       path.resolve(mobileRoot, 'node_modules'),
-      path.resolve(monorepoRoot, 'node_modules'),
     ],
   },
 };

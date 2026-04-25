@@ -32,11 +32,11 @@
     "react-native-svg": "15.2.0"
   },
   "scripts": {
-    "dev": "concurrently -k -n BACKEND,DESKTOP -c cyan,magenta \"npm run start --workspace=packages/backend\" \"npm run dev --workspace=packages/desktop\"",
-    "backend": "npm run start --workspace=packages/backend",
-    "backend:dev": "npm run dev --workspace=packages/backend",
-    "desktop": "npm run dev --workspace=packages/desktop",
-    "migrate": "npm run migrate --workspace=packages/backend"
+    "dev": "concurrently -k -n BACKEND,DESKTOP -c cyan,magenta \"yarn workspace @starfleet/backend start\" \"yarn workspace @starfleet/desktop dev\"",
+    "backend": "yarn workspace @starfleet/backend start",
+    "backend:dev": "yarn workspace @starfleet/backend dev",
+    "desktop": "yarn workspace @starfleet/desktop dev",
+    "migrate": "yarn workspace @starfleet/backend migrate"
   },
   "devDependencies": {
     "babel-plugin-module-resolver": "^5.0.3"

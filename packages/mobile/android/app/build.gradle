@@ -2,6 +2,22 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+project.ext.REACT_NATIVE_NODE_MODULES_DIR = file("../../node_modules/react-native")
+
+def projectNodeModules = file("../../node_modules")
+def workspaceNodeModules = projectNodeModules
+def projectCliAndroidDir = new File(projectNodeModules, "@react-native-community/cli-platform-android")
+def projectReactNativeCliAndroidDir = new File(projectNodeModules, "react-native/node_modules/@react-native-community/cli-platform-android")
+def workspaceCliAndroidDir = new File(workspaceNodeModules, "@react-native-community/cli-platform-android")
+def cliAndroidDir = new File(projectCliAndroidDir, "native_modules.gradle").exists()
+    ? projectCliAndroidDir
+    : new File(projectReactNativeCliAndroidDir, "native_modules.gradle").exists()
+        ? projectReactNativeCliAndroidDir
+        : workspaceCliAndroidDir
+def vectorIconsDir = new File(projectNodeModules, "react-native-vector-icons").exists()
+    ? new File(projectNodeModules, "react-native-vector-icons")
+    : new File(workspaceNodeModules, "react-native-vector-icons")
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -15,7 +31,8 @@ react {
     root = file("../../")
     reactNativeDir = file("../../node_modules/react-native")
     codegenDir = file("../../node_modules/@react-native/codegen")
-    cliFile = file("../../../node_modules/react-native/cli.js")
+    cliFile = file("../../node_modules/react-native/cli.js")
+    nodeExecutableAndArgs = ["/opt/homebrew/bin/node"]
 
     /* Variants */
     //   The list of variants to that are debuggable. For those we're going to
@@ -121,11 +138,12 @@ dependencies {
     }
 }
 
-apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
+apply from: new File(cliAndroidDir, "native_modules.gradle")
+applyNativeModulesAppBuildGradle(project)
 
 // Bundle MaterialCommunityIcons font so Icon components work out of the box.
 // Without this, vector icons render as empty squares on Android.
 project.ext.vectoricons = [
     iconFontNames: ['MaterialCommunityIcons.ttf', 'MaterialIcons.ttf']
 ]
-apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
+apply from: new File(vectorIconsDir, "fonts.gradle")

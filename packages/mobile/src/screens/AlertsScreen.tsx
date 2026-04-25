@@ -29,6 +29,16 @@ interface SiteChange {
   acknowledged_at: string | null;
 }
 
+interface SiteChangeRaw {
+  id: number;
+  detected_at: string;
+  acknowledged_at: string | null;
+  hostname: string | null;
+  from_site_name: string | null;
+  to_site_name: string | null;
+  distance_km: number | null;
+}
+
 interface StaleDevice {
   device_id:  number;
   site_id:    number;
@@ -74,8 +84,19 @@ export function AlertsScreen({ colors, role, onAlertCountChange }: Props) {
     try {
       const api = getApi();
       if (!api) throw new Error('Not connected');
-      const data = await (api as any).get('/site-changes').catch(() => []);
-      setChanges(Array.isArray(data) ? data : []);
+      const data = await api.get<SiteChangeRaw[]>('/api/site-changes').catch(() => []);
+      const mapped = Array.isArray(data)
+        ? data.map((r) => ({
+            id: r.id,
+            site_id: 0,
+            site_name: [r.from_site_name, r.to_site_name].filter(Boolean).join(' → ') || 'Site change',
+            change_type: 'location' as const,
+            description: `${r.hostname ?? 'Unknown device'} moved${r.distance_km != null ? ` (${r.distance_km.toFixed(2)} km)` : ''}`,
+            detected_at: r.detected_at,
+            acknowledged_at: r.acknowledged_at,
+          }))
+        : [];
+      setChanges(mapped);
     } catch (e: any) {
       setChangesError(e?.message ?? 'Failed to load alerts');
     } finally {
@@ -88,8 +109,18 @@ export function AlertsScreen({ colors, role, onAlertCountChange }: Props) {
     try {
       const api = getApi();
       if (!api) throw new Error('Not connected');
-      const data = await (api as any).getDevices('stale').catch(() => []);
-      setStale(Array.isArray(data) ? data : []);
+      const data = await api.getDevices('stale').catch(() => []);
+      const mapped = Array.isArray(data)
+        ? data.map((d) => ({
+            device_id: d.id,
+            site_id: d.site_id ?? 0,
+            hostname: d.hostname ?? null,
+            site_name: d.site_name ?? null,
+            stale_min: d.stale_min ?? 0,
+            last_seen: d.last_seen ?? null,
+          }))
+        : [];
+      setStale(mapped);
     } catch (e: any) {
       setStaleError(e?.message ?? 'Failed to load stale devices');
     } finally {
@@ -106,14 +137,14 @@ export function AlertsScreen({ colors, role, onAlertCountChange }: Props) {
   useEffect(() => {
     const unack = changes.filter(c => !c.acknowledged_at).length;
     onAlertCountChange?.(unack);
-  }, [changes]);
+  }, [changes, onAlertCountChange]);
 
   async function handleAck(id: number) {
     const api = getApi();
     if (!api) return;
     setAckingId(id);
     try {
-      await (api as any).post(`/site-changes/${id}/acknowledge`).catch(() => null);
+      await api.post(`/api/site-changes/${id}/ack`).catch(() => null);
       setChanges(prev =>
         prev.map(c => c.id === id ? { ...c, acknowledged_at: new Date().toISOString() } : c),
       );
