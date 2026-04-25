@@ -4,7 +4,7 @@
   "private": true,
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node migrate.js && node server.js",
     "migrate": "node migrate.js",
     "dev": "node --watch server.js",
     "agent:token": "node scripts/generate_agent_token.js"
