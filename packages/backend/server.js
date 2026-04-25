@@ -73,6 +73,135 @@ async function runStartupMigrations() {
   }
 }
 
+async function ensureRuntimeSchema() {
+  const client = await pool.connect();
+  try {
+    console.log('[SchemaGuard] Ensuring runtime schema compatibility...');
+    await client.query('BEGIN');
+
+    await client.query(`
+      ALTER TABLE devices
+      ADD COLUMN IF NOT EXISTS last_ingest_ok_at TIMESTAMPTZ
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ingest_payload_dedup (
+        id          BIGSERIAL PRIMARY KEY,
+        endpoint    TEXT NOT NULL,
+        device_id   INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+        payload_id  TEXT NOT NULL,
+        received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (endpoint, device_id, payload_id)
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_ingest_payload_dedup_received_at
+      ON ingest_payload_dedup(received_at)
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS site_move_candidates (
+        device_id         INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+        from_site_id      INTEGER REFERENCES sites(id) ON DELETE SET NULL,
+        to_site_id        INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+        first_seen_date   DATE NOT NULL,
+        last_seen_date    DATE NOT NULL,
+        seen_days         INTEGER NOT NULL DEFAULT 1,
+        last_reported_lat NUMERIC,
+        last_reported_lon NUMERIC,
+        last_distance_km  NUMERIC,
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (device_id, to_site_id)
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_site_move_candidates_device
+      ON site_move_candidates(device_id)
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS site_usage_totals_monthly (
+        id          BIGSERIAL PRIMARY KEY,
+        site_id     INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+        month       DATE NOT NULL,
+        bytes_total BIGINT NOT NULL CHECK (bytes_total >= 0),
+        source      TEXT NOT NULL DEFAULT 'starlink_portal_manual',
+        uploaded_by TEXT,
+        uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (site_id, month)
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_site_usage_totals_monthly_month
+      ON site_usage_totals_monthly(month)
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS data_usage_archive (
+        id          BIGSERIAL PRIMARY KEY,
+        device_id   INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+        site_id     INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+        date        DATE NOT NULL,
+        bytes_down  BIGINT NOT NULL DEFAULT 0,
+        bytes_up    BIGINT NOT NULL DEFAULT 0,
+        archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (device_id, date)
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_data_usage_archive_site_date
+      ON data_usage_archive(site_id, date)
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_health_snapshots (
+        id                   BIGSERIAL PRIMARY KEY,
+        device_id            INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+        site_id              INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+        recorded_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        queue_depth          INTEGER,
+        oldest_queue_age_sec INTEGER,
+        wifi_adapter_count   INTEGER,
+        agent_version        TEXT,
+        run_id               TEXT,
+        last_error           TEXT,
+        last_success_at      TIMESTAMPTZ
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_agent_health_device_recorded_at
+      ON agent_health_snapshots(device_id, recorded_at DESC)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_agent_health_site_recorded_at
+      ON agent_health_snapshots(site_id, recorded_at DESC)
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE VIEW site_uptime_today AS
+      SELECT
+        d.site_id,
+        CASE
+          WHEN COUNT(*) = 0 THEN 0
+          ELSE
+            (
+              COUNT(*) FILTER (WHERE d.last_seen >= (NOW() AT TIME ZONE 'Africa/Kigali')::date)
+            )::NUMERIC / COUNT(*)::NUMERIC * 100.0
+        END AS uptime_pct
+      FROM devices d
+      GROUP BY d.site_id
+    `);
+
+    await client.query('COMMIT');
+    console.log('[SchemaGuard] Runtime schema compatibility ensured.');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(express.json());
 
@@ -160,6 +289,7 @@ wsService.init(server);
 async function startServer() {
   try {
     await runStartupMigrations();
+    await ensureRuntimeSchema();
 
     scheduleCron();                          // Daily signal score @ 23:55
     scheduleSpaceWeatherCron();              // NOAA K-index sync every 3 hours
