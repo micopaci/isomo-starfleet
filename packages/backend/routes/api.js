@@ -17,6 +17,14 @@ const { checkCoverageGap } = require('../services/orbitalSync');
 
 const router = express.Router();
 
+function parseMonthStart(raw) {
+  if (!raw) return null;
+  const normalized = /^\d{4}-\d{2}$/.test(raw) ? `${raw}-01` : raw;
+  const dt = new Date(normalized);
+  if (Number.isNaN(dt.getTime())) return null;
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-01`;
+}
+
 // ── GET /api/sites ────────────────────────────────────────────────────────────
 // Enriched with throughput (download/upload Mbps), today's data usage, and
 // uptime % so the Ranking screen can sort on any metric without more round-trips.
@@ -76,7 +84,16 @@ router.get('/sites/:id', async (req, res, next) => {
     const signal  = currentSignal.get(String(id)) || null;
 
     const devicesRes = await pool.query(
-      `SELECT id, hostname, windows_sn, role, last_seen FROM devices WHERE site_id = $1`,
+      `SELECT id, hostname, windows_sn, role, last_seen, last_ingest_ok_at,
+              CASE
+                WHEN last_seen IS NULL THEN 'unknown'
+                WHEN last_seen > NOW() - INTERVAL '10 minutes' THEN 'online'
+                WHEN last_seen > NOW() - INTERVAL '15 minutes' THEN 'offline'
+                ELSE 'stale'
+              END AS status,
+              ROUND(EXTRACT(EPOCH FROM (NOW() - last_seen)) / 60)::INT AS stale_min
+       FROM devices
+       WHERE site_id = $1`,
       [id]
     );
 
@@ -128,8 +145,10 @@ router.get('/devices', async (req, res, next) => {
 
     const result = await pool.query(
       `SELECT d.id, d.hostname, d.windows_sn, d.manufacturer, d.intune_device_id, d.role, d.last_seen,
+              d.last_ingest_ok_at,
               s.name AS site_name,
               CASE
+                WHEN d.last_seen IS NULL THEN 'unknown'
                 WHEN d.last_seen > NOW() - INTERVAL '10 minutes' THEN 'online'
                 WHEN d.last_seen > NOW() - INTERVAL '15 minutes' THEN 'offline'
                 ELSE 'stale'
@@ -164,12 +183,50 @@ router.get('/devices/:id', async (req, res, next) => {
        WHERE device_id = $1 ORDER BY date DESC LIMIT 30`,
       [id]
     );
+    const healthMetaRes = await pool.query(
+      `SELECT queue_depth, oldest_queue_age_sec, wifi_adapter_count, agent_version, run_id, last_error, last_success_at, recorded_at
+       FROM agent_health_snapshots
+       WHERE device_id = $1
+       ORDER BY recorded_at DESC
+       LIMIT 1`,
+      [id]
+    );
 
     res.json({
       ...devRes.rows[0],
       health: healthRes.rows[0] || null,
       usage:  usageRes.rows,
+      agent_health: healthMetaRes.rows[0] || null,
     });
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/agent-health ─────────────────────────────────────────────────────
+// Latest health snapshot per device; optional ?site_id=N filter.
+router.get('/agent-health', async (req, res, next) => {
+  try {
+    const siteId = req.query.site_id ? Number(req.query.site_id) : null;
+    const where = Number.isFinite(siteId) ? 'WHERE d.site_id = $1' : '';
+    const params = Number.isFinite(siteId) ? [siteId] : [];
+
+    const { rows } = await pool.query(
+      `SELECT d.id AS device_id, d.hostname, d.windows_sn, d.site_id, d.last_seen, d.last_ingest_ok_at,
+              ah.queue_depth, ah.oldest_queue_age_sec, ah.wifi_adapter_count,
+              ah.agent_version, ah.run_id, ah.last_error, ah.last_success_at, ah.recorded_at
+       FROM devices d
+       LEFT JOIN LATERAL (
+         SELECT queue_depth, oldest_queue_age_sec, wifi_adapter_count, agent_version,
+                run_id, last_error, last_success_at, recorded_at
+         FROM agent_health_snapshots
+         WHERE device_id = d.id
+         ORDER BY recorded_at DESC
+         LIMIT 1
+       ) ah ON TRUE
+       ${where}
+       ORDER BY d.id ASC`,
+      params
+    );
+    res.json(rows);
   } catch (err) { next(err); }
 });
 
@@ -306,6 +363,119 @@ router.get('/intel/coverage/:site_id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── GET /api/sites/:id/usage ─────────────────────────────────────────────────
+// Returns monthly managed usage + imported site totals + estimated unmanaged.
+router.get('/sites/:id/usage', async (req, res, next) => {
+  try {
+    const siteId = Number(req.params.id);
+    const months = Math.max(1, Math.min(Number(req.query.months || 6), 24));
+    if (!Number.isInteger(siteId) || siteId <= 0) {
+      return res.status(400).json({ error: 'Invalid site id' });
+    }
+
+    const { rows } = await pool.query(
+      `WITH month_grid AS (
+         SELECT (date_trunc('month', CURRENT_DATE) - (g.n || ' months')::interval)::date AS month
+         FROM generate_series($2 - 1, 0, -1) AS g(n)
+       ),
+       managed AS (
+         SELECT date_trunc('month', date)::date AS month,
+                SUM(bytes_down + bytes_up) / (1024.0 * 1024.0) AS managed_mb
+         FROM (
+           SELECT date, bytes_down, bytes_up FROM data_usage WHERE site_id = $1
+           UNION ALL
+           SELECT date, bytes_down, bytes_up FROM data_usage_archive WHERE site_id = $1
+         ) u
+         GROUP BY 1
+       ),
+       totals AS (
+         SELECT month,
+                bytes_total / (1024.0 * 1024.0) AS total_mb
+         FROM site_usage_totals_monthly
+         WHERE site_id = $1
+       )
+       SELECT mg.month,
+              ROUND(COALESCE(m.managed_mb, 0)::numeric, 2) AS managed_mb,
+              ROUND(t.total_mb::numeric, 2) AS total_mb,
+              CASE
+                WHEN t.total_mb IS NULL THEN NULL
+                ELSE ROUND(GREATEST(t.total_mb - COALESCE(m.managed_mb, 0), 0)::numeric, 2)
+              END AS unmanaged_est_mb
+       FROM month_grid mg
+       LEFT JOIN managed m ON m.month = mg.month
+       LEFT JOIN totals t  ON t.month = mg.month
+       ORDER BY mg.month ASC`,
+      [siteId, months]
+    );
+
+    res.json(rows.map(r => ({
+      month: r.month,
+      managed_mb: Number(r.managed_mb || 0),
+      total_mb: r.total_mb == null ? null : Number(r.total_mb),
+      unmanaged_est_mb: r.unmanaged_est_mb == null ? null : Number(r.unmanaged_est_mb),
+      confidence: r.total_mb == null ? 'managed_only' : 'estimated_unmanaged',
+    })));
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/usage/monthly-import (admin only) ──────────────────────────────
+// Body: { month: "YYYY-MM", entries: [{ site_id, bytes_total|mb_total|gb_total }] }
+router.post('/usage/monthly-import', requireAdmin, async (req, res, next) => {
+  try {
+    const { month, entries, source } = req.body || {};
+    const monthStart = parseMonthStart(month);
+    if (!monthStart) {
+      return res.status(400).json({ error: 'month must be YYYY-MM or YYYY-MM-DD' });
+    }
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({ error: 'entries[] is required' });
+    }
+
+    const client = await pool.connect();
+    let inserted = 0;
+    try {
+      await client.query('BEGIN');
+      for (const entry of entries) {
+        const siteId = Number(entry.site_id);
+        if (!Number.isInteger(siteId) || siteId <= 0) continue;
+
+        let bytes = null;
+        if (entry.bytes_total != null) bytes = Number(entry.bytes_total);
+        else if (entry.mb_total != null) bytes = Math.round(Number(entry.mb_total) * 1024 * 1024);
+        else if (entry.gb_total != null) bytes = Math.round(Number(entry.gb_total) * 1024 * 1024 * 1024);
+        if (!Number.isFinite(bytes) || bytes < 0) continue;
+
+        await client.query(
+          `INSERT INTO site_usage_totals_monthly (site_id, month, bytes_total, source, uploaded_by)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (site_id, month)
+           DO UPDATE SET
+             bytes_total = EXCLUDED.bytes_total,
+             source = EXCLUDED.source,
+             uploaded_by = EXCLUDED.uploaded_by,
+             uploaded_at = NOW()`,
+          [
+            siteId,
+            monthStart,
+            bytes,
+            source || 'starlink_portal_manual',
+            req.user?.email || null,
+          ]
+        );
+        inserted += 1;
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    res.json({ ok: true, month: monthStart, imported: inserted });
+  } catch (err) { next(err); }
+});
+
 // ── CSV EXPORT (admin only) ───────────────────────────────────────────────────
 
 function toCSV(rows, fallbackHeaders = []) {
@@ -321,6 +491,8 @@ function toCSV(rows, fallbackHeaders = []) {
 
 const SIGNAL_HEADERS  = ['recorded_at','site_id','device_id','snr','ping_drop_pct','obstruction_pct','pop_latency_ms','reporter_count','confidence'];
 const LATENCY_HEADERS = ['recorded_at','site_id','device_id','p50_ms','p95_ms','spread_ms','is_outlier'];
+const MONTHLY_TOTAL_HEADERS = ['site_id','month','bytes_total','source','uploaded_by','uploaded_at'];
+const USAGE_ARCHIVE_HEADERS = ['date','site_id','device_id','bytes_down','bytes_up','archived_at'];
 
 // GET /api/export/signal?site_id=X&from=YYYY-MM-DD&to=YYYY-MM-DD
 router.get('/export/signal', requireAdmin, async (req, res, next) => {
@@ -365,6 +537,46 @@ router.get('/export/latency', requireAdmin, async (req, res, next) => {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="latency_site${site_id}_${from}_${to}.csv"`);
     res.send(toCSV(rows, LATENCY_HEADERS));
+  } catch (err) { next(err); }
+});
+
+// GET /api/export/site-usage-monthly?from=YYYY-MM-DD&to=YYYY-MM-DD
+router.get('/export/site-usage-monthly', requireAdmin, async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+    if (!from || !to) {
+      return res.status(400).json({ error: 'from and to are required' });
+    }
+    const { rows } = await pool.query(
+      `SELECT site_id, month, bytes_total, source, uploaded_by, uploaded_at
+       FROM site_usage_totals_monthly
+       WHERE month >= $1::date AND month <= $2::date
+       ORDER BY month ASC, site_id ASC`,
+      [from, to]
+    );
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="site_usage_monthly_${from}_${to}.csv"`);
+    res.send(toCSV(rows, MONTHLY_TOTAL_HEADERS));
+  } catch (err) { next(err); }
+});
+
+// GET /api/export/usage-archive?from=YYYY-MM-DD&to=YYYY-MM-DD
+router.get('/export/usage-archive', requireAdmin, async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+    if (!from || !to) {
+      return res.status(400).json({ error: 'from and to are required' });
+    }
+    const { rows } = await pool.query(
+      `SELECT date, site_id, device_id, bytes_down, bytes_up, archived_at
+       FROM data_usage_archive
+       WHERE date >= $1::date AND date <= $2::date
+       ORDER BY date ASC, site_id ASC, device_id ASC`,
+      [from, to]
+    );
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="usage_archive_${from}_${to}.csv"`);
+    res.send(toCSV(rows, USAGE_ARCHIVE_HEADERS));
   } catch (err) { next(err); }
 });
 

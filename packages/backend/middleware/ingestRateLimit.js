@@ -57,4 +57,5 @@ module.exports = {
   latencyLimiter:   makeIngestLimiter('latency'),
   healthLimiter:    makeIngestLimiter('health'),
   usageLimiter:     makeIngestLimiter('usage'),
+  agentHealthLimiter: makeIngestLimiter('agent-health'),
 };

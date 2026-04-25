@@ -40,6 +40,7 @@ async function runWatchdog() {
         count:   stale.length,
         devices: stale.map(d => ({
           id:        d.id,
+          device_id: d.id,
           hostname:  d.hostname,
           site_id:   d.site_id,
           site_name: d.site_name,

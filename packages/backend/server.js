@@ -22,6 +22,8 @@ const { scheduleOrbitalCron }       = require('./services/orbitalSync');
 const { scheduleWeatherCron }       = require('./services/weatherCorrelation');
 const { scheduleWatchdog }          = require('./services/watchdog');
 const { scheduleWeeklyDigest }      = require('./services/weeklyDigest');
+const { scheduleIngestDedupPrune }  = require('./services/ingestDedup');
+const { scheduleUsageArchive }      = require('./services/usageArchive');
 
 const app    = express();
 const server = http.createServer(app);
@@ -116,6 +118,8 @@ scheduleOrbitalCron();                   // CelesTrak TLE refresh daily @ 02:00
 scheduleWeatherCron();                   // Open-Meteo rainfall sync daily @ 01:00
 scheduleWatchdog();                      // Stale device check every 10 min
 scheduleWeeklyDigest();                  // Email digest Mondays @ 08:00 Kigali
+scheduleIngestDedupPrune();              // Cleanup dedupe keys (default 7d retention)
+scheduleUsageArchive();                  // Move data_usage older than 30d to archive
 graphClient.startTriggerPoller();
 
 // ── Start ─────────────────────────────────────────────────────────────────────
