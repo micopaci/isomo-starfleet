@@ -83,6 +83,25 @@ async function ensureRuntimeSchema() {
       ALTER TABLE devices
       ADD COLUMN IF NOT EXISTS last_ingest_ok_at TIMESTAMPTZ
     `);
+    await client.query(`
+      ALTER TABLE devices
+      ADD COLUMN IF NOT EXISTS model TEXT,
+      ADD COLUMN IF NOT EXISTS os TEXT,
+      ADD COLUMN IF NOT EXISTS os_version TEXT,
+      ADD COLUMN IF NOT EXISTS intune_last_sync_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS intune_enrolled_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS compliance_state TEXT,
+      ADD COLUMN IF NOT EXISTS user_principal_name TEXT,
+      ADD COLUMN IF NOT EXISTS azure_ad_device_id TEXT,
+      ADD COLUMN IF NOT EXISTS device_category TEXT,
+      ADD COLUMN IF NOT EXISTS free_storage_bytes BIGINT,
+      ADD COLUMN IF NOT EXISTS total_storage_bytes BIGINT,
+      ADD COLUMN IF NOT EXISTS intune_synced_at TIMESTAMPTZ
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_devices_intune_last_sync_at
+      ON devices(intune_last_sync_at)
+    `);
 
     await client.query(`
       ALTER TABLE sites
@@ -175,6 +194,13 @@ async function ensureRuntimeSchema() {
       CREATE INDEX IF NOT EXISTS idx_data_usage_archive_site_date
       ON data_usage_archive(site_id, date)
     `);
+    await client.query(`
+      ALTER TABLE device_health
+      ADD COLUMN IF NOT EXISTS disk_usage_pct NUMERIC,
+      ADD COLUMN IF NOT EXISTS disk_smart_status TEXT,
+      ADD COLUMN IF NOT EXISTS disk_smart_predict_failure BOOLEAN,
+      ADD COLUMN IF NOT EXISTS disk_media_type TEXT
+    `);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS agent_health_snapshots (
@@ -208,7 +234,9 @@ async function ensureRuntimeSchema() {
           WHEN COUNT(*) = 0 THEN 0
           ELSE
             (
-              COUNT(*) FILTER (WHERE d.last_seen >= (NOW() AT TIME ZONE 'Africa/Kigali')::date)
+              COUNT(*) FILTER (
+                WHERE COALESCE(d.intune_last_sync_at, d.last_seen) >= NOW() - INTERVAL '9 hours'
+              )
             )::NUMERIC / COUNT(*)::NUMERIC * 100.0
         END AS uptime_pct
       FROM devices d
@@ -323,6 +351,7 @@ async function startServer() {
     scheduleIngestDedupPrune();              // Cleanup dedupe keys (default 7d retention)
     scheduleUsageArchive();                  // Move data_usage older than 30d to archive
     graphClient.startTriggerPoller();
+    graphClient.scheduleIntuneDeviceSync();
 
     const PORT = process.env.PORT || 3000;
     server.listen(PORT, () => {

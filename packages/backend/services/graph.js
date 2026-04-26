@@ -97,6 +97,182 @@ async function requestWithRetry(url, options, body, maxRetries = 3) {
   }
 }
 
+function normalizeDate(raw) {
+  if (!raw || raw === '0001-01-01T00:00:00Z') return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function normalizeText(raw) {
+  if (raw == null) return null;
+  const value = String(raw).trim();
+  return value || null;
+}
+
+function normalizeBytes(raw) {
+  if (raw == null || raw === '') return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.round(value);
+}
+
+function syntheticWindowsSerial(intuneId) {
+  return `INTUNE-${String(intuneId).replace(/-/g, '').slice(0, 8)}`;
+}
+
+async function listManagedDevices() {
+  const token = await getAccessToken();
+  const select = [
+    'id',
+    'deviceName',
+    'serialNumber',
+    'manufacturer',
+    'model',
+    'operatingSystem',
+    'osVersion',
+    'lastSyncDateTime',
+    'enrolledDateTime',
+    'complianceState',
+    'userPrincipalName',
+    'azureADDeviceId',
+    'deviceCategoryDisplayName',
+    'freeStorageSpaceInBytes',
+    'totalStorageSpaceInBytes',
+  ].join(',');
+
+  let url = `https://graph.microsoft.com/beta/deviceManagement/managedDevices?$select=${encodeURIComponent(select)}&$top=100`;
+  const devices = [];
+
+  while (url) {
+    const result = await requestWithRetry(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!result || result.status < 200 || result.status >= 300) {
+      throw new Error(`Graph managedDevices sync failed: HTTP ${result?.status || 'unknown'} ${JSON.stringify(result?.body || {})}`);
+    }
+    devices.push(...(result.body?.value || []));
+    url = result.body?.['@odata.nextLink'] || null;
+  }
+
+  return devices;
+}
+
+async function upsertManagedDevice(client, device) {
+  const intuneId = normalizeText(device.id);
+  if (!intuneId) return false;
+
+  const serial = normalizeText(device.serialNumber);
+  const windowsSn = serial || syntheticWindowsSerial(intuneId);
+  const existing = await client.query(
+    `SELECT id
+     FROM devices
+     WHERE intune_device_id = $1 OR windows_sn = $2
+     ORDER BY CASE WHEN intune_device_id = $1 THEN 0 ELSE 1 END
+     LIMIT 1`,
+    [intuneId, windowsSn]
+  );
+
+  const values = [
+    normalizeText(device.deviceName),
+    windowsSn,
+    normalizeText(device.manufacturer),
+    intuneId,
+    normalizeText(device.model),
+    normalizeText(device.operatingSystem),
+    normalizeText(device.osVersion),
+    normalizeDate(device.lastSyncDateTime),
+    normalizeDate(device.enrolledDateTime),
+    normalizeText(device.complianceState),
+    normalizeText(device.userPrincipalName),
+    normalizeText(device.azureADDeviceId),
+    normalizeText(device.deviceCategoryDisplayName),
+    normalizeBytes(device.freeStorageSpaceInBytes),
+    normalizeBytes(device.totalStorageSpaceInBytes),
+  ];
+
+  if (existing.rows.length) {
+    await client.query(
+      `UPDATE devices
+       SET hostname = COALESCE($1, hostname),
+           windows_sn = CASE
+             WHEN NOT EXISTS (SELECT 1 FROM devices WHERE windows_sn = $2 AND id <> $16) THEN $2
+             ELSE windows_sn
+           END,
+           manufacturer = COALESCE($3, manufacturer),
+           intune_device_id = $4,
+           model = COALESCE($5, model),
+           os = COALESCE($6, os),
+           os_version = COALESCE($7, os_version),
+           intune_last_sync_at = COALESCE($8, intune_last_sync_at),
+           intune_enrolled_at = COALESCE($9, intune_enrolled_at),
+           compliance_state = COALESCE($10, compliance_state),
+           user_principal_name = COALESCE($11, user_principal_name),
+           azure_ad_device_id = COALESCE($12, azure_ad_device_id),
+           device_category = COALESCE($13, device_category),
+           free_storage_bytes = COALESCE($14, free_storage_bytes),
+           total_storage_bytes = COALESCE($15, total_storage_bytes),
+           intune_synced_at = NOW()
+       WHERE id = $16`,
+      [...values, existing.rows[0].id]
+    );
+  } else {
+    await client.query(
+      `INSERT INTO devices
+         (hostname, windows_sn, manufacturer, intune_device_id, model, os,
+          os_version, intune_last_sync_at, intune_enrolled_at, compliance_state,
+          user_principal_name, azure_ad_device_id, device_category,
+          free_storage_bytes, total_storage_bytes, intune_synced_at, role)
+       VALUES
+         ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), 'standard')`,
+      values
+    );
+  }
+
+  return true;
+}
+
+async function syncManagedDevices() {
+  const devices = await listManagedDevices();
+  const client = await pool.connect();
+  let upserted = 0;
+
+  try {
+    await client.query('BEGIN');
+    for (const device of devices) {
+      if (await upsertManagedDevice(client, device)) upserted += 1;
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  console.log(`[Graph] Synced ${upserted} Intune managed device(s).`);
+  return { total: devices.length, upserted };
+}
+
+function scheduleIntuneDeviceSync() {
+  if (process.env.GRAPH_INTUNE_SYNC_ENABLED === 'false') {
+    console.log('[Graph] Intune device sync disabled by GRAPH_INTUNE_SYNC_ENABLED=false.');
+    return;
+  }
+  if (!process.env.GRAPH_TENANT_ID || !process.env.GRAPH_CLIENT_ID || !process.env.GRAPH_CLIENT_SECRET) {
+    console.log('[Graph] Intune device sync not scheduled; Graph credentials are not configured.');
+    return;
+  }
+
+  const intervalMin = Math.max(5, Number(process.env.GRAPH_INTUNE_SYNC_INTERVAL_MIN || 30));
+  const run = () => syncManagedDevices().catch(err => {
+    console.error('[Graph] Intune device sync failed:', err.message);
+  });
+
+  setTimeout(run, 15 * 1000);
+  setInterval(run, intervalMin * 60 * 1000);
+  console.log(`[Graph] Intune device sync scheduled every ${intervalMin} minute(s).`);
+}
+
 // Map internal remediation type → Intune Device Health Script policy GUID.
 // These GUIDs are provisioned once in Intune Admin Center → Endpoint security
 // → Device remediations → Scripts. Keep this map in sync with the portal.
@@ -196,4 +372,11 @@ function startTriggerPoller() {
   }, 60 * 1000);
 }
 
-module.exports = { triggerRemediationScript, startTriggerPoller, getAccessToken };
+module.exports = {
+  triggerRemediationScript,
+  startTriggerPoller,
+  getAccessToken,
+  listManagedDevices,
+  syncManagedDevices,
+  scheduleIntuneDeviceSync,
+};

@@ -45,13 +45,27 @@ export interface Device {
   hostname: string | null;
   windows_sn: string;
   manufacturer: string | null;
+  model?: string | null;
   intune_device_id: string | null;
   role: 'agent' | 'standard';
   last_seen: string | null;
+  agent_last_seen_at?: string | null;
+  intune_last_sync_at?: string | null;
+  intune_enrolled_at?: string | null;
   site_name: string | null;
-  /** Stage 5: stale = last_seen between 15-60 min ago */
+  os?: string | null;
+  os_version?: string | null;
+  compliance_state?: string | null;
+  user_principal_name?: string | null;
+  device_category?: string | null;
+  free_storage_bytes?: number | null;
+  total_storage_bytes?: number | null;
+  disk_smart_status?: string | null;
+  disk_smart_predict_failure?: boolean | null;
+  disk_media_type?: string | null;
+  /** Intune-first status: online within 9h, stale within 24h, then offline. */
   status: 'online' | 'offline' | 'stale' | 'unknown';
-  /** Stage 5: minutes since last seen (only present when stale) */
+  /** Minutes since last Intune sync, falling back to agent heartbeat. */
   stale_min?: number | null;
   /** Last successful ingest write timestamp (any ingest endpoint). */
   last_ingest_ok_at?: string | null;
@@ -103,6 +117,10 @@ export interface DeviceHealth {
   battery_health_pct: number | null;
   disk_free_gb: number | null;
   disk_total_gb: number | null;
+  disk_usage_pct?: number | null;
+  disk_smart_status?: string | null;
+  disk_smart_predict_failure?: boolean | null;
+  disk_media_type?: string | null;
   ram_used_mb: number | null;
   ram_total_mb: number | null;
 }

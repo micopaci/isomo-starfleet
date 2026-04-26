@@ -429,7 +429,9 @@ router.post('/health', healthLimiter, async (req, res, next) => {
 
     const { device_sn, site_id, timestamp_utc,
       battery_pct, battery_health_pct, disk_free_gb,
-      disk_total_gb, disk_usage_pct, ram_used_mb, ram_total_mb, payload_id } = req.body;
+      disk_total_gb, disk_usage_pct, disk_smart_status,
+      disk_smart_predict_failure, disk_media_type,
+      ram_used_mb, ram_total_mb, payload_id } = req.body;
 
     const client = await pool.connect();
     try {
@@ -442,11 +444,17 @@ router.post('/health', healthLimiter, async (req, res, next) => {
       await client.query(
         `INSERT INTO device_health
            (device_id, recorded_at, battery_pct, battery_health_pct,
-            disk_free_gb, disk_total_gb, disk_usage_pct, ram_used_mb, ram_total_mb)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            disk_free_gb, disk_total_gb, disk_usage_pct,
+            disk_smart_status, disk_smart_predict_failure, disk_media_type,
+            ram_used_mb, ram_total_mb)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [device_id, timestamp_utc || new Date().toISOString(),
           battery_pct, battery_health_pct, disk_free_gb,
-          disk_total_gb, disk_usage_pct || null, ram_used_mb, ram_total_mb]
+          disk_total_gb, disk_usage_pct || null,
+          disk_smart_status || null,
+          disk_smart_predict_failure == null ? null : Boolean(disk_smart_predict_failure),
+          disk_media_type || null,
+          ram_used_mb, ram_total_mb]
       );
       await markIngestSuccess(client, device_id, timestamp_utc || new Date().toISOString());
 

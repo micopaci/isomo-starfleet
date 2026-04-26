@@ -137,10 +137,11 @@ async function collectDigestData() {
     };
   }));
 
-  // Stale devices (last_seen > 15 min — snapshot at send time)
+  // Stale devices (Intune sync/agent heartbeat older than expected window)
   const staleRes = await pool.query(
     `SELECT COUNT(*) AS cnt FROM devices
-     WHERE last_seen < NOW() - INTERVAL '15 minutes' AND last_seen IS NOT NULL`
+     WHERE COALESCE(intune_last_sync_at, last_seen) < NOW() - INTERVAL '9 hours'
+       AND COALESCE(intune_last_sync_at, last_seen) > NOW() - INTERVAL '24 hours'`
   );
   const staleDeviceCount = parseInt(staleRes.rows[0].cnt || 0);
 
