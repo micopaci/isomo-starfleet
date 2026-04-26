@@ -118,6 +118,7 @@ export function LaptopTable({ devices, siteId, isAdmin, onTrigger, onTriggerAll 
               <th>P95</th>
               <th>Battery</th>
               <th>Disk free</th>
+              <th>SMART</th>
               {isAdmin && <th></th>}
             </tr>
           </thead>
@@ -144,7 +145,8 @@ export function LaptopTable({ devices, siteId, isAdmin, onTrigger, onTriggerAll 
                 <td>—</td>
                 <td>—</td>
                 <td>—</td>
-                <td>—</td>
+                <td>{formatStorage(d.free_storage_bytes, d.total_storage_bytes)}</td>
+                <td>{formatSmart(d.disk_smart_status, d.disk_smart_predict_failure, d.disk_media_type)}</td>
                 {isAdmin && (
                   <td>
                     <button
@@ -160,7 +162,7 @@ export function LaptopTable({ devices, siteId, isAdmin, onTrigger, onTriggerAll 
             ))}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={isAdmin ? 8 : 7} className="muted text-center">
+                <td colSpan={isAdmin ? 9 : 8} className="muted text-center">
                   No devices match this filter
                 </td>
               </tr>
@@ -170,6 +172,21 @@ export function LaptopTable({ devices, siteId, isAdmin, onTrigger, onTriggerAll 
       </div>
     </div>
   );
+}
+
+function formatStorage(free: number | null | undefined, total: number | null | undefined): string {
+  if (free == null || total == null || total <= 0) return '—';
+  return `${(free / 1024 / 1024 / 1024).toFixed(1)} / ${(total / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
+function formatSmart(
+  status: string | null | undefined,
+  predictFailure: boolean | null | undefined,
+  mediaType: string | null | undefined,
+): string {
+  if (predictFailure) return 'Predict fail';
+  if (status || mediaType) return [status, mediaType].filter(Boolean).join(' · ');
+  return '—';
 }
 
 function relativeTime(iso: string): string {

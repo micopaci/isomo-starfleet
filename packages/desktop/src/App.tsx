@@ -234,7 +234,7 @@ function AuthedApp({
         )}
 
         {activeTab === 'computers' && (
-          <ComputersView />
+          <ComputersView isAdmin={role === 'admin'} />
         )}
 
         {activeTab === 'alerts' && (

@@ -34,7 +34,7 @@ export function UsageChart({ usage }: Props) {
           <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${Math.round(v / 1024)}GB`} />
           <Tooltip
             formatter={(v: number) => formatMb(v)}
-            labelFormatter={(label) => `Month ${label}`}
+            labelFormatter={(label: string | number) => `Month ${label}`}
           />
           <Legend />
           <Bar dataKey="managed" name="Managed (agent)" stackId="usage" fill="#22c55e" radius={[3, 3, 0, 0]} />

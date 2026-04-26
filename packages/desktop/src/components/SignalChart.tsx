@@ -10,6 +10,16 @@ interface Props {
   hasLowData?: boolean;
 }
 
+interface ScoreDotProps {
+  cx?: number;
+  cy?: number;
+  payload?: {
+    date: string;
+    score: number;
+    anomaly?: boolean | null;
+  };
+}
+
 const DOT_FILL = (score: number, anomaly?: boolean | null) => {
   if (anomaly) return '#ef4444';        // red flash for anomaly days
   if (score >= 80) return '#22c55e';
@@ -108,17 +118,21 @@ export function SignalChart({ scores, hasAnomalies, hasLowData }: Props) {
             dataKey="score"
             stroke="#10b981"
             strokeWidth={2}
-            dot={({ cx, cy, payload }) => (
-              <circle
-                key={payload.date}
-                cx={cx}
-                cy={cy}
-                r={payload.anomaly ? 5 : 4}
-                fill={DOT_FILL(payload.score, payload.anomaly)}
-                stroke={payload.anomaly ? '#ef4444' : 'transparent'}
-                strokeWidth={payload.anomaly ? 2 : 0}
-              />
-            )}
+            dot={(props: ScoreDotProps) => {
+              const { cx = 0, cy = 0, payload } = props;
+              if (!payload) return <circle cx={cx} cy={cy} r={4} fill="#10b981" />;
+              return (
+                <circle
+                  key={payload.date}
+                  cx={cx}
+                  cy={cy}
+                  r={payload.anomaly ? 5 : 4}
+                  fill={DOT_FILL(payload.score, payload.anomaly)}
+                  stroke={payload.anomaly ? '#ef4444' : 'transparent'}
+                  strokeWidth={payload.anomaly ? 2 : 0}
+                />
+              );
+            }}
           />
         </LineChart>
       </ResponsiveContainer>

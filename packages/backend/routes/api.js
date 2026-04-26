@@ -18,6 +18,15 @@ const { checkCoverageGap } = require('../services/orbitalSync');
 
 const router = express.Router();
 
+const DEVICE_SEEN_EXPR = 'COALESCE(d.intune_last_sync_at, d.last_seen)';
+const DEVICE_STATUS_CASE = `
+  CASE
+    WHEN ${DEVICE_SEEN_EXPR} IS NULL THEN 'unknown'
+    WHEN ${DEVICE_SEEN_EXPR} > NOW() - INTERVAL '9 hours' THEN 'online'
+    WHEN ${DEVICE_SEEN_EXPR} > NOW() - INTERVAL '24 hours' THEN 'stale'
+    ELSE 'offline'
+  END`;
+
 function parseMonthStart(raw) {
   if (!raw) return null;
   const normalized = /^\d{4}-\d{2}$/.test(raw) ? `${raw}-01` : raw;
@@ -39,6 +48,34 @@ function normalizeAgentTokenTtl(raw) {
   return '365d';
 }
 
+async function getSiteSignal(siteId) {
+  const cached = currentSignal.get(String(siteId));
+  if (cached) return cached;
+
+  const { rows } = await pool.query(
+    `SELECT pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
+            download_mbps, upload_mbps, confidence, recorded_at
+     FROM signal_readings
+     WHERE site_id = $1
+     ORDER BY recorded_at DESC
+     LIMIT 1`,
+    [siteId]
+  );
+  if (!rows.length) return null;
+
+  const row = rows[0];
+  return {
+    snr: row.snr == null ? null : Number(row.snr),
+    pop_latency_ms: row.pop_latency_ms == null ? null : Number(row.pop_latency_ms),
+    obstruction_pct: row.obstruction_pct == null ? null : Number(row.obstruction_pct),
+    ping_drop_pct: row.ping_drop_pct == null ? null : Number(row.ping_drop_pct),
+    download_mbps: row.download_mbps == null ? null : Number(row.download_mbps),
+    upload_mbps: row.upload_mbps == null ? null : Number(row.upload_mbps),
+    confidence: row.confidence || 'low',
+    updatedAt: row.recorded_at,
+  };
+}
+
 // ── GET /api/sites ────────────────────────────────────────────────────────────
 // Enriched with throughput (download/upload Mbps), today's data usage, and
 // uptime % so the Ranking screen can sort on any metric without more round-trips.
@@ -53,11 +90,11 @@ router.get('/sites', async (req, res, next) => {
     const dataBy    = Object.fromEntries(dataRes.rows.map(r => [r.site_id, Number(r.data_mb_today)]));
 
     const sites = await Promise.all(sitesRes.rows.map(async (site) => {
-      const signal = currentSignal.get(String(site.id)) || null;
+      const signal = await getSiteSignal(site.id);
 
       const laptopsRes = await pool.query(
         `SELECT COUNT(*) AS total,
-                COUNT(*) FILTER (WHERE last_seen > NOW() - INTERVAL '10 minutes') AS online
+                COUNT(*) FILTER (WHERE COALESCE(intune_last_sync_at, last_seen) > NOW() - INTERVAL '9 hours') AS online
          FROM devices WHERE site_id = $1`,
         [site.id]
       );
@@ -95,19 +132,27 @@ router.get('/sites/:id', async (req, res, next) => {
     if (!siteRes.rows.length) return res.status(404).json({ error: 'Site not found' });
 
     const site    = siteRes.rows[0];
-    const signal  = currentSignal.get(String(id)) || null;
+    const signal  = await getSiteSignal(id);
 
     const devicesRes = await pool.query(
-      `SELECT id, hostname, windows_sn, role, last_seen, last_ingest_ok_at,
-              CASE
-                WHEN last_seen IS NULL THEN 'unknown'
-                WHEN last_seen > NOW() - INTERVAL '10 minutes' THEN 'online'
-                WHEN last_seen > NOW() - INTERVAL '15 minutes' THEN 'offline'
-                ELSE 'stale'
-              END AS status,
-              ROUND(EXTRACT(EPOCH FROM (NOW() - last_seen)) / 60)::INT AS stale_min
-       FROM devices
-       WHERE site_id = $1`,
+      `SELECT d.id, d.site_id, d.hostname, d.windows_sn, d.manufacturer, d.model,
+              d.intune_device_id, d.role, ${DEVICE_SEEN_EXPR} AS last_seen,
+              d.last_seen AS agent_last_seen_at, d.intune_last_sync_at,
+              d.intune_enrolled_at, d.last_ingest_ok_at, d.compliance_state,
+              d.user_principal_name, d.os, d.os_version,
+              d.free_storage_bytes, d.total_storage_bytes,
+              dh.disk_smart_status, dh.disk_smart_predict_failure, dh.disk_media_type,
+              ${DEVICE_STATUS_CASE} AS status,
+              ROUND(EXTRACT(EPOCH FROM (NOW() - ${DEVICE_SEEN_EXPR})) / 60)::INT AS stale_min
+       FROM devices d
+       LEFT JOIN LATERAL (
+         SELECT disk_smart_status, disk_smart_predict_failure, disk_media_type
+         FROM device_health
+         WHERE device_id = d.id
+         ORDER BY recorded_at DESC
+         LIMIT 1
+       ) dh ON TRUE
+       WHERE d.site_id = $1`,
       [id]
     );
 
@@ -149,29 +194,36 @@ router.get('/sites/:id/latency', async (req, res, next) => {
 });
 
 // ── GET /api/devices ──────────────────────────────────────────────────────────
-// Optional query param: ?filter=stale  (last_seen > 15 min ago)
+// Optional query param: ?filter=stale  (Intune/agent check-in older than 9h)
 router.get('/devices', async (req, res, next) => {
   try {
     const staleOnly = req.query.filter === 'stale';
     const whereClause = staleOnly
-      ? `AND d.last_seen < NOW() - INTERVAL '15 minutes'`
+      ? `AND ${DEVICE_SEEN_EXPR} < NOW() - INTERVAL '9 hours' AND ${DEVICE_SEEN_EXPR} > NOW() - INTERVAL '24 hours'`
       : '';
 
     const result = await pool.query(
-      `SELECT d.id, d.hostname, d.windows_sn, d.manufacturer, d.intune_device_id, d.role, d.last_seen,
-              d.last_ingest_ok_at,
+      `SELECT d.id, d.hostname, d.windows_sn, d.manufacturer, d.model,
+              d.intune_device_id, d.role, ${DEVICE_SEEN_EXPR} AS last_seen,
+              d.last_seen AS agent_last_seen_at, d.intune_last_sync_at,
+              d.intune_enrolled_at, d.last_ingest_ok_at, d.compliance_state,
+              d.user_principal_name, d.os, d.os_version, d.device_category,
+              d.free_storage_bytes, d.total_storage_bytes,
               s.name AS site_name,
-              CASE
-                WHEN d.last_seen IS NULL THEN 'unknown'
-                WHEN d.last_seen > NOW() - INTERVAL '10 minutes' THEN 'online'
-                WHEN d.last_seen > NOW() - INTERVAL '15 minutes' THEN 'offline'
-                ELSE 'stale'
-              END AS status,
-              ROUND(EXTRACT(EPOCH FROM (NOW() - d.last_seen)) / 60)::INT AS stale_min
+              dh.disk_smart_status, dh.disk_smart_predict_failure, dh.disk_media_type,
+              ${DEVICE_STATUS_CASE} AS status,
+              ROUND(EXTRACT(EPOCH FROM (NOW() - ${DEVICE_SEEN_EXPR})) / 60)::INT AS stale_min
        FROM devices d
        LEFT JOIN sites s ON s.id = d.site_id
+       LEFT JOIN LATERAL (
+         SELECT disk_smart_status, disk_smart_predict_failure, disk_media_type
+         FROM device_health
+         WHERE device_id = d.id
+         ORDER BY recorded_at DESC
+         LIMIT 1
+       ) dh ON TRUE
        WHERE 1=1 ${whereClause}
-       ORDER BY d.last_seen ASC NULLS LAST`
+       ORDER BY ${DEVICE_SEEN_EXPR} ASC NULLS LAST`
     );
     res.json(result.rows);
   } catch (err) { next(err); }
@@ -241,6 +293,14 @@ router.get('/agent-health', async (req, res, next) => {
       params
     );
     res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/intune/sync (admin only) ───────────────────────────────────────
+router.post('/intune/sync', requireAdmin, async (req, res, next) => {
+  try {
+    const result = await graphClient.syncManagedDevices();
+    res.json({ ok: true, ...result });
   } catch (err) { next(err); }
 });
 

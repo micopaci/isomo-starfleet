@@ -1808,6 +1808,25 @@ function Get-SystemHealth {
     $os = Get-CimInstance Win32_OperatingSystem
     $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
     $battery = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
+    $physicalDisk = $null
+    try {
+        $physicalDisk = Get-PhysicalDisk -ErrorAction Stop |
+            Sort-Object -Property Size -Descending |
+            Select-Object -First 1
+    } catch {
+        Write-Log "WARN" "Physical disk health unavailable: $($_.Exception.Message)"
+    }
+
+    $smartPredictFailure = $null
+    try {
+        $predict = Get-CimInstance -Namespace root\wmi -ClassName MSStorageDriver_FailurePredictStatus -ErrorAction Stop |
+            Select-Object -First 1
+        if ($null -ne $predict -and $null -ne $predict.PredictFailure) {
+            $smartPredictFailure = [bool]$predict.PredictFailure
+        }
+    } catch {
+        Write-Log "WARN" "SMART failure prediction unavailable: $($_.Exception.Message)"
+    }
 
     $diskFreeGb = $null
     $diskTotalGb = $null
@@ -1832,6 +1851,9 @@ function Get-SystemHealth {
         DiskFreeGb = $diskFreeGb
         DiskTotalGb = $diskTotalGb
         DiskUsagePct = $diskUsagePct
+        DiskSmartStatus = if ($null -ne $physicalDisk) { [string]$physicalDisk.HealthStatus } else { $null }
+        DiskSmartPredictFailure = $smartPredictFailure
+        DiskMediaType = if ($null -ne $physicalDisk) { [string]$physicalDisk.MediaType } else { $null }
         RamUsedMb = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1024, 0)
         RamTotalMb = [math]::Round($os.TotalVisibleMemorySize / 1024, 0)
     }
@@ -2071,6 +2093,9 @@ try {
         disk_free_gb = $health.DiskFreeGb
         disk_total_gb = $health.DiskTotalGb
         disk_usage_pct = $health.DiskUsagePct
+        disk_smart_status = $health.DiskSmartStatus
+        disk_smart_predict_failure = $health.DiskSmartPredictFailure
+        disk_media_type = $health.DiskMediaType
         ram_used_mb = $health.RamUsedMb
         ram_total_mb = $health.RamTotalMb
     }
