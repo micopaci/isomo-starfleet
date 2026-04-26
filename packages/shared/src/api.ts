@@ -106,8 +106,8 @@ export class StarfleetApi {
   }
 
   /** POST /api/intune/sync — admin only, force a Microsoft Graph managedDevices sync */
-  syncIntuneDevices(): Promise<{ ok: boolean; total: number; upserted: number }> {
-    return this.request<{ ok: boolean; total: number; upserted: number }>('/api/intune/sync', {
+  syncIntuneDevices(): Promise<{ ok: boolean; total: number; upserted: number; failed?: number }> {
+    return this.request<{ ok: boolean; total: number; upserted: number; failed?: number }>('/api/intune/sync', {
       method: 'POST',
     });
   }

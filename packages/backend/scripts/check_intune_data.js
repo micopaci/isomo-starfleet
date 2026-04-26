@@ -155,8 +155,8 @@ async function main() {
 
   if (shouldSync) {
     console.log('\nSyncing Graph devices into Starfleet DB...');
-    const result = await graph.syncManagedDevices();
-    console.log(`  Synced: ${result.upserted} of ${result.total}`);
+    const result = await graph.syncManagedDevices(devices);
+    console.log(`  Synced: ${result.upserted} of ${result.total}; failed: ${result.failed}`);
   }
 
   if (!skipDb) {
