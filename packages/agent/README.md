@@ -77,8 +77,9 @@ node packages/agent/build-intune-remediations.mjs
 
 This writes site-specific upload scripts under `dist/intune/sites/`. Each file
 contains a different site-scoped agent token, so assign each remediation only to
-that site's Intune device group. The generated files are ignored by git because
-they contain secrets.
+that site's Intune device group. Site `0` (`Unassigned / Discovery`) is skipped
+because it is not a deployable school/device group. The generated files are
+ignored by git because they contain secrets.
 
 For a subset:
 
