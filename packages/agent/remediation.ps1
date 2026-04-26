@@ -1,32 +1,73 @@
-# Starfleet Remediation Script v5.6
-$DataDir = "C:\ProgramData\Starfleet"
-$AgentPath = "$DataDir\StarfleetAgent.ps1"
+#Requires -Version 5.1
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$ApiToken,
+
+    [int]$SiteId = 0,
+    [string]$ApiBase = "https://api.starfleet.icircles.rw",
+    [string]$InstallDir = "C:\ProgramData\Starfleet",
+    [int]$IntervalMinutes = 5,
+    [string]$PingHost = "1.1.1.1",
+    [double]$MaxSiteRadiusKm = 2.0
+)
+
+$ErrorActionPreference = "Stop"
+
 $TaskName = "StarfleetPulse"
+$AgentSource = Join-Path $PSScriptRoot "StarfleetAgent.ps1"
+$GrpcurlSource = Join-Path $PSScriptRoot "grpcurl.exe"
+$AgentPath = Join-Path $InstallDir "StarfleetAgent.ps1"
+$ConfigPath = Join-Path $InstallDir "agent.config.json"
+$QueueDir = Join-Path $InstallDir "queue"
 
-# 1. Setup Environment
-if (-not (Test-Path $DataDir)) { New-Item $DataDir -ItemType Directory -Force }
+if ([string]::IsNullOrWhiteSpace($ApiToken)) {
+    throw "ApiToken is required."
+}
+if ($SiteId -lt 0) {
+    throw "SiteId must be 0 or a positive integer."
+}
+if (-not (Test-Path $AgentSource)) {
+    throw "StarfleetAgent.ps1 must be packaged beside remediation.ps1."
+}
 
-# 2. Deploy Agent Script (v5.6 Code)
-$AgentCode = @'
-# [PASTE THE FULL CONTENT OF STARFLEETAGENT.PS1 V5.6 HERE]
-# Ensure the $ApiToken inside matches your verified clean token.
-'@
+foreach ($dir in @($InstallDir, $QueueDir)) {
+    if (-not (Test-Path $dir)) {
+        New-Item -Path $dir -ItemType Directory -Force | Out-Null
+    }
+}
 
-Set-Content -Path $AgentPath -Value $AgentCode -Encoding UTF8
+Copy-Item -Path $AgentSource -Destination $AgentPath -Force
+if (Test-Path $GrpcurlSource) {
+    Copy-Item -Path $GrpcurlSource -Destination (Join-Path $InstallDir "grpcurl.exe") -Force
+}
 
-# 3. Configure Scheduled Task (Run as SYSTEM every 15 mins)
+$config = @{
+    ApiBase = $ApiBase.TrimEnd("/")
+    ApiToken = $ApiToken
+    SiteId = $SiteId
+    PingHost = $PingHost
+    GrpcurlPath = (Join-Path $InstallDir "grpcurl.exe")
+    MaxSiteRadiusKm = $MaxSiteRadiusKm
+    QueueFlushLimit = 20
+}
+$config | ConvertTo-Json -Depth 8 | Set-Content -Path $ConfigPath -Encoding UTF8
+
+try {
+    icacls $InstallDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
+} catch {
+    Write-Warning "Unable to tighten ACLs on ${InstallDir}: $($_.Exception.Message)"
+}
+
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-    -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$AgentPath`""
-$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15)
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$AgentPath`" -DataDir `"$InstallDir`" -ConfigPath `"$ConfigPath`""
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes)
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 
-# Unregister if exists to ensure clean update
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-
-# Register the new task
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings
-
-# 4. Trigger initial run to populate Discovery/Neon
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
 Start-ScheduledTask -TaskName $TaskName
-Write-Host "Remediation complete: Agent deployed and task scheduled."
+
+Write-Host "Starfleet agent installed."
+Write-Host "Task: $TaskName every $IntervalMinutes minutes"
+Write-Host "Config: $ConfigPath"

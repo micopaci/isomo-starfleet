@@ -10,8 +10,9 @@ between schools: the ops team had to remember to move the device between
 Intune groups every time, and until they did, heartbeats kept reporting the
 old site. In practice ~1 in 8 laptops per week ended up with a stale site.
 
-The new flow uses the Starlink dish's own GPS fix to decide which site a
-laptop is at, on every heartbeat. No human in the loop.
+The new flow uses the Starlink dish's identity and GPS evidence to decide which
+site a laptop is at. If GPS is unavailable, the backend can still infer site
+from the Starlink UUID inventory.
 
 ## End-to-end flow
 
@@ -19,17 +20,17 @@ laptop is at, on every heartbeat. No human in the loop.
 ┌────────────────────────────────────────────────────────────────────┐
 │ 1. StarfleetAgent.ps1 (on laptop, every 5 min)                     │
 │    Starlink dish  ── HTTP /api/status  ─→  snr, latency, ...       │
-│                  ── gRPC get_location  ─→  lat, lon                │
-│                  ── gRPC dish_status   ─→  download/upload Mbps    │
-│    POST /ingest/signal  with { lat, lon, download_mbps, ... }      │
+│                  ── gRPC diagnostics  ─→  utID, lat, lon           │
+│                  ── gRPC dish_status  ─→  download/upload Mbps     │
+│    POST /ingest/signal with { starlink_id, starlink_uuid, lat... } │
 └────────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────────────┐
-│ 2. siteResolver.nearestSite(lat, lon)                              │
-│    • Haversine vs every sites row with GPS coords                  │
-│    • Returns { site_id, name, distance_km } if within 2 km         │
-│    • Otherwise returns null → ingest falls back to hinted site_id  │
+│ 2. Site inference                                                  │
+│    • Prefer Starlink UUID inventory when utID is available         │
+│    • Otherwise use Haversine vs every site GPS coordinate          │
+│    • If both are missing/inconclusive, fall back to hinted site_id │
 └────────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -69,14 +70,19 @@ POST /ingest/signal
   "ping_drop_pct":   0.1,
   "download_mbps":   183.4,
   "upload_mbps":      22.6,
+  "starlink_id":      "ut31c88996-c611791c-599d1851",
+  "starlink_uuid":    "31c88996-c611791c-599d1851",
   "lat":              -1.94487,
   "lon":              30.06167
 }
 ```
 
 If `get_location` fails (most commonly because "access locations" is turned off
-in the school's Starlink app), `lat`/`lon` are `null` and the backend keeps the
-hinted `site_id` unchanged. Ops can turn the toggle on once per dish.
+in the school's Starlink app), `lat`/`lon` are `null`. If the dish ID is still
+available, the backend strips the `ut` prefix and matches it against
+`sites.starlink_uuid`, so the signal can still be attributed to the known
+school. If neither GPS nor Starlink ID is available, the backend keeps the
+hinted `site_id` unchanged.
 
 ## Notification UX
 
@@ -116,7 +122,8 @@ POST /api/site-changes/:id/ack    Admin-only; stamps acknowledged_at + by
 
 | Scenario | Behaviour |
 |---|---|
-| Dish GPS disabled | `lat`/`lon` null → falls back to hinted site_id; no reassignment |
+| Dish GPS disabled, Starlink ID available | Match `ut...`/UUID against `sites.starlink_uuid`; signal uses the inventory site |
+| Dish GPS and ID unavailable | `lat`/`lon` null and no ID match → falls back to hinted site_id; no reassignment |
 | Laptop moved to a non-configured location | No site within 2km → keeps previous `site_id`, logs warning |
 | SMTP down | Email silently skipped; push and WS still fire; ingest unaffected |
 | FCM key missing | Push silently skipped; email + WS still fire |

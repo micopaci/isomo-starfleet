@@ -1,133 +1,114 @@
-# Starfleet Agent — Intune Deployment Guide
+# Starfleet Agent - Laptop Data Feed
 
-This package deploys the Starfleet data collection agent to all Isomo laptops via **Intune Proactive Remediation**.
+This package deploys a Windows PowerShell agent that feeds laptop and Starlink
+telemetry into the platform through the backend `/ingest/*` endpoints.
 
----
+## What The Agent Sends
+
+| Endpoint | Data |
+|---|---|
+| `/ingest/heartbeat` | BIOS/UUID identity, hostname, OS, model, manufacturer, last-seen timestamp |
+| `/ingest/health` | Battery, disk, RAM |
+| `/ingest/signal` | Starlink GPS, dish ID, alignment, latency, obstruction, drop rate, throughput when the local dish API is reachable |
+| `/ingest/latency` | Laptop-side P50/P95 ping latency to the configured probe host |
+| `/ingest/usage` | Daily network byte deltas from Windows adapter counters |
+| `/ingest/agent-health` | Queue depth, oldest queued age, agent version, last error |
+
+If the backend is unreachable, payloads are written to
+`C:\ProgramData\Starfleet\queue` and retried on later cycles.
+Each payload now includes idempotency metadata (`payload_id`, `run_id`, `schema_version`)
+so replay does not double-write usage metrics.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `StarfleetAgent.ps1` | The agent itself — collects and POSTs all metrics |
-| `detection.ps1` | Tells Intune whether the agent needs re-deploying |
-| `remediation.ps1` | Installs the agent and registers the scheduled task |
+| `StarfleetAgent.ps1` | Runtime agent, executed by Task Scheduler |
+| `remediation.ps1` | Intune install/update script |
+| `detection.ps1` | Intune health check script |
+| `test.ps1` | On-laptop diagnostic helper |
+| `re-sync.ps1` | Manually replay one queued payload |
 
----
+## Backend Token
 
-## How Proactive Remediation works
-
-Intune runs `detection.ps1` on a schedule (e.g. every hour).
-- **Exit 0** → agent is healthy, nothing happens.
-- **Exit 1** → agent is stale or missing, Intune runs `remediation.ps1` automatically.
-
-`remediation.ps1` copies the agent, injects the site-specific token and site ID, registers a Windows Scheduled Task that runs every 5 minutes as SYSTEM, then fires it immediately.
-
----
-
-## Step-by-step setup in Intune
-
-### 1. Create a Proactive Remediation policy
-
-1. Go to **Microsoft Intune admin center** → **Devices** → **Scripts and remediations** → **Remediations**
-2. Click **+ Create** → give it a name like `Starfleet Agent - [School Name]`
-3. Under **Settings**:
-   - **Detection script**: upload `detection.ps1`
-   - **Remediation script**: upload `remediation.ps1`
-   - **Run this script using the logged-on credentials**: **No** (runs as SYSTEM)
-   - **Enforce script signature check**: **No**
-   - **Run script in 64-bit PowerShell**: **Yes**
-4. Under **Script parameters** (remediation only), add:
-   | Parameter | Value |
-   |---|---|
-   | `-ApiToken` | The JWT token for this site (generate from backend admin) |
-   | `-SiteId` | The numeric site ID (from `/api/sites` endpoint) |
-   | `-ApiBase` | `https://starfleet.yourdomain.com` |
-
-> **Important:** Create one Remediation policy per school so each gets its own `$SiteId`.
-
-### 2. Add StarfleetAgent.ps1 to the package
-
-The remediation script copies `StarfleetAgent.ps1` from `$PSScriptRoot`. You need to bundle both files together. The easiest way is to use an **Intune Win32 app** wrapper:
-
-```
-# Package both scripts together using IntuneWinAppUtil
-IntuneWinAppUtil.exe -c .\packages\agent\ -s remediation.ps1 -o .\dist\
-```
-
-Or, for simple PowerShell-only remediations without Win32 packaging, embed the agent content as a here-string inside `remediation.ps1` and write it directly to disk.
-
-### 3. Assign to a device group
-
-1. Create an **Azure AD device group** per school (e.g. `Starfleet-GS-Gihara`)
-2. Add all laptops for that school to the group
-3. In the Remediation policy → **Assignments** → assign to that group
-4. Set **Schedule**: Run every **1 hour** (detection check)
-
----
-
-## Which script goes where
-
-| Intune field | Script |
-|---|---|
-| Detection script | `detection.ps1` |
-| Remediation script | `remediation.ps1` |
-
----
-
-## Generating a long-lived JWT for each site
-
-On the backend, run:
+Generate one agent token per site from the production backend:
 
 ```bash
-node -e "
-  require('dotenv').config();
-  const jwt = require('jsonwebtoken');
-  const token = jwt.sign(
-    { role: 'agent', site_id: SITE_ID },
-    process.env.JWT_SECRET,
-    { algorithm: 'HS256', expiresIn: '365d' }
-  );
-  console.log(token);
-"
+curl -X POST "https://api.starfleet.icircles.rw/api/agent-tokens" \
+  -H "Authorization: Bearer <ADMIN_DASHBOARD_JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"site_id":7,"expires_in":"365d"}'
 ```
 
-Replace `SITE_ID` with the integer from `/api/sites`. Use this token as the `-ApiToken` parameter in Intune.
+Use the returned token as the remediation `ApiToken`. The token payload uses
+`role: "agent"` and `site_id: <site id>`. Avoid tokens generated from a local
+`.env` unless that local signing key is exactly the same key used by production.
 
----
+## Intune Deployment
 
-## Local paths on each laptop
+Create one remediation policy per school or deployment group.
+
+1. In Intune, go to **Devices** -> **Scripts and remediations** -> **Remediations**.
+2. Create a remediation package.
+3. Upload `detection.ps1` as the detection script.
+4. Upload `remediation.ps1` as the remediation script.
+5. Run as SYSTEM:
+   - **Run this script using logged-on credentials**: No
+   - **Run script in 64-bit PowerShell**: Yes
+   - **Enforce script signature check**: No, unless you sign these scripts
+6. Generate the self-contained upload script with the site token:
+
+```bash
+export STARFLEET_AGENT_TOKEN="<site-agent-jwt>"
+node packages/agent/build-intune-remediation.mjs --site-id 7
+```
+
+Upload `dist/intune/remediation.ps1` as the remediation script. The builder
+refuses dashboard tokens, expired tokens, wrong-site tokens, and tokens rejected
+by the configured backend before writing the file. The generated remediation
+also installs `test.ps1` into `C:\ProgramData\Starfleet` for VM diagnostics.
+
+## Local Laptop Paths
 
 | Path | Contents |
 |---|---|
-| `C:\ProgramData\Starfleet\StarfleetAgent.ps1` | The deployed agent |
-| `C:\ProgramData\Starfleet\device.json` | Cached device SN and site assignment |
-| `C:\ProgramData\Starfleet\last_heartbeat.txt` | Timestamp of last successful heartbeat |
-| `C:\ProgramData\Starfleet\agent.log` | Rolling log (max 5 MB, rotates to agent.log.1) |
-| `C:\ProgramData\Starfleet\queue\` | Offline queue — JSON payloads pending retry |
-| `C:\ProgramData\Starfleet\usage_baseline.json` | Network adapter byte counters baseline |
+| `C:\ProgramData\Starfleet\StarfleetAgent.ps1` | Installed agent |
+| `C:\ProgramData\Starfleet\agent.config.json` | API base, site ID, token, probe settings |
+| `C:\ProgramData\Starfleet\device.json` | Cached device serial and resolved site |
+| `C:\ProgramData\Starfleet\last_heartbeat.txt` | Last successful heartbeat |
+| `C:\ProgramData\Starfleet\agent.log` | Agent log, rotated at 5 MB |
+| `C:\ProgramData\Starfleet\queue\` | Offline payload queue |
+| `C:\ProgramData\Starfleet\usage_baseline.json` | Network usage counter baseline |
 
----
+## Validation On A Laptop
 
-## Troubleshooting
-
-**Agent not sending data**
 ```powershell
-# Run manually to see errors
 powershell -ExecutionPolicy Bypass -File "C:\ProgramData\Starfleet\StarfleetAgent.ps1"
-
-# Check log
-Get-Content "C:\ProgramData\Starfleet\agent.log" -Tail 30
+powershell -ExecutionPolicy Bypass -File ".\test.ps1"
+Get-Content "C:\ProgramData\Starfleet\agent.log" -Tail 40
+Get-ScheduledTask -TaskName "StarfleetPulse" | Select-Object State, Triggers
 ```
 
-**Scheduled task not running**
+Manual queue replay:
+
 ```powershell
-Get-ScheduledTask -TaskName "StarfleetAgent" | Select-Object State, Triggers
-# Expected: State=Ready, Trigger with RepetitionInterval=PT5M
+powershell -ExecutionPolicy Bypass -File ".\re-sync.ps1" -QueueFile "C:\ProgramData\Starfleet\queue\<file>.json"
 ```
 
-**Offline queue growing**
-```powershell
-# Check queue size
-(Get-ChildItem "C:\ProgramData\Starfleet\queue\").Count
-# If >0, the backend is unreachable — check $ApiBase and $ApiToken
-```
+## Notes
+
+- Keep JWTs out of git. They belong only in Intune parameters or the installed
+  `agent.config.json` on a managed laptop.
+- The scheduled task runs every 5 minutes as SYSTEM.
+- Usage accounting is Wi-Fi oriented (default-route wireless adapter policy).
+- GPS site discovery is backend-led. The agent reports Starlink GPS and dish ID;
+  the backend resolves location, applies the two-day move confirmation rule, and
+  keeps site-scoped tokens from being invalidated by a single GPS reading.
+- Starlink telemetry without `grpcurl` uses the same gRPC-web byte-frame request
+  as the laptop validation snippet. If local dish access fails, dish metrics may
+  be null for that cycle while heartbeat/usage/latency continue to ingest.
+- If the backend `sites.starlink_uuid` column is populated from your Starlink
+  inventory, `/ingest/signal` can use the reported dish ID as a site hint when
+  GPS is unavailable. The agent sends both the raw gRPC form
+  (`ut31c88996-c611791c-599d1851`) and the normalized database form
+  (`31c88996-c611791c-599d1851`) when it can read the dish ID.

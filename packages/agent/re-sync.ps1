@@ -1,21 +1,47 @@
-# Update this string with the content of a file from C:\ProgramData\Starfleet\queue\
-$Payload = '{"disk_usage_pct":69,"device_sn":"HGRV903","battery_pct":100,"manufacturer":"Dell Inc.","hostname":"WIN-CIO36VIR735","site_id":0,"model":"OptiPlex 3070","os":"Microsoft Windows Server 2025 Standard","timestamp_utc":"2026-04-20T13:41:05Z"}'
+#Requires -Version 5.1
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$QueueFile,
 
-$Token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImVtYWlsIjoiYWRtaW4AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NzY2OTEwMjMsImV4cCI6MTgwODIyNzAyM30.lKvEgZlhZku-L6bOsEGqJjBnrhNrLcm5FR8BMbVI588"
+    [string]$ConfigPath = "C:\ProgramData\Starfleet\agent.config.json"
+)
+
+$ErrorActionPreference = "Stop"
+
+if (-not (Test-Path $QueueFile)) {
+    throw "Queue file not found: $QueueFile"
+}
+if (-not (Test-Path $ConfigPath)) {
+    throw "Config file not found: $ConfigPath"
+}
+
+$config = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
+$item = Get-Content -Path $QueueFile -Raw | ConvertFrom-Json
+
+if ([string]::IsNullOrWhiteSpace($config.ApiBase) -or [string]::IsNullOrWhiteSpace($config.ApiToken)) {
+    throw "Config ApiBase and ApiToken are required."
+}
+if ([string]::IsNullOrWhiteSpace($item.endpoint)) {
+    throw "Queue file is missing endpoint."
+}
+
+$headers = @{
+    Authorization = "Bearer $($config.ApiToken)"
+    "Content-Type" = "application/json"
+    Accept = "application/json"
+}
+$body = $item.payload | ConvertTo-Json -Depth 12 -Compress
+$apiBase = ([string]$config.ApiBase).TrimEnd("/")
 
 try {
-    Write-Host "Attempting Manual Sync (Verbose)..." -ForegroundColor Cyan
-    $headers = @{ Authorization = "Bearer $Token"; "Content-Type" = "application/json" }
-    
-    $res = Invoke-WebRequest -Uri "https://api.starfleet.icircles.rw/ingest/heartbeat" `
-                             -Method POST -Headers $headers -Body $Payload -UseBasicParsing
-    
-    Write-Host "SUCCESS! HTTP Status: $($res.StatusCode)" -ForegroundColor Green
+    $res = Invoke-WebRequest -Uri "$apiBase/ingest/$($item.endpoint)" -Method POST -Headers $headers -Body $body -UseBasicParsing -TimeoutSec 30
+    Write-Host "SUCCESS: HTTP $($res.StatusCode)"
 } catch {
     if ($_.Exception.Response) {
-        $details = (New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())).ReadToEnd()
-        Write-Host "SERVER REJECTED PAYLOAD: $details" -ForegroundColor Yellow
+        $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+        Write-Host "SERVER REJECTED PAYLOAD: $($reader.ReadToEnd())"
     } else {
-        Write-Host "NETWORK ERROR: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "NETWORK ERROR: $($_.Exception.Message)"
     }
+    exit 1
 }

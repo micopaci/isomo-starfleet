@@ -1,4 +1,4 @@
-import type { Site, SiteDetail, DailyScore, LatencyReading, Device } from './types';
+import type { Site, SiteDetail, DailyScore, LatencyReading, Device, UsageHistoryPoint } from './types';
 
 export class PermissionError extends Error {
   constructor(message = 'Forbidden') {
@@ -87,6 +87,11 @@ export class StarfleetApi {
   /** GET /api/sites/:id/latency — daily P50/P95 aggregates for last 14 days */
   getLatencyHistory(siteId: number): Promise<LatencyReading[]> {
     return this.request<LatencyReading[]>(`/api/sites/${siteId}/latency`);
+  }
+
+  /** GET /api/sites/:id/usage — monthly usage graph points (managed + estimated unmanaged) */
+  getUsageHistory(siteId: number, months = 6): Promise<UsageHistoryPoint[]> {
+    return this.request<UsageHistoryPoint[]>(`/api/sites/${siteId}/usage?months=${months}`);
   }
 
   // ── Devices ────────────────────────────────────────────────────────────────

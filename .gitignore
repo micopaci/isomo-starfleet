@@ -19,6 +19,10 @@ out/
 packages/desktop/dist/
 packages/desktop/out/
 
+# Generated Intune artifacts may contain live agent JWTs
+dist/intune/
+*.intunewin
+
 # Logs
 *.log
 npm-debug.log*

@@ -3,7 +3,7 @@ import { Device, downloadCsv } from '@starfleet/shared';
 import { getBaseUrl, getStoredToken } from '../store/auth';
 import { StarfleetApi } from '@starfleet/shared';
 
-type DeviceFilter = 'all' | 'online' | 'offline' | 'stale';
+type DeviceFilter = 'all' | 'online' | 'offline' | 'stale' | 'unknown';
 
 interface Props {
   devices: Device[];
@@ -27,12 +27,13 @@ export function LaptopTable({ devices, siteId, isAdmin, onTrigger, onTriggerAll 
     if (filter === 'online')  return d.status === 'online';
     if (filter === 'offline') return d.status === 'offline';
     if (filter === 'stale')   return d.status === 'stale';
+    if (filter === 'unknown') return d.status === 'unknown';
     return true;
   });
 
   const staleCount = devices.filter(d => d.status === 'stale').length;
 
-  const filters: DeviceFilter[] = ['all', 'online', 'stale', 'offline'];
+  const filters: DeviceFilter[] = ['all', 'online', 'stale', 'offline', 'unknown'];
 
   async function handleExport(type: 'signal' | 'latency') {
     setExporting(true);
