@@ -44,6 +44,33 @@ curl -X POST "https://api.starfleet.icircles.rw/api/agent-tokens" \
 
 Do not commit generated scripts with real tokens.
 
+## Generate All Site Upload Scripts
+
+For rollout beyond the test VM, generate one remediation script per site from a
+single dashboard admin token:
+
+```bash
+export STARFLEET_ADMIN_TOKEN="<ADMIN_DASHBOARD_JWT>"
+node packages/agent/build-intune-remediations.mjs
+```
+
+This writes:
+
+```text
+dist/intune/sites/site-<id>-<name>-remediation.ps1
+dist/intune/sites/manifest.json
+```
+
+Upload the matching generated remediation script to the matching site's Intune
+device group. Each generated script contains a different site-scoped token, so
+do not reuse one site's file for another site.
+
+For a smaller batch:
+
+```bash
+node packages/agent/build-intune-remediations.mjs --site-ids 7,12,19
+```
+
 ## Create The Intune Remediation
 
 Go to:
