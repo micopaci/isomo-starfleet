@@ -67,7 +67,8 @@ export function ComputersView({ isAdmin }: Props) {
     setSyncing(true);
     try {
       const result = await makeApi().syncIntuneDevices();
-      alert(`Intune sync complete: ${result.upserted} of ${result.total} device${result.total === 1 ? '' : 's'} processed.`);
+      const failed = result.failed ? ` ${result.failed} failed.` : '';
+      alert(`Intune sync complete: ${result.upserted} of ${result.total} device${result.total === 1 ? '' : 's'} processed.${failed}`);
       refresh();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Intune sync failed.');

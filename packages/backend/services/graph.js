@@ -231,26 +231,31 @@ async function upsertManagedDevice(client, device) {
   return true;
 }
 
-async function syncManagedDevices() {
-  const devices = await listManagedDevices();
+async function syncManagedDevices(managedDevices = null) {
+  const devices = managedDevices || await listManagedDevices();
   const client = await pool.connect();
   let upserted = 0;
+  let failed = 0;
 
   try {
-    await client.query('BEGIN');
+    await client.query(`SET lock_timeout = '5s'`);
     for (const device of devices) {
-      if (await upsertManagedDevice(client, device)) upserted += 1;
+      try {
+        if (await upsertManagedDevice(client, device)) upserted += 1;
+      } catch (err) {
+        failed += 1;
+        console.error(`[Graph] Failed to sync Intune device ${device.id || device.deviceName || 'unknown'}: ${err.message}`);
+      }
+      if ((upserted + failed) % 50 === 0) {
+        console.log(`[Graph] Intune sync progress: ${upserted + failed}/${devices.length}`);
+      }
     }
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
   } finally {
     client.release();
   }
 
-  console.log(`[Graph] Synced ${upserted} Intune managed device(s).`);
-  return { total: devices.length, upserted };
+  console.log(`[Graph] Synced ${upserted} Intune managed device(s); ${failed} failed.`);
+  return { total: devices.length, upserted, failed };
 }
 
 function scheduleIntuneDeviceSync() {
