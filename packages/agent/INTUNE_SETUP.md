@@ -61,6 +61,9 @@ dist/intune/sites/site-<id>-<name>-remediation.ps1
 dist/intune/sites/manifest.json
 ```
 
+The generator skips site `0` (`Unassigned / Discovery`) because it is not a
+deployable school/device group and cannot receive an agent token.
+
 Upload the matching generated remediation script to the matching site's Intune
 device group. Each generated script contains a different site-scoped token, so
 do not reuse one site's file for another site.

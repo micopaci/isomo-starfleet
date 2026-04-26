@@ -104,7 +104,10 @@ if (!Array.isArray(sites)) {
 }
 
 const selectedSites = sites
-  .filter((site) => Number.isInteger(Number(site.id)) && (!siteFilter.length || siteFilter.includes(Number(site.id))))
+  .filter((site) => {
+    const id = Number(site.id);
+    return Number.isInteger(id) && id > 0 && (!siteFilter.length || siteFilter.includes(id));
+  })
   .map((site) => ({ ...site, id: Number(site.id) }))
   .sort((a, b) => a.id - b.id);
 
