@@ -68,6 +68,24 @@ refuses dashboard tokens, expired tokens, wrong-site tokens, and tokens rejected
 by the configured backend before writing the file. The generated remediation
 also installs `test.ps1` into `C:\ProgramData\Starfleet` for VM diagnostics.
 
+To generate one remediation script per site from a single dashboard admin token:
+
+```bash
+export STARFLEET_ADMIN_TOKEN="<admin-dashboard-jwt>"
+node packages/agent/build-intune-remediations.mjs
+```
+
+This writes site-specific upload scripts under `dist/intune/sites/`. Each file
+contains a different site-scoped agent token, so assign each remediation only to
+that site's Intune device group. The generated files are ignored by git because
+they contain secrets.
+
+For a subset:
+
+```bash
+node packages/agent/build-intune-remediations.mjs --site-ids 7,12,19
+```
+
 ## Local Laptop Paths
 
 | Path | Contents |
