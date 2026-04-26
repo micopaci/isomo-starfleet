@@ -40,6 +40,15 @@ function requiredEnv(name) {
   if (!process.env[name]) throw new Error(`${name} is not set`);
 }
 
+function validateClientSecretShape() {
+  const secret = String(process.env.GRAPH_CLIENT_SECRET || '').trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(secret)) {
+    throw new Error(
+      'GRAPH_CLIENT_SECRET looks like an Azure client secret ID. Use the secret VALUE from App registrations > Certificates & secrets.'
+    );
+  }
+}
+
 function formatDate(value) {
   if (!value) return '-';
   const date = new Date(value);
@@ -138,6 +147,7 @@ async function main() {
   requiredEnv('GRAPH_TENANT_ID');
   requiredEnv('GRAPH_CLIENT_ID');
   requiredEnv('GRAPH_CLIENT_SECRET');
+  validateClientSecretShape();
 
   console.log('Checking Intune managedDevices via Microsoft Graph...');
   const devices = await graph.listManagedDevices();
@@ -159,6 +169,9 @@ async function main() {
 main()
   .catch(err => {
     console.error(`\nIntune check failed: ${err.message}`);
+    if (/AADSTS7000215|invalid_client|client secret ID/i.test(err.message)) {
+      console.error('Hint: GRAPH_CLIENT_SECRET must be the client secret VALUE, not the Azure secret ID. Create a new secret if the value is no longer visible.');
+    }
     if (/Authorization_RequestDenied|Forbidden|Insufficient privileges/i.test(err.message)) {
       console.error('Hint: grant/admin-consent DeviceManagementManagedDevices.Read.All application permission for the Graph app.');
     }
