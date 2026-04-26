@@ -9,6 +9,7 @@
  * POST /api/trigger   (admin only)
  */
 const express = require('express');
+const jwt     = require('jsonwebtoken');
 const pool    = require('../db');
 const { requireAdmin }   = require('../middleware/auth');
 const { currentSignal }  = require('../services/cache');
@@ -23,6 +24,19 @@ function parseMonthStart(raw) {
   const dt = new Date(normalized);
   if (Number.isNaN(dt.getTime())) return null;
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-01`;
+}
+
+function getAgentTokenSignOptions() {
+  if (process.env.JWT_PRIVATE_KEY && process.env.JWT_PRIVATE_KEY.startsWith('-----BEGIN')) {
+    return { key: process.env.JWT_PRIVATE_KEY, options: { algorithm: 'RS256' } };
+  }
+  return { key: process.env.JWT_SECRET || 'dev-secret-change-me', options: { algorithm: 'HS256' } };
+}
+
+function normalizeAgentTokenTtl(raw) {
+  const value = String(raw || process.env.AGENT_TOKEN_TTL || '365d').trim();
+  if (/^\d+[dh]$/.test(value)) return value;
+  return '365d';
 }
 
 // ── GET /api/sites ────────────────────────────────────────────────────────────
@@ -227,6 +241,45 @@ router.get('/agent-health', async (req, res, next) => {
       params
     );
     res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/agent-tokens (admin only) ──────────────────────────────────────
+// Generates a site-scoped JWT using the same production signing key as login.
+router.post('/agent-tokens', requireAdmin, async (req, res, next) => {
+  try {
+    const siteId = Number(req.body?.site_id);
+    if (!Number.isInteger(siteId) || siteId <= 0) {
+      return res.status(400).json({ error: 'site_id must be a positive integer' });
+    }
+
+    const siteRes = await pool.query(`SELECT id, name FROM sites WHERE id = $1`, [siteId]);
+    if (!siteRes.rows.length) {
+      return res.status(404).json({ error: 'Site not found' });
+    }
+
+    const expiresIn = normalizeAgentTokenTtl(req.body?.expires_in);
+    const { key, options } = getAgentTokenSignOptions();
+    const subject = `agent-site-${siteId}`;
+    const token = jwt.sign(
+      {
+        sub: subject,
+        email: `${subject}@starfleet.local`,
+        role: 'agent',
+        site_id: siteId,
+      },
+      key,
+      { ...options, expiresIn },
+    );
+
+    res.json({
+      token,
+      token_type: 'Bearer',
+      role: 'agent',
+      site_id: siteId,
+      site_name: siteRes.rows[0].name,
+      expires_in: expiresIn,
+    });
   } catch (err) { next(err); }
 });
 
