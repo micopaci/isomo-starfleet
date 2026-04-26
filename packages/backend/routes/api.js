@@ -293,6 +293,36 @@ router.post('/agent-tokens', requireAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+const TRIGGER_TYPES = [
+  'location_refresh',
+  'data_pull',
+  'diagnostics',
+  'ping_dish',
+  'reboot_starlink',
+];
+
+async function createDeviceTrigger(client, device_id, type, email) {
+  const triggerRes = await client.query(
+    `INSERT INTO script_triggers (device_id, triggered_by, type, status)
+     VALUES ($1, $2, $3, 'pending')
+     RETURNING id`,
+    [device_id, email, type]
+  );
+  const trigger_id = triggerRes.rows[0].id;
+
+  graphClient.triggerRemediationScript(device_id, type, trigger_id).catch(async err => {
+    console.error(`Graph trigger failed for device ${device_id}:`, err.message);
+    await pool.query(
+      `UPDATE script_triggers SET status = 'failed', result = $1 WHERE id = $2`,
+      [JSON.stringify({ error: err.message }), trigger_id]
+    ).catch(updateErr => {
+      console.error(`Failed to mark trigger ${trigger_id} as failed:`, updateErr.message);
+    });
+  });
+
+  return trigger_id;
+}
+
 // ── POST /api/trigger (admin only) ────────────────────────────────────────────
 router.post('/trigger', requireAdmin, async (req, res, next) => {
   try {
@@ -300,27 +330,50 @@ router.post('/trigger', requireAdmin, async (req, res, next) => {
     if (!device_id || !type) {
       return res.status(400).json({ error: 'device_id and type are required' });
     }
-    if (!['location_refresh', 'data_pull'].includes(type)) {
-      return res.status(400).json({ error: 'type must be location_refresh or data_pull' });
+    if (!TRIGGER_TYPES.includes(type)) {
+      return res.status(400).json({ error: `type must be one of: ${TRIGGER_TYPES.join(', ')}` });
     }
 
     const client = await pool.connect();
     try {
-      // Insert trigger record
-      const triggerRes = await client.query(
-        `INSERT INTO script_triggers (device_id, triggered_by, type, status)
-         VALUES ($1, $2, $3, 'pending')
-         RETURNING id`,
-        [device_id, req.user.email, type]
-      );
-      const trigger_id = triggerRes.rows[0].id;
-
-      // Fire Graph API (non-blocking — errors are logged, not fatal)
-      graphClient.triggerRemediationScript(device_id, type, trigger_id).catch(err => {
-        console.error(`Graph trigger failed for device ${device_id}:`, err.message);
-      });
-
+      const trigger_id = await createDeviceTrigger(client, device_id, type, req.user.email);
       res.json({ ok: true, trigger_id });
+    } finally {
+      client.release();
+    }
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/trigger/site (admin only) ───────────────────────────────────────
+// Body: { site_id, type } → triggers every Intune-managed laptop at that site.
+router.post('/trigger/site', requireAdmin, async (req, res, next) => {
+  try {
+    const { site_id, type } = req.body;
+    const siteId = Number(site_id);
+    if (!Number.isInteger(siteId) || siteId <= 0 || !type) {
+      return res.status(400).json({ error: 'site_id and type are required' });
+    }
+    if (!TRIGGER_TYPES.includes(type)) {
+      return res.status(400).json({ error: `type must be one of: ${TRIGGER_TYPES.join(', ')}` });
+    }
+
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT id
+         FROM devices
+         WHERE site_id = $1
+           AND intune_device_id IS NOT NULL
+         ORDER BY last_seen DESC NULLS LAST, id ASC`,
+        [siteId]
+      );
+
+      const trigger_ids = [];
+      for (const row of rows) {
+        trigger_ids.push(await createDeviceTrigger(client, row.id, type, req.user.email));
+      }
+
+      res.json({ ok: true, site_id: siteId, type, count: trigger_ids.length, trigger_ids });
     } finally {
       client.release();
     }

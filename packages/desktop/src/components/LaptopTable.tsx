@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Device, downloadCsv } from '@starfleet/shared';
+import { Device, TriggerType, downloadCsv } from '@starfleet/shared';
 import { getBaseUrl, getStoredToken } from '../store/auth';
 import { StarfleetApi } from '@starfleet/shared';
 
@@ -9,8 +9,8 @@ interface Props {
   devices: Device[];
   siteId: number;
   isAdmin: boolean;
-  onTrigger: (deviceId: number, type: string) => void;
-  onTriggerAll: () => void;
+  onTrigger: (deviceId: number, type: TriggerType) => Promise<void>;
+  onTriggerAll: () => Promise<void>;
 }
 
 function makeApi() {
@@ -81,7 +81,7 @@ export function LaptopTable({ devices, siteId, isAdmin, onTrigger, onTriggerAll 
         <div className="header-actions">
           {isAdmin && (
             <>
-              <button className="btn-secondary" onClick={onTriggerAll}>
+              <button className="btn-secondary" onClick={() => void onTriggerAll()}>
                 ⬇ Pull all
               </button>
               <div className="export-group">
@@ -149,7 +149,7 @@ export function LaptopTable({ devices, siteId, isAdmin, onTrigger, onTriggerAll 
                   <td>
                     <button
                       className="btn-ghost"
-                      onClick={() => onTrigger(d.id, 'data_pull')}
+                      onClick={() => void onTrigger(d.id, 'data_pull')}
                       title="Pull data from this device"
                     >
                       ⬇
