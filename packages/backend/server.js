@@ -85,6 +85,29 @@ async function ensureRuntimeSchema() {
     `);
 
     await client.query(`
+      ALTER TABLE sites
+      ADD COLUMN IF NOT EXISTS starlink_uuid TEXT
+    `);
+    await client.query(`
+      ALTER TABLE sites
+      ADD COLUMN IF NOT EXISTS site_master_id INTEGER
+    `);
+    await client.query(`
+      ALTER TABLE sites
+      ADD COLUMN IF NOT EXISTS district TEXT
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sites_starlink_uuid_lower
+      ON sites (LOWER(starlink_uuid))
+      WHERE starlink_uuid IS NOT NULL
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sites_site_master_id
+      ON sites(site_master_id)
+      WHERE site_master_id IS NOT NULL
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS ingest_payload_dedup (
         id          BIGSERIAL PRIMARY KEY,
         endpoint    TEXT NOT NULL,

@@ -79,7 +79,16 @@ async function nearestSite(lat, lon) {
  * Returns the resolved site_id (or hintedSiteId if GPS missing / out of range).
  */
 async function resolveAndMaybeNotify(client, device_id, lat, lon, hintedSiteId) {
-  // Always store last-known GPS, even if we don't reassign.
+  const resolved = await nearestSite(lat, lon);
+  const devRes = await client.query(
+    `SELECT site_id, last_lat, last_lon FROM devices WHERE id = $1`,
+    [device_id]
+  );
+  const current = devRes.rows[0];
+
+  // Always store last-known GPS, even if we don't reassign the device yet.
+  // Read the previous point first; otherwise the movement check compares the
+  // new GPS fix against itself and suppresses real site-change evidence.
   if (lat != null && lon != null) {
     await client.query(
       `UPDATE devices SET last_lat = $1, last_lon = $2, last_gps_at = NOW() WHERE id = $3`,
@@ -87,18 +96,11 @@ async function resolveAndMaybeNotify(client, device_id, lat, lon, hintedSiteId) 
     );
   }
 
-  const resolved = await nearestSite(lat, lon);
   if (!resolved) {
     // GPS missing or out of range — fall back to hint, don't change devices.site_id
     return hintedSiteId;
   }
 
-  // Compare to current devices.site_id
-  const devRes = await client.query(
-    `SELECT site_id, last_lat, last_lon FROM devices WHERE id = $1`,
-    [device_id]
-  );
-  const current = devRes.rows[0];
   if (!current) return resolved.site_id;
 
   // No change, or not enough movement to trigger a reassignment
@@ -113,7 +115,7 @@ async function resolveAndMaybeNotify(client, device_id, lat, lon, hintedSiteId) 
       parseFloat(current.last_lat), parseFloat(current.last_lon),
       lat, lon
     );
-    if (moved < MIN_MOVE_KM) return current.site_id;
+    if (moved < MIN_MOVE_KM) return resolved.site_id;
   }
 
   // ── SITE CHANGE CANDIDATE (must be observed across distinct days) ──
@@ -142,7 +144,7 @@ async function resolveAndMaybeNotify(client, device_id, lat, lon, hintedSiteId) 
 
   const seenDays = Number(candRes.rows[0]?.seen_days || 1);
   if (seenDays < REQUIRED_MOVE_DAYS) {
-    return current.site_id;
+    return resolved.site_id;
   }
 
   // ── SITE CHANGE CONFIRMED ──
