@@ -7,7 +7,8 @@
     "start": "node migrate.js && node server.js",
     "migrate": "node migrate.js",
     "dev": "node --watch server.js",
-    "agent:token": "node scripts/generate_agent_token.js"
+    "agent:token": "node scripts/generate_agent_token.js",
+    "intune:check": "node scripts/check_intune_data.js"
   },
   "dependencies": {
     "axios": "^1.7.2",
