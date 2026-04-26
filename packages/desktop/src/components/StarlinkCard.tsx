@@ -1,9 +1,9 @@
-import { SiteDetail, computeSignalScore, predictCause, formatLatency, siteStatus } from '@starfleet/shared';
+import { SiteDetail, TriggerType, computeSignalScore, predictCause, formatLatency, siteStatus } from '@starfleet/shared';
 
 interface Props {
   site: SiteDetail;
   isAdmin: boolean;
-  onTrigger: (deviceId: number, type: string) => void;
+  onTrigger: (deviceId: number, type: TriggerType) => Promise<void>;
 }
 
 const SCORE_COLOR = (s: number) =>
@@ -84,7 +84,7 @@ export function StarlinkCard({ site, isAdmin, onTrigger }: Props) {
             className="btn-secondary"
             onClick={() => {
               const firstDevice = site.devices[0];
-              if (firstDevice) onTrigger(firstDevice.id, 'location_refresh');
+              if (firstDevice) void onTrigger(firstDevice.id, 'location_refresh');
             }}
           >
             ↻ Refresh location

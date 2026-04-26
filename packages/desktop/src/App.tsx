@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useFleetSummary, siteStatus } from '@starfleet/shared';
+import { StarfleetApi, TriggerType, useFleetSummary, siteStatus } from '@starfleet/shared';
 import { LoginScreen } from './components/LoginScreen';
 import { Sidebar } from './components/Sidebar';
 import { MetricCards } from './components/MetricCards';
@@ -11,7 +11,7 @@ import { AlertsView } from './components/AlertsView';
 import { MapView } from './components/MapView';
 import { SiteDetail } from './components/SiteDetail';
 import { DarkBanner } from './components/DarkBanner';
-import { isLoggedIn, initClients, logout, getStoredToken } from './store/auth';
+import { isLoggedIn, initClients, logout, getStoredToken, getBaseUrl } from './store/auth';
 
 type FilterValue = 'all' | 'online' | 'degraded' | 'dark';
 type NavTab = 'overview' | 'starlinks' | 'computers' | 'students' | 'alerts' | 'campuses' | 'map';
@@ -114,6 +114,38 @@ function AuthedApp({
     setActiveTab('overview');
   }
 
+  const makeApi = useCallback(() => (
+    new StarfleetApi(getBaseUrl(), () => getStoredToken() || '', () => {
+      logout();
+      window.location.reload();
+    })
+  ), []);
+
+  const handleTriggerSite = useCallback(async (siteId: number, type: TriggerType) => {
+    const site = sites.find(s => s.id === siteId);
+    const result = await makeApi().triggerSite(siteId, type);
+    const label = actionLabel(type);
+    alert(`${label} queued for ${site?.name ?? `site ${siteId}`} on ${result.count} managed device${result.count === 1 ? '' : 's'}.`);
+  }, [makeApi, sites]);
+
+  const handleRunFleetDiagnostics = useCallback(async () => {
+    const targetSites = sites.filter(s => s.total_laptops > 0);
+    let devices = 0;
+    for (const site of targetSites) {
+      const result = await makeApi().triggerSite(site.id, 'diagnostics');
+      devices += result.count;
+    }
+    alert(`Diagnostics queued for ${devices} managed device${devices === 1 ? '' : 's'} across ${targetSites.length} site${targetSites.length === 1 ? '' : 's'}.`);
+  }, [makeApi, sites]);
+
+  const handleImportMonthlyUsage = useCallback(async (
+    month: string,
+    entries: Array<{ site_id: number; gb_total?: number; mb_total?: number; bytes_total?: number }>,
+  ) => {
+    const result = await makeApi().importMonthlyUsage(month, entries);
+    alert(`Imported ${result.imported} monthly usage row${result.imported === 1 ? '' : 's'} for ${result.month}.`);
+  }, [makeApi]);
+
   // Fleet stats for sidebar
   const onlineDishes = sites.filter(s => siteStatus(s) === 'online').length;
   const openAlerts   = sites.filter(s => siteStatus(s) !== 'online').length;
@@ -171,7 +203,12 @@ function AuthedApp({
 
         {/* Tab routing */}
         {activeTab === 'overview' && selectedSiteId === null && (
-          <OverviewView sites={sites} summary={summary} onSelectSite={handleSelectSite} />
+          <OverviewView
+            sites={sites}
+            summary={summary}
+            onSelectSite={handleSelectSite}
+            onRunDiagnostics={role === 'admin' ? handleRunFleetDiagnostics : undefined}
+          />
         )}
 
         {activeTab === 'overview' && selectedSiteId !== null && (
@@ -179,14 +216,21 @@ function AuthedApp({
             siteId={selectedSiteId}
             isAdmin={role === 'admin'}
             onTrigger={async (deviceId, type) => {
-              console.log(`Trigger ${type} on device ${deviceId}`);
+              const result = await makeApi().triggerScript(deviceId, type);
+              alert(`${actionLabel(type)} queued. Trigger #${result.trigger_id}.`);
             }}
           />
         )}
 
         {/* Placeholder views for tabs not yet wired to live API */}
         {activeTab === 'starlinks' && (
-          <StarlinksView sites={sites} onSelectSite={handleSelectSite} />
+          <StarlinksView
+            sites={sites}
+            isAdmin={role === 'admin'}
+            onSelectSite={handleSelectSite}
+            onTriggerSite={handleTriggerSite}
+            onImportMonthlyUsage={handleImportMonthlyUsage}
+          />
         )}
 
         {activeTab === 'computers' && (
@@ -218,6 +262,16 @@ function AuthedApp({
       </main>
     </div>
   );
+}
+
+function actionLabel(type: TriggerType): string {
+  switch (type) {
+    case 'diagnostics': return 'Diagnostics';
+    case 'location_refresh': return 'Location refresh';
+    case 'data_pull': return 'Data pull';
+    case 'ping_dish': return 'Dish ping';
+    case 'reboot_starlink': return 'Starlink reboot';
+  }
 }
 
 function PlaceholderView({

@@ -1,13 +1,15 @@
-import { Site, FleetSummary, siteStatus } from '@starfleet/shared';
+import { useState } from 'react';
+import { Site, FleetSummary, downloadCsv, siteStatus } from '@starfleet/shared';
 import { StatusDot, StatusChip } from './StatusChip';
 
 interface Props {
   sites: Site[];
   summary: FleetSummary | null;
   onSelectSite: (id: number) => void;
+  onRunDiagnostics?: () => Promise<void>;
 }
 
-export function OverviewView({ sites, summary, onSelectSite }: Props) {
+export function OverviewView({ sites, summary, onSelectSite, onRunDiagnostics }: Props) {
   const darkSites    = sites.filter(s => siteStatus(s) === 'dark');
   const degradedSites = sites.filter(s => siteStatus(s) === 'degraded');
   const onlineSites   = sites.filter(s => siteStatus(s) === 'online');
@@ -16,6 +18,27 @@ export function OverviewView({ sites, summary, onSelectSite }: Props) {
   const onlineLaptops = summary?.online_laptops ?? 0;
   const staleLaptops  = summary?.stale_devices ?? 0;
   const openIssues    = darkSites.length + degradedSites.length;
+  const [busy, setBusy] = useState(false);
+
+  async function runDiagnostics() {
+    if (!onRunDiagnostics) return;
+    setBusy(true);
+    try {
+      await onRunDiagnostics();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to queue diagnostics.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function exportReport() {
+    downloadCsv(buildFleetCsv(sites), `starfleet_fleet_report_${new Date().toISOString().slice(0, 10)}.csv`);
+  }
+
+  function openRunbook() {
+    window.open('https://github.com/micopaci/isomo-starfleet/blob/main/docs/RUNBOOK.md', '_blank', 'noopener');
+  }
 
   return (
     <div className="view">
@@ -34,8 +57,11 @@ export function OverviewView({ sites, summary, onSelectSite }: Props) {
           </p>
         </div>
         <div className="view__actions">
-          <button className="btn">Run diagnostics</button>
-          <button className="btn btn--primary">Export report</button>
+          <button className="btn" onClick={runDiagnostics} disabled={!onRunDiagnostics || busy}>
+            {busy ? 'Queuing…' : 'Run diagnostics'}
+          </button>
+          <button className="btn" onClick={openRunbook}>Open runbook</button>
+          <button className="btn btn--primary" onClick={exportReport}>Export CSV</button>
         </div>
       </div>
 
@@ -190,6 +216,53 @@ export function OverviewView({ sites, summary, onSelectSite }: Props) {
       </section>
     </div>
   );
+}
+
+function buildFleetCsv(sites: Site[]): string {
+  const headers = [
+    'site_id',
+    'name',
+    'status',
+    'location',
+    'starlink_sn',
+    'starlink_uuid',
+    'online_laptops',
+    'total_laptops',
+    'score',
+    'score_7day_avg',
+    'latency_ms',
+    'snr',
+    'obstruction_pct',
+    'ping_drop_pct',
+    'updated_at',
+  ];
+
+  const rows = sites.map(site => [
+    site.id,
+    site.name,
+    siteStatus(site),
+    site.location ?? '',
+    site.starlink_sn ?? '',
+    site.starlink_uuid ?? '',
+    site.online_laptops,
+    site.total_laptops,
+    site.score ?? '',
+    site.score_7day_avg ?? '',
+    site.signal?.pop_latency_ms ?? '',
+    site.signal?.snr ?? '',
+    site.signal?.obstruction_pct ?? '',
+    site.signal?.ping_drop_pct ?? '',
+    site.signal?.updatedAt ?? '',
+  ]);
+
+  return toCsv([headers, ...rows]);
+}
+
+function toCsv(rows: Array<Array<string | number>>): string {
+  return rows.map(row => row.map(cell => {
+    const value = String(cell);
+    return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  }).join(',')).join('\n');
 }
 
 function MiniBar({ label, n, total, tone }: { label: string; n: number; total: number; tone: string }) {

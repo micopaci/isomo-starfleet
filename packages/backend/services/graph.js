@@ -104,8 +104,13 @@ async function requestWithRetry(url, options, body, maxRetries = 3) {
 // tenants that recreate scripts and get new GUIDs.
 const REMEDIATION_POLICY_IDS = {
   'restart-starlink': process.env.REMEDIATION_POLICY_RESTART_STARLINK || null,
+  'reboot_starlink':  process.env.REMEDIATION_POLICY_REBOOT_STARLINK  || process.env.REMEDIATION_POLICY_RESTART_STARLINK || null,
   'clear-cache':      process.env.REMEDIATION_POLICY_CLEAR_CACHE      || null,
   'reinstall-agent':  process.env.REMEDIATION_POLICY_REINSTALL_AGENT  || null,
+  'location_refresh': process.env.REMEDIATION_POLICY_LOCATION_REFRESH || null,
+  'data_pull':        process.env.REMEDIATION_POLICY_DATA_PULL        || null,
+  'diagnostics':      process.env.REMEDIATION_POLICY_DIAGNOSTICS      || null,
+  'ping_dish':        process.env.REMEDIATION_POLICY_PING_DISH        || null,
 };
 
 async function triggerRemediationScript(device_id, type, trigger_id) {

@@ -1,4 +1,4 @@
-import { useSite, useSignalHistory, useLatencyHistory, useUsageHistory } from '@starfleet/shared';
+import { TriggerType, useSite, useSignalHistory, useLatencyHistory, useUsageHistory } from '@starfleet/shared';
 import { StarlinkCard } from './StarlinkCard';
 import { SignalChart } from './SignalChart';
 import { LatencyChart } from './LatencyChart';
@@ -8,7 +8,7 @@ import { LaptopTable } from './LaptopTable';
 interface Props {
   siteId: number;
   isAdmin: boolean;
-  onTrigger: (deviceId: number, type: string) => void;
+  onTrigger: (deviceId: number, type: TriggerType) => Promise<void>;
 }
 
 export function SiteDetail({ siteId, isAdmin, onTrigger }: Props) {

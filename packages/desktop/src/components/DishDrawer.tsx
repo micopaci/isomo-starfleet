@@ -1,15 +1,18 @@
-import { useEffect } from 'react';
-import { Site, computeSignalScore, siteStatus, useSignalHistory } from '@starfleet/shared';
+import { useEffect, useState } from 'react';
+import { Site, TriggerType, computeSignalScore, siteStatus, useSignalHistory } from '@starfleet/shared';
 import { StatusChip } from './StatusChip';
 
 interface Props {
   site: Site | null;
   onClose: () => void;
   onOpenFull: () => void;
+  isAdmin: boolean;
+  onTriggerSite: (siteId: number, type: TriggerType) => Promise<void>;
 }
 
-export function DishDrawer({ site, onClose, onOpenFull }: Props) {
+export function DishDrawer({ site, onClose, onOpenFull, isAdmin, onTriggerSite }: Props) {
   const { scores } = useSignalHistory(site?.id ?? null);
+  const [busyAction, setBusyAction] = useState<TriggerType | null>(null);
 
   // Escape key closes
   useEffect(() => {
@@ -34,6 +37,23 @@ export function DishDrawer({ site, onClose, onOpenFull }: Props) {
 
   // Mini score sparkline from last 14 days
   const sparkPoints = scores.map(s => s.score);
+
+  async function trigger(type: TriggerType) {
+    if (!site || busyAction) return;
+    if (type === 'reboot_starlink' && !window.confirm(`Reboot the Starlink dish at ${site.name}?`)) return;
+    setBusyAction(type);
+    try {
+      await onTriggerSite(site.id, type);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : `Failed to queue ${type}.`);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function openStarlinkPortal() {
+    window.open('https://www.starlink.com/account/home', '_blank', 'noopener');
+  }
 
   return (
     <>
@@ -157,6 +177,19 @@ export function DishDrawer({ site, onClose, onOpenFull }: Props) {
             </div>
           </div>
         )}
+
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--rule-2)' }}>
+          <div className="eyebrow" style={{ marginBottom: 12 }}>Dish actions</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <button className="btn" onClick={() => void trigger('ping_dish')} disabled={!isAdmin || busyAction !== null}>
+              {busyAction === 'ping_dish' ? 'Queuing…' : 'Ping dish'}
+            </button>
+            <button className="btn" onClick={() => void trigger('reboot_starlink')} disabled={!isAdmin || busyAction !== null}>
+              {busyAction === 'reboot_starlink' ? 'Queuing…' : 'Reboot'}
+            </button>
+            <button className="btn" onClick={openStarlinkPortal}>Open in Starlink</button>
+          </div>
+        </div>
 
         {/* Spacer */}
         <div style={{ flex: 1 }} />

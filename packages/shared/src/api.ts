@@ -1,4 +1,4 @@
-import type { Site, SiteDetail, DailyScore, LatencyReading, Device, UsageHistoryPoint } from './types';
+import type { Site, SiteDetail, DailyScore, LatencyReading, Device, UsageHistoryPoint, TriggerType } from './types';
 
 export class PermissionError extends Error {
   constructor(message = 'Forbidden') {
@@ -108,10 +108,30 @@ export class StarfleetApi {
   // ── Triggers ───────────────────────────────────────────────────────────────
 
   /** POST /api/trigger — admin only, trigger Intune remediation script */
-  triggerScript(deviceId: number, type: string): Promise<{ trigger_id: number }> {
-    return this.request<{ trigger_id: number }>('/api/trigger', {
+  triggerScript(deviceId: number, type: TriggerType): Promise<{ ok: boolean; trigger_id: number }> {
+    return this.request<{ ok: boolean; trigger_id: number }>('/api/trigger', {
       method: 'POST',
       body: JSON.stringify({ device_id: deviceId, type }),
+    });
+  }
+
+  /** POST /api/trigger/site — admin only, trigger every Intune-managed device at a site */
+  triggerSite(siteId: number, type: TriggerType): Promise<{ ok: boolean; count: number; trigger_ids: number[] }> {
+    return this.request<{ ok: boolean; count: number; trigger_ids: number[] }>('/api/trigger/site', {
+      method: 'POST',
+      body: JSON.stringify({ site_id: siteId, type }),
+    });
+  }
+
+  /** POST /api/usage/monthly-import — admin only, import Starlink portal totals */
+  importMonthlyUsage(
+    month: string,
+    entries: Array<{ site_id: number; gb_total?: number; mb_total?: number; bytes_total?: number }>,
+    source = 'starlink_portal_manual',
+  ): Promise<{ ok: boolean; month: string; imported: number }> {
+    return this.request<{ ok: boolean; month: string; imported: number }>('/api/usage/monthly-import', {
+      method: 'POST',
+      body: JSON.stringify({ month, entries, source }),
     });
   }
 
@@ -134,6 +154,11 @@ export class StarfleetApi {
     return this.requestText(
       `/api/export/latency?site_id=${siteId}&from=${from}&to=${to}`,
     );
+  }
+
+  /** GET /api/export/site-usage-monthly — admin only, raw monthly portal totals */
+  exportSiteUsageMonthlyCsv(from: string, to: string): Promise<string> {
+    return this.requestText(`/api/export/site-usage-monthly?from=${from}&to=${to}`);
   }
 
   // ── Auth ───────────────────────────────────────────────────────────────────

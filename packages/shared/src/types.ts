@@ -111,11 +111,18 @@ export interface ScriptTrigger {
   id: number;
   device_id: number;
   triggered_by: string;
-  type: 'location_refresh' | 'data_pull';
+  type: TriggerType;
   triggered_at: string;
   status: 'pending' | 'running' | 'done' | 'failed';
   result: string | null;
 }
+
+export type TriggerType =
+  | 'location_refresh'
+  | 'data_pull'
+  | 'diagnostics'
+  | 'ping_dish'
+  | 'reboot_starlink';
 
 export interface User {
   id: number;
