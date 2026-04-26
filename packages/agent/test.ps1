@@ -99,6 +99,18 @@ if (-not (Test-Path $ConfigPath)) {
     exit 1
 }
 
+$installSourcePath = Join-Path $DataDir "install_source.json"
+if (Test-Path $installSourcePath) {
+    try {
+        $installSource = Get-Content -Path $installSourcePath -Raw | ConvertFrom-Json
+        Write-Host "INFO: install source=$($installSource.source), package=$($installSource.package), agent_version=$($installSource.agent_version), site_id=$($installSource.site_id), generated_at_utc=$($installSource.generated_at_utc), installed_at_utc=$($installSource.installed_at_utc)"
+    } catch {
+        Write-Host "WARN: install_source.json exists but is not valid JSON: $($_.Exception.Message)"
+    }
+} else {
+    Write-Host "WARN: install_source.json is missing; this machine has not run the current Intune remediation installer yet."
+}
+
 $config = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
 $apiBase = ([string]$config.ApiBase).TrimEnd("/")
 $headers = @{
