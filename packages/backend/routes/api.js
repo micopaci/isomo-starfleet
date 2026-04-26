@@ -30,7 +30,7 @@ function parseMonthStart(raw) {
 // uptime % so the Ranking screen can sort on any metric without more round-trips.
 router.get('/sites', async (req, res, next) => {
   try {
-    const sitesRes = await pool.query(`SELECT id, name, starlink_sn, kit_id, location, lat, lng FROM sites ORDER BY id`);
+    const sitesRes = await pool.query(`SELECT id, site_master_id, name, starlink_sn, starlink_uuid, kit_id, location, district, lat, lng FROM sites ORDER BY COALESCE(site_master_id, id), id`);
 
     // Hydrate uptime + data-today maps in two flat queries (views from migration 015)
     const uptimeRes = await pool.query(`SELECT site_id, uptime_pct FROM site_uptime_today`);
@@ -77,7 +77,7 @@ router.get('/sites', async (req, res, next) => {
 router.get('/sites/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const siteRes = await pool.query(`SELECT id, name, starlink_sn, kit_id, location, created_at FROM sites WHERE id = $1`, [id]);
+    const siteRes = await pool.query(`SELECT id, site_master_id, name, starlink_sn, starlink_uuid, kit_id, location, district, lat, lng, created_at FROM sites WHERE id = $1`, [id]);
     if (!siteRes.rows.length) return res.status(404).json({ error: 'Site not found' });
 
     const site    = siteRes.rows[0];

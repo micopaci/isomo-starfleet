@@ -90,6 +90,44 @@ async function isDuplicatePayload(client, endpoint, device_id, payload_id) {
   return dedup.rows.length === 0;
 }
 
+function starlinkIdentityCandidates(...values) {
+  const out = new Set();
+
+  for (const raw of values) {
+    const value = String(raw || '').trim().toLowerCase();
+    if (!value) continue;
+
+    out.add(value);
+    if (value.startsWith('ut') && value.length > 2) out.add(value.slice(2));
+    if (/^[0-9a-f-]{16,}$/.test(value) && !value.startsWith('ut')) out.add(`ut${value}`);
+  }
+
+  return [...out];
+}
+
+async function resolveSiteFromStarlinkIdentity(client, identities = {}) {
+  const candidates = starlinkIdentityCandidates(
+    identities.starlink_id,
+    identities.starlink_uuid,
+    identities.starlink_sn,
+    identities.kit_id
+  );
+  if (!candidates.length) return null;
+
+  const { rows } = await client.query(
+    `SELECT id
+     FROM sites
+     WHERE LOWER(COALESCE(starlink_uuid, '')) = ANY($1)
+        OR LOWER(COALESCE(starlink_sn, '')) = ANY($1)
+        OR LOWER(COALESCE(kit_id, '')) = ANY($1)
+     ORDER BY id
+     LIMIT 1`,
+    [candidates]
+  );
+
+  return rows[0]?.id ?? null;
+}
+
 function median(values) {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -144,6 +182,7 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
       pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
       download_mbps, upload_mbps,
       lat, lon,
+      starlink_id, starlink_uuid, starlink_sn, kit_id,
       payload_id,
     } = req.body;
     if (!require400(res, req.body, ['device_sn', 'site_id'])) return;
@@ -156,9 +195,14 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
         return res.status(200).json({ ok: true, duplicate: true });
       }
 
-      // GPS Site Discovery: Associates unassigned laptops with the nearest school.
+      const identitySiteId = await resolveSiteFromStarlinkIdentity(client, {
+        starlink_id, starlink_uuid, starlink_sn, kit_id
+      });
+      const fallbackSiteId = identitySiteId || hintedSiteId;
+
+      // Site inference: Starlink inventory supplies the fallback hint when GPS is missing.
       const site_id = await resolveAndMaybeNotify(
-        client, device_id, lat ?? null, lon ?? null, hintedSiteId
+        client, device_id, lat ?? null, lon ?? null, fallbackSiteId
       );
 
       const window = new Date(Date.now() - 10 * 60 * 1000).toISOString();
