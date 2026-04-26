@@ -87,6 +87,19 @@ For a subset:
 node packages/agent/build-intune-remediations.mjs --site-ids 7,12,19
 ```
 
+If all laptops are enrolled with the same `.ppkg` and site is unknown at first
+boot, generate one shared discovery remediation:
+
+```bash
+export STARFLEET_ADMIN_TOKEN="<admin-dashboard-jwt>"
+node packages/agent/build-intune-discovery-remediation.mjs
+```
+
+Upload `dist/intune/discovery-remediation.ps1` to the all-laptops Intune group.
+It installs with `SiteId = 0`; after Starlink GPS or dish identity resolves the
+real school, the backend returns a site/device-scoped token and the laptop saves
+it into `agent.config.json`.
+
 ## Local Laptop Paths
 
 | Path | Contents |

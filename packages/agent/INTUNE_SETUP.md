@@ -74,6 +74,27 @@ For a smaller batch:
 node packages/agent/build-intune-remediations.mjs --site-ids 7,12,19
 ```
 
+## Generate One Discovery Upload Script
+
+If laptops are enrolled with the same `.ppkg` and you do not know which school
+they are at yet, use one shared discovery remediation instead:
+
+```bash
+export STARFLEET_ADMIN_TOKEN="<ADMIN_DASHBOARD_JWT>"
+node packages/agent/build-intune-discovery-remediation.mjs
+```
+
+This writes:
+
+```text
+dist/intune/discovery-remediation.ps1
+```
+
+The discovery script installs with `SiteId = 0`. On first run, the agent sends
+Starlink GPS/identity to `/ingest/bootstrap-token`. When the backend identifies
+the school, it returns a device/site-scoped agent token; the laptop saves that
+token in `agent.config.json` and uses it for future telemetry.
+
 ## Create The Intune Remediation
 
 Go to:

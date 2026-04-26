@@ -67,12 +67,15 @@ function validateApiToken(token) {
     throw new Error(`Refusing to build Intune remediation with role "${payload.role || 'missing'}"; expected "agent".`);
   }
 
-  const tokenSiteId = Number(payload.site_id || 0);
-  if (!Number.isInteger(tokenSiteId) || tokenSiteId <= 0) {
-    throw new Error('Agent token payload must include a positive site_id claim.');
+  const tokenSiteId = Number(payload.site_id ?? -1);
+  if (!Number.isInteger(tokenSiteId) || tokenSiteId < 0) {
+    throw new Error('Agent token payload must include site_id 0 for discovery or a positive site_id claim.');
   }
   if (siteId > 0 && tokenSiteId !== siteId) {
     throw new Error(`Agent token site_id ${tokenSiteId} does not match --site-id ${siteId}.`);
+  }
+  if (siteId === 0 && tokenSiteId !== 0) {
+    throw new Error(`Discovery remediation requires token site_id 0; got ${tokenSiteId}.`);
   }
 
   if (payload.exp) {
