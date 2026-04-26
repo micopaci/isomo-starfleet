@@ -2,10 +2,13 @@
 
 export interface Site {
   id: number;
+  site_master_id?: number | null;
   name: string;
   starlink_sn: string;
+  starlink_uuid?: string | null;
   kit_id: string | null;
   location: string | null;
+  district?: string | null;
   lat: number | null;
   lng: number | null;
   created_at: string;
@@ -47,9 +50,11 @@ export interface Device {
   last_seen: string | null;
   site_name: string | null;
   /** Stage 5: stale = last_seen between 15-60 min ago */
-  status: 'online' | 'offline' | 'stale';
+  status: 'online' | 'offline' | 'stale' | 'unknown';
   /** Stage 5: minutes since last seen (only present when stale) */
   stale_min?: number | null;
+  /** Last successful ingest write timestamp (any ingest endpoint). */
+  last_ingest_ok_at?: string | null;
 }
 
 export interface SignalReading {
@@ -123,6 +128,14 @@ export interface User {
 
 export interface SiteDetail extends Site {
   devices: Device[];
+}
+
+export interface UsageHistoryPoint {
+  month: string;
+  managed_mb: number;
+  total_mb: number | null;
+  unmanaged_est_mb: number | null;
+  confidence: 'managed_only' | 'estimated_unmanaged';
 }
 
 export interface FleetSummary {

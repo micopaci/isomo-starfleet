@@ -9,10 +9,11 @@ $ErrorActionPreference = "Stop"
 $QueueDir = Join-Path $DataDir "queue"
 $LogFile = Join-Path $DataDir "agent.log"
 $DeviceFile = Join-Path $DataDir "device.json"
+$InstallSourceFile = Join-Path $DataDir "install_source.json"
 $LastHeartbeatFile = Join-Path $DataDir "last_heartbeat.txt"
 $UsageBaselineFile = Join-Path $DataDir "usage_baseline.json"
 $SchemaVersion = "1.1"
-$AgentVersion = "1.1.0"
+$AgentVersion = "1.2.0"
 $RunId = [guid]::NewGuid().ToString()
 $SampleWindowSec = 300
 $UsageAdapterPolicy = "wifi_default_route"
@@ -55,6 +56,17 @@ function Read-JsonFile {
         return $null
     }
     return $raw | ConvertFrom-Json
+}
+
+function Get-InstallSourceLabel {
+    try {
+        $installSource = Read-JsonFile $InstallSourceFile
+        if ($null -ne $installSource -and -not [string]::IsNullOrWhiteSpace([string]$installSource.source)) {
+            return [string]$installSource.source
+        }
+    } catch {}
+
+    return "manual_or_legacy"
 }
 
 function Write-JsonFile {
@@ -150,6 +162,56 @@ function Get-AuthHeaders {
     }
 }
 
+function Get-HttpErrorDetails {
+    param([object]$ErrorRecord)
+
+    $statusCode = $null
+    $responseText = $null
+
+    try {
+        if ($ErrorRecord.Exception.Response -and $ErrorRecord.Exception.Response.StatusCode) {
+            $statusCode = [int]$ErrorRecord.Exception.Response.StatusCode
+        }
+    } catch {}
+
+    try {
+        if ($ErrorRecord.Exception.Response) {
+            $stream = $ErrorRecord.Exception.Response.GetResponseStream()
+            if ($null -ne $stream) {
+                $reader = New-Object System.IO.StreamReader($stream)
+                try {
+                    $responseText = $reader.ReadToEnd()
+                } finally {
+                    $reader.Close()
+                }
+            }
+        }
+    } catch {}
+
+    $message = [string]$ErrorRecord.Exception.Message
+    if (-not [string]::IsNullOrWhiteSpace($responseText)) {
+        $bodyMessage = $responseText
+        try {
+            $body = $responseText | ConvertFrom-Json -ErrorAction Stop
+            if (-not [string]::IsNullOrWhiteSpace([string]$body.detail)) {
+                $bodyMessage = [string]$body.detail
+            } elseif (-not [string]::IsNullOrWhiteSpace([string]$body.error)) {
+                $bodyMessage = [string]$body.error
+            }
+        } catch {}
+        $message = "$message; server said: $bodyMessage"
+    }
+
+    if ($statusCode -eq 401) {
+        $message = "$message; check that Intune installed a current site-scoped agent token signed by this backend"
+    }
+
+    return [pscustomobject]@{
+        StatusCode = $statusCode
+        Message = $message
+    }
+}
+
 function Get-NestedValue {
     param(
         [object]$Object,
@@ -208,6 +270,83 @@ function Find-FirstNumber {
                 return $found
             }
         }
+    }
+
+    return $null
+}
+
+function Find-FirstString {
+    param(
+        [object]$Object,
+        [string[]]$Names
+    )
+
+    if ($null -eq $Object) {
+        return $null
+    }
+
+    if ($Object -is [System.Collections.IEnumerable] -and -not ($Object -is [string])) {
+        foreach ($item in $Object) {
+            $found = Find-FirstString -Object $item -Names $Names
+            if (-not [string]::IsNullOrWhiteSpace($found)) {
+                return $found
+            }
+        }
+        return $null
+    }
+
+    foreach ($prop in $Object.PSObject.Properties) {
+        foreach ($name in $Names) {
+            if ($prop.Name -ieq $name -and -not [string]::IsNullOrWhiteSpace([string]$prop.Value)) {
+                return ([string]$prop.Value).Trim()
+            }
+        }
+    }
+
+    foreach ($prop in $Object.PSObject.Properties) {
+        if ($null -ne $prop.Value -and -not ($prop.Value -is [string])) {
+            $found = Find-FirstString -Object $prop.Value -Names $Names
+            if (-not [string]::IsNullOrWhiteSpace($found)) {
+                return $found
+            }
+        }
+    }
+
+    return $null
+}
+
+function Find-StarlinkUtIdInBytes {
+    param([byte[]]$Bytes)
+
+    if ($null -eq $Bytes -or $Bytes.Length -eq 0) {
+        return $null
+    }
+
+    try {
+        $text = [System.Text.Encoding]::ASCII.GetString($Bytes)
+        $match = [regex]::Match($text, '(?i)ut[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}')
+        if ($match.Success) {
+            return $match.Value.ToLowerInvariant()
+        }
+    } catch {}
+
+    return $null
+}
+
+function Normalize-StarlinkId {
+    param([object]$Value)
+
+    $id = ([string]$Value).Trim().ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($id)) {
+        return $null
+    }
+
+    if ($id -match '^ut([0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8})$') {
+        return $Matches[1]
+    }
+
+    if ($id -match '^[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}$') {
+        return $id
     }
 
     return $null
@@ -379,6 +518,667 @@ function Try-ParseJsonFromText {
     return $null
 }
 
+function Get-ByteSlice {
+    param(
+        [byte[]]$Bytes,
+        [int]$Offset,
+        [int]$Length
+    )
+
+    if ($Length -le 0) {
+        return (New-Object byte[] 0)
+    }
+    if ($Offset -lt 0 -or ($Offset + $Length) -gt $Bytes.Length) {
+        throw "Invalid byte slice offset/length."
+    }
+
+    $slice = New-Object byte[] $Length
+    [Array]::Copy($Bytes, $Offset, $slice, 0, $Length)
+    return $slice
+}
+
+function Read-ProtoVarint {
+    param(
+        [byte[]]$Bytes,
+        [ref]$Index
+    )
+
+    $value = [UInt64]0
+    $shift = 0
+    while ($Index.Value -lt $Bytes.Length) {
+        $b = [UInt64]$Bytes[$Index.Value]
+        $Index.Value++
+        $value = $value -bor (($b -band 0x7F) -shl $shift)
+        if (($b -band 0x80) -eq 0) {
+            return $value
+        }
+        $shift += 7
+        if ($shift -gt 63) {
+            throw "Invalid protobuf varint."
+        }
+    }
+    throw "Unexpected end of protobuf varint."
+}
+
+function Skip-ProtoField {
+    param(
+        [byte[]]$Bytes,
+        [int]$WireType,
+        [ref]$Index
+    )
+
+    switch ($WireType) {
+        0 {
+            [void](Read-ProtoVarint -Bytes $Bytes -Index $Index)
+            return $true
+        }
+        1 {
+            if (($Index.Value + 8) -gt $Bytes.Length) {
+                return $false
+            }
+            $Index.Value += 8
+            return $true
+        }
+        2 {
+            $len = [int](Read-ProtoVarint -Bytes $Bytes -Index $Index)
+            if ($len -lt 0 -or ($Index.Value + $len) -gt $Bytes.Length) {
+                return $false
+            }
+            $Index.Value += $len
+            return $true
+        }
+        5 {
+            if (($Index.Value + 4) -gt $Bytes.Length) {
+                return $false
+            }
+            $Index.Value += 4
+            return $true
+        }
+        default {
+            return $false
+        }
+    }
+}
+
+function Parse-StarlinkLocationProto {
+    param([byte[]]$Bytes)
+
+    $idx = 0
+    $cursor = [ref]$idx
+
+    $enabled = $null
+    $latitude = $null
+    $longitude = $null
+    $altitudeMeters = $null
+    $uncertaintyMetersValid = $null
+    $uncertaintyMeters = $null
+    $gpsTimeS = $null
+
+    while ($cursor.Value -lt $Bytes.Length) {
+        $key = [UInt64](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+        $field = [int]($key -shr 3)
+        $wire = [int]($key -band 0x07)
+
+        switch ($field) {
+            1 {
+                if ($wire -eq 0) {
+                    $enabled = ((Read-ProtoVarint -Bytes $Bytes -Index $cursor) -ne 0)
+                    continue
+                }
+            }
+            2 {
+                if ($wire -eq 1) {
+                    if (($cursor.Value + 8) -gt $Bytes.Length) { break }
+                    $latitude = [BitConverter]::ToDouble($Bytes, $cursor.Value)
+                    $cursor.Value += 8
+                    continue
+                }
+            }
+            3 {
+                if ($wire -eq 1) {
+                    if (($cursor.Value + 8) -gt $Bytes.Length) { break }
+                    $longitude = [BitConverter]::ToDouble($Bytes, $cursor.Value)
+                    $cursor.Value += 8
+                    continue
+                }
+            }
+            4 {
+                if ($wire -eq 1) {
+                    if (($cursor.Value + 8) -gt $Bytes.Length) { break }
+                    $altitudeMeters = [BitConverter]::ToDouble($Bytes, $cursor.Value)
+                    $cursor.Value += 8
+                    continue
+                }
+            }
+            5 {
+                if ($wire -eq 0) {
+                    $uncertaintyMetersValid = ((Read-ProtoVarint -Bytes $Bytes -Index $cursor) -ne 0)
+                    continue
+                }
+            }
+            6 {
+                if ($wire -eq 1) {
+                    if (($cursor.Value + 8) -gt $Bytes.Length) { break }
+                    $uncertaintyMeters = [BitConverter]::ToDouble($Bytes, $cursor.Value)
+                    $cursor.Value += 8
+                    continue
+                }
+            }
+            7 {
+                if ($wire -eq 1) {
+                    if (($cursor.Value + 8) -gt $Bytes.Length) { break }
+                    $gpsTimeS = [BitConverter]::ToDouble($Bytes, $cursor.Value)
+                    $cursor.Value += 8
+                    continue
+                }
+            }
+        }
+
+        if (-not (Skip-ProtoField -Bytes $Bytes -WireType $wire -Index $cursor)) {
+            break
+        }
+    }
+
+    return [pscustomobject]@{
+        enabled = $enabled
+        latitude = $latitude
+        longitude = $longitude
+        altitudeMeters = $altitudeMeters
+        uncertaintyMetersValid = $uncertaintyMetersValid
+        uncertaintyMeters = $uncertaintyMeters
+        gpsTimeS = $gpsTimeS
+    }
+}
+
+function Parse-StarlinkAlertsProto {
+    param([byte[]]$Bytes)
+
+    $idx = 0
+    $cursor = [ref]$idx
+    $alerts = @{
+        dishIsHeating = $false
+        dishThermalThrottle = $false
+        dishThermalShutdown = $false
+        powerSupplyThermalThrottle = $false
+        motorsStuck = $false
+        mastNotNearVertical = $false
+        slowEthernetSpeeds = $false
+        softwareInstallPending = $false
+        movingTooFastForPolicy = $false
+        obstructed = $false
+    }
+
+    while ($cursor.Value -lt $Bytes.Length) {
+        $key = [UInt64](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+        $field = [int]($key -shr 3)
+        $wire = [int]($key -band 0x07)
+        if ($wire -eq 0 -and $field -ge 1 -and $field -le 10) {
+            $value = ((Read-ProtoVarint -Bytes $Bytes -Index $cursor) -ne 0)
+            switch ($field) {
+                1 { $alerts["dishIsHeating"] = $value; continue }
+                2 { $alerts["dishThermalThrottle"] = $value; continue }
+                3 { $alerts["dishThermalShutdown"] = $value; continue }
+                4 { $alerts["powerSupplyThermalThrottle"] = $value; continue }
+                5 { $alerts["motorsStuck"] = $value; continue }
+                6 { $alerts["mastNotNearVertical"] = $value; continue }
+                7 { $alerts["slowEthernetSpeeds"] = $value; continue }
+                8 { $alerts["softwareInstallPending"] = $value; continue }
+                9 { $alerts["movingTooFastForPolicy"] = $value; continue }
+                10 { $alerts["obstructed"] = $value; continue }
+            }
+        }
+
+        if (-not (Skip-ProtoField -Bytes $Bytes -WireType $wire -Index $cursor)) {
+            break
+        }
+    }
+
+    return [pscustomobject]$alerts
+}
+
+function Parse-StarlinkAlignmentStatsProto {
+    param([byte[]]$Bytes)
+
+    $idx = 0
+    $cursor = [ref]$idx
+
+    $boresightAzimuthDeg = $null
+    $boresightElevationDeg = $null
+    $desiredBoresightAzimuthDeg = $null
+    $desiredBoresightElevationDeg = $null
+
+    while ($cursor.Value -lt $Bytes.Length) {
+        $key = [UInt64](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+        $field = [int]($key -shr 3)
+        $wire = [int]($key -band 0x07)
+
+        if ($wire -eq 5 -and $field -ge 1 -and $field -le 4) {
+            if (($cursor.Value + 4) -gt $Bytes.Length) {
+                break
+            }
+            $value = [BitConverter]::ToSingle($Bytes, $cursor.Value)
+            $cursor.Value += 4
+            switch ($field) {
+                1 { $boresightAzimuthDeg = $value; continue }
+                2 { $boresightElevationDeg = $value; continue }
+                3 { $desiredBoresightAzimuthDeg = $value; continue }
+                4 { $desiredBoresightElevationDeg = $value; continue }
+            }
+        }
+
+        if (-not (Skip-ProtoField -Bytes $Bytes -WireType $wire -Index $cursor)) {
+            break
+        }
+    }
+
+    return [pscustomobject]@{
+        boresightAzimuthDeg = $boresightAzimuthDeg
+        boresightElevationDeg = $boresightElevationDeg
+        desiredBoresightAzimuthDeg = $desiredBoresightAzimuthDeg
+        desiredBoresightElevationDeg = $desiredBoresightElevationDeg
+    }
+}
+
+function Parse-StarlinkDishDiagnosticsProto {
+    param([byte[]]$Bytes)
+
+    $idx = 0
+    $cursor = [ref]$idx
+
+    $id = $null
+    $hardwareVersion = $null
+    $softwareVersion = $null
+    $utcOffsetS = $null
+    $hardwareSelfTest = $null
+    $hardwareSelfTestCodesList = @()
+    $alerts = $null
+    $disablementCode = $null
+    $location = $null
+    $alignmentStats = $null
+    $stowed = $null
+
+    while ($cursor.Value -lt $Bytes.Length) {
+        $key = [UInt64](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+        $field = [int]($key -shr 3)
+        $wire = [int]($key -band 0x07)
+
+        switch ($field) {
+            1 {
+                if ($wire -eq 2) {
+                    $len = [int](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+                    if ($len -lt 0 -or ($cursor.Value + $len) -gt $Bytes.Length) { return $null }
+                    $id = [System.Text.Encoding]::UTF8.GetString($Bytes, $cursor.Value, $len)
+                    $cursor.Value += $len
+                    continue
+                }
+            }
+            2 {
+                if ($wire -eq 2) {
+                    $len = [int](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+                    if ($len -lt 0 -or ($cursor.Value + $len) -gt $Bytes.Length) { return $null }
+                    $hardwareVersion = [System.Text.Encoding]::UTF8.GetString($Bytes, $cursor.Value, $len)
+                    $cursor.Value += $len
+                    continue
+                }
+            }
+            3 {
+                if ($wire -eq 2) {
+                    $len = [int](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+                    if ($len -lt 0 -or ($cursor.Value + $len) -gt $Bytes.Length) { return $null }
+                    $softwareVersion = [System.Text.Encoding]::UTF8.GetString($Bytes, $cursor.Value, $len)
+                    $cursor.Value += $len
+                    continue
+                }
+            }
+            4 {
+                if ($wire -eq 0) {
+                    $utcOffsetS = [int](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+                    continue
+                }
+            }
+            5 {
+                if ($wire -eq 2) {
+                    $len = [int](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+                    if ($len -lt 0 -or ($cursor.Value + $len) -gt $Bytes.Length) { return $null }
+                    $slice = Get-ByteSlice -Bytes $Bytes -Offset $cursor.Value -Length $len
+                    $cursor.Value += $len
+                    $alerts = Parse-StarlinkAlertsProto -Bytes $slice
+                    continue
+                }
+            }
+            6 {
+                if ($wire -eq 0) {
+                    $disablementCode = [int](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+                    continue
+                }
+            }
+            7 {
+                if ($wire -eq 0) {
+                    $hardwareSelfTest = [int](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+                    continue
+                }
+            }
+            8 {
+                if ($wire -eq 2) {
+                    $len = [int](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+                    if ($len -lt 0 -or ($cursor.Value + $len) -gt $Bytes.Length) { return $null }
+                    $slice = Get-ByteSlice -Bytes $Bytes -Offset $cursor.Value -Length $len
+                    $cursor.Value += $len
+                    $location = Parse-StarlinkLocationProto -Bytes $slice
+                    continue
+                }
+            }
+            9 {
+                if ($wire -eq 2) {
+                    $len = [int](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+                    if ($len -lt 0 -or ($cursor.Value + $len) -gt $Bytes.Length) { return $null }
+                    $slice = Get-ByteSlice -Bytes $Bytes -Offset $cursor.Value -Length $len
+                    $cursor.Value += $len
+                    $alignmentStats = Parse-StarlinkAlignmentStatsProto -Bytes $slice
+                    continue
+                }
+            }
+            10 {
+                if ($wire -eq 0) {
+                    $stowed = ((Read-ProtoVarint -Bytes $Bytes -Index $cursor) -ne 0)
+                    continue
+                }
+            }
+            11 {
+                if ($wire -eq 0) {
+                    $hardwareSelfTestCodesList += [int](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+                    continue
+                }
+                if ($wire -eq 2) {
+                    $len = [int](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+                    if ($len -lt 0 -or ($cursor.Value + $len) -gt $Bytes.Length) { return $null }
+                    $end = $cursor.Value + $len
+                    while ($cursor.Value -lt $end) {
+                        $hardwareSelfTestCodesList += [int](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+                    }
+                    continue
+                }
+            }
+        }
+
+        if (-not (Skip-ProtoField -Bytes $Bytes -WireType $wire -Index $cursor)) {
+            break
+        }
+    }
+
+    return [pscustomobject]@{
+        id = $id
+        hardwareVersion = $hardwareVersion
+        softwareVersion = $softwareVersion
+        utcOffsetS = $utcOffsetS
+        hardwareSelfTest = $hardwareSelfTest
+        hardwareSelfTestCodesList = $hardwareSelfTestCodesList
+        alerts = $alerts
+        disablementCode = $disablementCode
+        location = $location
+        alignmentStats = $alignmentStats
+        stowed = $stowed
+    }
+}
+
+function Parse-StarlinkDeviceResponseProto {
+    param([byte[]]$Bytes)
+
+    $idx = 0
+    $cursor = [ref]$idx
+    $dish = $null
+
+    while ($cursor.Value -lt $Bytes.Length) {
+        $key = [UInt64](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+        $field = [int]($key -shr 3)
+        $wire = [int]($key -band 0x07)
+
+        if ($field -eq 6001 -and $wire -eq 2) {
+            $len = [int](Read-ProtoVarint -Bytes $Bytes -Index $cursor)
+            if ($len -lt 0 -or ($cursor.Value + $len) -gt $Bytes.Length) {
+                return $null
+            }
+            $slice = Get-ByteSlice -Bytes $Bytes -Offset $cursor.Value -Length $len
+            $cursor.Value += $len
+            $dish = Parse-StarlinkDishDiagnosticsProto -Bytes $slice
+            continue
+        }
+
+        if (-not (Skip-ProtoField -Bytes $Bytes -WireType $wire -Index $cursor)) {
+            break
+        }
+    }
+
+    if ($null -eq $dish) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        dishGetDiagnostics = $dish
+    }
+}
+
+function Get-GrpcWebDataFrames {
+    param([byte[]]$Bytes)
+
+    $frames = @()
+    if ($null -eq $Bytes -or $Bytes.Length -lt 5) {
+        return $frames
+    }
+
+    $idx = 0
+    while (($idx + 5) -le $Bytes.Length) {
+        $flags = [byte]$Bytes[$idx]
+        $idx++
+
+        $lenU = ([uint32]$Bytes[$idx] -shl 24) -bor ([uint32]$Bytes[$idx + 1] -shl 16) -bor ([uint32]$Bytes[$idx + 2] -shl 8) -bor ([uint32]$Bytes[$idx + 3])
+        $len = [int]$lenU
+        $idx += 4
+
+        if ($len -lt 0 -or ($idx + $len) -gt $Bytes.Length) {
+            break
+        }
+
+        if (($flags -band 0x80) -eq 0) {
+            $payload = Get-ByteSlice -Bytes $Bytes -Offset $idx -Length $len
+            $frames += ,$payload
+        }
+        $idx += $len
+    }
+
+    return $frames
+}
+
+function New-StarlinkGetDiagnosticsGrpcWebRequestFrame {
+    # Known-good frame for ToDevice{ request{ get_diagnostics{} } }.
+    return [byte[]](0x00, 0x00, 0x00, 0x00, 0x04, 0x82, 0xF7, 0x02, 0x00)
+}
+
+function Parse-StarlinkDishDiagnosticsByKnownOffsets {
+    param([byte[]]$Bytes)
+
+    if ($null -eq $Bytes -or $Bytes.Length -lt 113) {
+        return $null
+    }
+
+    try {
+        # Empirical fallback offsets observed from Starlink grpc-web binary payload.
+        $lat = [double][System.BitConverter]::ToDouble($Bytes, 96)
+        $lon = [double][System.BitConverter]::ToDouble($Bytes, 105)
+
+        if ($lat -lt -90 -or $lat -gt 90 -or $lon -lt -180 -or $lon -gt 180) {
+            return $null
+        }
+
+        $az = $null
+        $el = $null
+        if ($Bytes.Length -ge 153) {
+            $az = [double][System.BitConverter]::ToSingle($Bytes, 144)
+            $el = [double][System.BitConverter]::ToSingle($Bytes, 149)
+        }
+
+        return [pscustomobject]@{
+            id = $null
+            hardwareVersion = $null
+            softwareVersion = $null
+            utcOffsetS = $null
+            hardwareSelfTest = $null
+            hardwareSelfTestCodesList = @()
+            alerts = $null
+            disablementCode = $null
+            location = [pscustomobject]@{
+                enabled = $true
+                latitude = $lat
+                longitude = $lon
+                altitudeMeters = $null
+                uncertaintyMetersValid = $null
+                uncertaintyMeters = $null
+                gpsTimeS = $null
+            }
+            alignmentStats = [pscustomobject]@{
+                boresightAzimuthDeg = $az
+                boresightElevationDeg = $el
+                desiredBoresightAzimuthDeg = $null
+                desiredBoresightElevationDeg = $null
+            }
+            stowed = $null
+        }
+    } catch {
+        return $null
+    }
+}
+
+function Convert-StarlinkWebResponseToBytes {
+    param([object]$Response)
+
+    if ($null -eq $Response) {
+        return $null
+    }
+
+    $rawBytes = $Response.Content
+    if ($rawBytes -is [byte[]]) {
+        return $rawBytes
+    }
+
+    if ($rawBytes -is [string]) {
+        return [System.Text.Encoding]::GetEncoding(28591).GetBytes($rawBytes)
+    }
+
+    try {
+        return [byte[]]$rawBytes
+    } catch {
+        return $null
+    }
+}
+
+function Invoke-StarlinkGrpcWebHandleWithInvokeWebRequest {
+    param(
+        [byte[]]$RequestFrame,
+        [string]$ProbeName = "get_diagnostics"
+    )
+
+    $urls = @(
+        "http://192.168.100.1:9201/SpaceX.API.Device.Device/Handle",
+        "http://dishy.starlink.com:9201/SpaceX.API.Device.Device/Handle"
+    )
+
+    $lastError = $null
+
+    foreach ($url in $urls) {
+        try {
+            $response = Invoke-WebRequest -Uri $url `
+                -Method Post `
+                -Body $RequestFrame `
+                -ContentType "application/grpc-web+proto" `
+                -Headers @{
+                    "X-Grpc-Web" = "1"
+                    "Accept" = "application/grpc-web+proto"
+                } `
+                -UseBasicParsing `
+                -TimeoutSec 8
+
+            $bytes = Convert-StarlinkWebResponseToBytes -Response $response
+            if ($null -ne $bytes -and $bytes.Length -ge 5) {
+                Write-Log "INFO" "gRPC-web $ProbeName received $($bytes.Length) byte(s) from $url."
+                return $bytes
+            }
+        } catch {
+            $lastError = $_.Exception.Message
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($lastError)) {
+        Write-Log "WARN" "gRPC-web Invoke-WebRequest $ProbeName failed: $lastError"
+    }
+    return $null
+}
+
+function Invoke-StarlinkGrpcWebHandle {
+    param(
+        [byte[]]$RequestFrame,
+        [string]$ProbeName = "get_diagnostics"
+    )
+
+    $urls = @(
+        "http://192.168.100.1:9201/SpaceX.API.Device.Device/Handle",
+        "http://dishy.starlink.com:9201/SpaceX.API.Device.Device/Handle",
+        "http://192.168.100.1:9200/SpaceX.API.Device.Device/Handle"
+    )
+
+    $lastError = $null
+
+    foreach ($url in $urls) {
+        try {
+            $request = [System.Net.HttpWebRequest]::Create($url)
+            $request.Method = "POST"
+            $request.Timeout = 8000
+            $request.ReadWriteTimeout = 8000
+            $request.ContentType = "application/grpc-web+proto"
+            $request.Accept = "application/grpc-web+proto"
+            $request.UserAgent = "grpc-web-javascript/0.1"
+            $request.Headers.Add("X-Grpc-Web", "1")
+            $request.ContentLength = $RequestFrame.Length
+
+            $reqStream = $request.GetRequestStream()
+            try {
+                $reqStream.Write($RequestFrame, 0, $RequestFrame.Length)
+            } finally {
+                $reqStream.Close()
+            }
+
+            $response = $request.GetResponse()
+            try {
+                $respStream = $response.GetResponseStream()
+                $ms = New-Object System.IO.MemoryStream
+                try {
+                    $buf = New-Object byte[] 4096
+                    while (($read = $respStream.Read($buf, 0, $buf.Length)) -gt 0) {
+                        $ms.Write($buf, 0, $read)
+                    }
+                } finally {
+                    if ($null -ne $respStream) {
+                        $respStream.Close()
+                    }
+                }
+
+                $bytes = $ms.ToArray()
+                if ($bytes.Length -ge 5) {
+                    return $bytes
+                }
+            } finally {
+                $response.Close()
+            }
+        } catch {
+            $lastError = $_.Exception.Message
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($lastError)) {
+        Write-Log "WARN" "gRPC-web fallback $ProbeName failed: $lastError"
+    }
+    return $null
+}
+
 function Invoke-StarlinkHttpHandle {
     param(
         [string[]]$RequestBodies,
@@ -479,6 +1279,74 @@ function Invoke-StarlinkHttpHandleWithCurl {
 }
 
 function Get-StarlinkHttpStatus {
+    $requestFrame = New-StarlinkGetDiagnosticsGrpcWebRequestFrame
+    $grpcWebRaw = Invoke-StarlinkGrpcWebHandleWithInvokeWebRequest -RequestFrame $requestFrame -ProbeName "get_diagnostics"
+    if ($null -eq $grpcWebRaw) {
+        $grpcWebRaw = Invoke-StarlinkGrpcWebHandle -RequestFrame $requestFrame -ProbeName "get_diagnostics"
+    }
+    if ($null -ne $grpcWebRaw) {
+        $rawStarlinkId = Find-StarlinkUtIdInBytes -Bytes $grpcWebRaw
+        $offsetParsed = Parse-StarlinkDishDiagnosticsByKnownOffsets -Bytes $grpcWebRaw
+        if ($null -ne $offsetParsed) {
+            if (-not [string]::IsNullOrWhiteSpace($rawStarlinkId)) {
+                $offsetParsed.id = $rawStarlinkId
+            }
+            $framesForIdentity = Get-GrpcWebDataFrames -Bytes $grpcWebRaw
+            foreach ($frame in @($framesForIdentity)) {
+                try {
+                    $parsedForIdentity = Parse-StarlinkDeviceResponseProto -Bytes $frame
+                    if ($null -ne $parsedForIdentity -and
+                        $null -ne $parsedForIdentity.dishGetDiagnostics -and
+                        -not [string]::IsNullOrWhiteSpace([string]$parsedForIdentity.dishGetDiagnostics.id)) {
+                        $offsetParsed.id = [string]$parsedForIdentity.dishGetDiagnostics.id
+                        break
+                    }
+                } catch {}
+            }
+            $idNote = ""
+            if (-not [string]::IsNullOrWhiteSpace([string]$offsetParsed.id)) {
+                $idNote = ", starlink_id=$($offsetParsed.id)"
+            }
+            Write-Log "INFO" "gRPC-web fallback decoded GPS lat=$([math]::Round([double]$offsetParsed.location.latitude, 5)), lon=$([math]::Round([double]$offsetParsed.location.longitude, 5))$idNote from known byte offsets."
+            return $offsetParsed
+        }
+
+        $frames = Get-GrpcWebDataFrames -Bytes $grpcWebRaw
+        foreach ($frame in @($frames)) {
+            try {
+                $parsed = Parse-StarlinkDeviceResponseProto -Bytes $frame
+                if ($null -ne $parsed -and $null -ne $parsed.dishGetDiagnostics) {
+                    if ([string]::IsNullOrWhiteSpace([string]$parsed.dishGetDiagnostics.id) -and
+                        -not [string]::IsNullOrWhiteSpace($rawStarlinkId)) {
+                        $parsed.dishGetDiagnostics.id = $rawStarlinkId
+                    }
+                    Write-Log "INFO" "gRPC-web fallback decoded diagnostics from protobuf frame."
+                    return $parsed.dishGetDiagnostics
+                }
+            } catch {
+                Write-Log "WARN" "gRPC-web protobuf frame decode failed: $($_.Exception.Message)"
+            }
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($rawStarlinkId)) {
+            Write-Log "INFO" "gRPC-web fallback decoded Starlink ID $rawStarlinkId without GPS."
+            return [pscustomobject]@{
+                id = $rawStarlinkId
+                hardwareVersion = $null
+                softwareVersion = $null
+                utcOffsetS = $null
+                hardwareSelfTest = $null
+                hardwareSelfTestCodesList = @()
+                alerts = $null
+                disablementCode = $null
+                location = $null
+                alignmentStats = $null
+                stowed = $null
+            }
+        }
+        Write-Log "WARN" "gRPC-web fallback returned no dish diagnostics payload."
+    }
+
     $statusBodies = @(
         '{"get_status":{}}',
         '{"getStatus":{}}',
@@ -641,7 +1509,7 @@ function Get-StarlinkSnapshot {
 
     $grpc = Get-GrpcurlCommand -ConfiguredPath $Config.GrpcurlPath
     if ([string]::IsNullOrWhiteSpace($grpc)) {
-        Write-Log "WARN" "grpcurl not found; attempting HTTP fallback at 192.168.100.1."
+        Write-Log "WARN" "grpcurl not found; attempting built-in gRPC-web fallback at 192.168.100.1."
         $httpRaw = Get-StarlinkHttpStatus
         if ($null -ne $httpRaw) {
             $lat = Find-FirstNumber -Object $httpRaw -Names @("latitude", "lat")
@@ -652,16 +1520,23 @@ function Get-StarlinkSnapshot {
             $snr = Find-FirstNumber -Object $httpRaw -Names @("snr", "downlinkSnr", "downlink_snr")
             $drop = Find-FirstNumber -Object $httpRaw -Names @("popPingDropRate", "pop_ping_drop_rate", "pingDropRate", "ping_drop_rate")
             $obstruction = Find-FirstNumber -Object $httpRaw -Names @("fractionObstructed", "fraction_obstructed", "obstructionPct", "obstruction_pct")
+            $starlinkId = Find-FirstString -Object $httpRaw -Names @("starlink_id", "starlinkId", "device_id", "deviceId", "id")
+            $azimuth = Find-FirstNumber -Object $httpRaw -Names @("boresightAzimuthDeg", "boresight_azimuth_deg", "azimuth", "azimuthDeg")
+            $elevation = Find-FirstNumber -Object $httpRaw -Names @("boresightElevationDeg", "boresight_elevation_deg", "elevation", "elevationDeg")
 
             return [pscustomobject]@{
                 Lat = $lat
                 Lon = $lon
+                StarlinkId = $starlinkId
+                StarlinkUuid = Normalize-StarlinkId $starlinkId
                 PopLatencyMs = $popLatency
                 Snr = $snr
                 ObstructionPct = Convert-FractionToPct $obstruction
                 PingDropPct = Convert-FractionToPct $drop
                 DownloadMbps = Convert-BpsToMbps $downBps
                 UploadMbps = Convert-BpsToMbps $upBps
+                AzimuthDeg = $azimuth
+                ElevationDeg = $elevation
             }
         }
 
@@ -669,12 +1544,16 @@ function Get-StarlinkSnapshot {
         return [pscustomobject]@{
             Lat = $null
             Lon = $null
+            StarlinkId = $null
+            StarlinkUuid = $null
             PopLatencyMs = $null
             Snr = $null
             ObstructionPct = $null
             PingDropPct = $null
             DownloadMbps = $null
             UploadMbps = $null
+            AzimuthDeg = $null
+            ElevationDeg = $null
         }
     }
 
@@ -690,16 +1569,23 @@ function Get-StarlinkSnapshot {
     $obstruction = Find-FirstNumber -Object $statusRaw -Names @("fractionObstructed", "fraction_obstructed", "obstructionPct", "obstruction_pct")
     $downBps = Find-FirstNumber -Object $statusRaw -Names @("downlinkThroughputBps", "downlink_throughput_bps")
     $upBps = Find-FirstNumber -Object $statusRaw -Names @("uplinkThroughputBps", "uplink_throughput_bps")
+    $starlinkId = Find-FirstString -Object @($locRaw, $statusRaw) -Names @("starlink_id", "starlinkId", "device_id", "deviceId", "id")
+    $azimuth = Find-FirstNumber -Object $statusRaw -Names @("boresightAzimuthDeg", "boresight_azimuth_deg", "azimuth", "azimuthDeg")
+    $elevation = Find-FirstNumber -Object $statusRaw -Names @("boresightElevationDeg", "boresight_elevation_deg", "elevation", "elevationDeg")
 
     return [pscustomobject]@{
         Lat = $lat
         Lon = $lon
+        StarlinkId = $starlinkId
+        StarlinkUuid = Normalize-StarlinkId $starlinkId
         PopLatencyMs = $popLatency
         Snr = $snr
         ObstructionPct = Convert-FractionToPct $obstruction
         PingDropPct = Convert-FractionToPct $drop
         DownloadMbps = Convert-BpsToMbps $downBps
         UploadMbps = Convert-BpsToMbps $upBps
+        AzimuthDeg = $azimuth
+        ElevationDeg = $elevation
     }
 }
 
@@ -796,12 +1682,8 @@ function Send-Ingest {
         $script:LastSendError = $null
         return $true
     } catch {
-        $statusCode = $null
-        try {
-            if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
-                $statusCode = [int]$_.Exception.Response.StatusCode
-            }
-        } catch {}
+        $errorDetails = Get-HttpErrorDetails -ErrorRecord $_
+        $statusCode = $errorDetails.StatusCode
 
         # Backward compatibility: older backend may not expose /ingest/agent-health yet.
         if ($Endpoint -eq "agent-health" -and $statusCode -eq 404) {
@@ -813,8 +1695,8 @@ function Send-Ingest {
             return $true
         }
 
-        Write-Log "WARN" "POST /ingest/$Endpoint failed: $($_.Exception.Message)"
-        $script:LastSendError = [string]$_.Exception.Message
+        Write-Log "WARN" "POST /ingest/$Endpoint failed: $($errorDetails.Message)"
+        $script:LastSendError = [string]$errorDetails.Message
         if ($QueueOnFailure -and -not ($Endpoint -eq "agent-health" -and $script:DisableAgentHealthEndpoint)) {
             Queue-Payload -Endpoint $Endpoint -Payload $Payload
         }
@@ -1027,21 +1909,30 @@ try {
     Ensure-Directory $QueueDir
 
     $config = Get-Config
+    Write-Log "INFO" "Agent starting version $AgentVersion run_id=$RunId install_source=$(Get-InstallSourceLabel) api_base=$($config.ApiBase) configured_site=$($config.SiteId)."
     $identity = Get-DeviceIdentity -ConfiguredSiteId $config.SiteId
     $health = Get-SystemHealth
     $snapshot = Get-StarlinkSnapshot -Config $config
 
-    $resolvedSiteId = Resolve-SiteFromGps -Config $config -Snapshot $snapshot
     $siteId = $identity.SiteId
-    if ($null -ne $resolvedSiteId) {
-        $siteId = [int]$resolvedSiteId
+    if ($siteId -le 0) {
+        $resolvedSiteId = Resolve-SiteFromGps -Config $config -Snapshot $snapshot
+        if ($null -ne $resolvedSiteId) {
+            $siteId = [int]$resolvedSiteId
+        }
+    }
+    if ($siteId -le 0 -and $config.SiteId -gt 0) {
+        $siteId = [int]$config.SiteId
+    }
+    if ($siteId -le 0) {
+        throw "Unable to determine site_id. Configure SiteId or provide GPS that resolves to a known site."
     }
     Save-DeviceIdentity -DeviceSN $identity.DeviceSN -SiteId $siteId
 
     $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     Flush-Queue -Config $config
 
-    if ($null -ne $snapshot.Lat -or $null -ne $snapshot.PopLatencyMs -or $null -ne $snapshot.DownloadMbps) {
+    if ($null -ne $snapshot.Lat -or $null -ne $snapshot.StarlinkId -or $null -ne $snapshot.PopLatencyMs -or $null -ne $snapshot.DownloadMbps) {
         $hintSiteId = $identity.SiteId
         if ($hintSiteId -le 0) {
             $hintSiteId = $siteId
@@ -1059,6 +1950,10 @@ try {
             upload_mbps = $snapshot.UploadMbps
             lat = $snapshot.Lat
             lon = $snapshot.Lon
+            starlink_id = $snapshot.StarlinkId
+            starlink_uuid = $snapshot.StarlinkUuid
+            azimuth_deg = $snapshot.AzimuthDeg
+            elevation_deg = $snapshot.ElevationDeg
         }
         $signalPayload = Add-PayloadMeta -Payload $signalPayload -CollectedAtUtc $timestamp
         Send-Ingest -Config $config -Endpoint "signal" -Payload $signalPayload | Out-Null

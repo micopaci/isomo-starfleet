@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type {
   Site, SiteDetail, DailyScore, LatencyReading, FleetSummary, Device,
+  UsageHistoryPoint,
   WsStaleDevicesEvent,
 } from './types';
 import type { StarfleetApi } from './api';
@@ -195,6 +196,28 @@ export function useLatencyHistory(siteId: number | null): {
   }, [api, siteId]);
 
   return { readings, loading };
+}
+
+// ─── useUsageHistory ──────────────────────────────────────────────────────────
+
+export function useUsageHistory(siteId: number | null, months = 6): {
+  usage: UsageHistoryPoint[];
+  loading: boolean;
+} {
+  const api = useApi();
+  const [usage, setUsage] = useState<UsageHistoryPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (siteId == null) { setUsage([]); return; }
+    setLoading(true);
+    api.getUsageHistory(siteId, months)
+      .then(setUsage)
+      .catch(() => setUsage([]))
+      .finally(() => setLoading(false));
+  }, [api, siteId, months]);
+
+  return { usage, loading };
 }
 
 // ─── useStaleDevices ──────────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
-import { useSite, useSignalHistory, useLatencyHistory } from '@starfleet/shared';
+import { useSite, useSignalHistory, useLatencyHistory, useUsageHistory } from '@starfleet/shared';
 import { StarlinkCard } from './StarlinkCard';
 import { SignalChart } from './SignalChart';
 import { LatencyChart } from './LatencyChart';
+import { UsageChart } from './UsageChart';
 import { LaptopTable } from './LaptopTable';
 
 interface Props {
@@ -14,6 +15,7 @@ export function SiteDetail({ siteId, isAdmin, onTrigger }: Props) {
   const { site, loading, error, refresh }    = useSite(siteId);
   const { scores, hasAnomalies, hasLowData } = useSignalHistory(siteId);
   const { readings }                         = useLatencyHistory(siteId);
+  const { usage }                            = useUsageHistory(siteId, 6);
 
   if (loading) return <div className="loading-state">Loading site…</div>;
   if (error)   return <div className="error-state">Error: {error} <button onClick={refresh}>Retry</button></div>;
@@ -49,6 +51,7 @@ export function SiteDetail({ siteId, isAdmin, onTrigger }: Props) {
         <StarlinkCard site={site} isAdmin={isAdmin} onTrigger={onTrigger} />
         <SignalChart scores={scores} hasAnomalies={hasAnomalies} hasLowData={hasLowData} />
         <LatencyChart readings={readings} />
+        <UsageChart usage={usage} />
       </div>
 
       <LaptopTable

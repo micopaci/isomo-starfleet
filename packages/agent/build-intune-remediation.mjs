@@ -1,0 +1,246 @@
+#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, '../..');
+
+const flagArgs = new Set(['allow-placeholder', 'skip-live-auth-check']);
+const args = new Map();
+for (let i = 2; i < process.argv.length; i += 1) {
+  const key = process.argv[i];
+  const value = process.argv[i + 1];
+  if (key.startsWith('--')) {
+    const name = key.slice(2);
+    if (flagArgs.has(name) || !value || value.startsWith('--')) {
+      args.set(name, true);
+      continue;
+    }
+    args.set(name, value);
+    i += 1;
+  }
+}
+
+const placeholderToken = '<PASTE_SITE_AGENT_JWT_HERE>';
+const apiToken = args.get('api-token') || process.env.STARFLEET_AGENT_TOKEN || placeholderToken;
+const allowPlaceholder = args.has('allow-placeholder');
+const skipLiveAuthCheck = args.has('skip-live-auth-check');
+const siteId = Number(args.get('site-id') || 7);
+const apiBase = args.get('api-base') || 'https://api.starfleet.icircles.rw';
+const intervalMinutes = Number(args.get('interval-minutes') || 5);
+const pingHost = args.get('ping-host') || '1.1.1.1';
+const outputPath = path.resolve(
+  repoRoot,
+  args.get('out') || 'dist/intune/remediation.ps1'
+);
+
+if (!Number.isInteger(siteId) || siteId < 0) {
+  throw new Error('--site-id must be a non-negative integer');
+}
+if (!Number.isInteger(intervalMinutes) || intervalMinutes < 1) {
+  throw new Error('--interval-minutes must be a positive integer');
+}
+
+function decodeJwtPayload(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) {
+    throw new Error('API token must be a JWT with three dot-separated parts.');
+  }
+
+  const payload = parts[1].replaceAll('-', '+').replaceAll('_', '/');
+  const padded = payload.padEnd(Math.ceil(payload.length / 4) * 4, '=');
+  return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+}
+
+function validateApiToken(token) {
+  if (!token || token === placeholderToken) {
+    if (allowPlaceholder) return;
+    throw new Error(
+      '--api-token is required. Generate a site-scoped agent token from /api/agent-tokens ' +
+      'and pass it as --api-token, or set STARFLEET_AGENT_TOKEN. Use --allow-placeholder only for a template.'
+    );
+  }
+
+  const payload = decodeJwtPayload(token);
+  if (payload.role !== 'agent') {
+    throw new Error(`Refusing to build Intune remediation with role "${payload.role || 'missing'}"; expected "agent".`);
+  }
+
+  const tokenSiteId = Number(payload.site_id || 0);
+  if (!Number.isInteger(tokenSiteId) || tokenSiteId <= 0) {
+    throw new Error('Agent token payload must include a positive site_id claim.');
+  }
+  if (siteId > 0 && tokenSiteId !== siteId) {
+    throw new Error(`Agent token site_id ${tokenSiteId} does not match --site-id ${siteId}.`);
+  }
+
+  if (payload.exp) {
+    const expiresAtMs = Number(payload.exp) * 1000;
+    if (expiresAtMs <= Date.now()) {
+      throw new Error('Agent token is already expired.');
+    }
+    const daysLeft = Math.floor((expiresAtMs - Date.now()) / 86400000);
+    if (daysLeft < 30) {
+      console.warn(`Warning: agent token expires in ${daysLeft} day(s). Consider a longer pilot token.`);
+    }
+  } else {
+    console.warn('Warning: agent token has no exp claim; make sure this is intentional.');
+  }
+}
+
+async function validateLiveAuth(token) {
+  if (!token || token === placeholderToken || skipLiveAuthCheck) {
+    if (skipLiveAuthCheck && token && token !== placeholderToken) {
+      console.warn('Warning: skipped live backend auth check.');
+    }
+    return;
+  }
+
+  const url = `${apiBase.replace(/\/+$/, '')}/api/sites`;
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+    });
+  } catch (err) {
+    throw new Error(`Unable to validate token against ${url}: ${err.message}`);
+  }
+
+  if (response.ok) return;
+
+  let detail = await response.text();
+  try {
+    const body = JSON.parse(detail);
+    detail = body.detail || body.error || detail;
+  } catch {}
+  detail = String(detail || response.statusText).slice(0, 300);
+  throw new Error(`Agent token was rejected by ${url} with HTTP ${response.status}: ${detail}`);
+}
+
+validateApiToken(apiToken);
+await validateLiveAuth(apiToken);
+
+const agentPath = path.join(__dirname, 'StarfleetAgent.ps1');
+const agentSource = fs.readFileSync(agentPath, 'utf8');
+const agentBase64 = Buffer.from(agentSource, 'utf8').toString('base64');
+const testPath = path.join(__dirname, 'test.ps1');
+const testSource = fs.readFileSync(testPath, 'utf8');
+const testBase64 = Buffer.from(testSource, 'utf8').toString('base64');
+const versionMatch = agentSource.match(/\$AgentVersion\s*=\s*"([^"]+)"/);
+const agentVersion = versionMatch?.[1] || 'unknown';
+const generatedAt = new Date().toISOString();
+
+const ps = String.raw`#Requires -Version 5.1
+<#
+Self-contained Starfleet Intune remediation.
+
+Generated by packages/agent/build-intune-remediation.mjs at __GENERATED_AT__.
+Upload this file as the remediation script. Upload detection.ps1 separately.
+Do not commit generated copies with real API tokens.
+#>
+
+$ErrorActionPreference = "Stop"
+
+$ApiToken = "__API_TOKEN__"
+$SiteId = __SITE_ID__
+$ApiBase = "__API_BASE__"
+$InstallDir = "C:\ProgramData\Starfleet"
+$IntervalMinutes = __INTERVAL_MINUTES__
+$PingHost = "__PING_HOST__"
+$MaxSiteRadiusKm = 2.0
+
+$TaskName = "StarfleetPulse"
+$AgentPath = Join-Path $InstallDir "StarfleetAgent.ps1"
+$TestPath = Join-Path $InstallDir "test.ps1"
+$ConfigPath = Join-Path $InstallDir "agent.config.json"
+$QueueDir = Join-Path $InstallDir "queue"
+$InstallSourcePath = Join-Path $InstallDir "install_source.json"
+$AgentBase64 = "__AGENT_BASE64__"
+$TestBase64 = "__TEST_BASE64__"
+
+if ([string]::IsNullOrWhiteSpace($ApiToken) -or $ApiToken -eq "<PASTE_SITE_AGENT_JWT_HERE>") {
+    throw "Edit this generated remediation script and set ApiToken before uploading to Intune."
+}
+if ($SiteId -lt 0) {
+    throw "SiteId must be 0 or a positive integer."
+}
+
+foreach ($dir in @($InstallDir, $QueueDir)) {
+    if (-not (Test-Path $dir)) {
+        New-Item -Path $dir -ItemType Directory -Force | Out-Null
+    }
+}
+
+$agentBytes = [Convert]::FromBase64String($AgentBase64)
+$agentText = [System.Text.Encoding]::UTF8.GetString($agentBytes)
+$agentText | Set-Content -Path $AgentPath -Encoding UTF8
+
+$testBytes = [Convert]::FromBase64String($TestBase64)
+$testText = [System.Text.Encoding]::UTF8.GetString($testBytes)
+$testText | Set-Content -Path $TestPath -Encoding UTF8
+
+$config = @{
+    ApiBase = $ApiBase.TrimEnd("/")
+    ApiToken = $ApiToken
+    SiteId = $SiteId
+    PingHost = $PingHost
+    GrpcurlPath = (Join-Path $InstallDir "grpcurl.exe")
+    MaxSiteRadiusKm = $MaxSiteRadiusKm
+    QueueFlushLimit = 20
+}
+$config | ConvertTo-Json -Depth 8 | Set-Content -Path $ConfigPath -Encoding UTF8
+
+$installSource = @{
+    source = "intune_remediation"
+    package = "Starfleet"
+    generated_at_utc = "__GENERATED_AT__"
+    installed_at_utc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    agent_version = "__AGENT_VERSION__"
+    site_id = $SiteId
+}
+$installSource | ConvertTo-Json -Depth 8 | Set-Content -Path $InstallSourcePath -Encoding UTF8
+
+try {
+    icacls $InstallDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
+} catch {
+    Write-Warning ("Unable to tighten ACLs on " + $InstallDir + ": " + $_.Exception.Message)
+}
+
+$taskArgument = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $AgentPath + '" -DataDir "' + $InstallDir + '" -ConfigPath "' + $ConfigPath + '"'
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $taskArgument
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes)
+$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+
+Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
+Start-ScheduledTask -TaskName $TaskName
+
+Write-Host "Starfleet agent installed from Intune remediation."
+Write-Host "Agent version: __AGENT_VERSION__"
+Write-Host "Task: $TaskName every $IntervalMinutes minutes"
+Write-Host "Config: $ConfigPath"
+Write-Host "Diagnostic: $TestPath"
+`
+  .replaceAll('__API_TOKEN__', apiToken.replaceAll('"', '`"'))
+  .replaceAll('__SITE_ID__', String(siteId))
+  .replaceAll('__API_BASE__', apiBase.replaceAll('"', '`"'))
+  .replaceAll('__INTERVAL_MINUTES__', String(intervalMinutes))
+  .replaceAll('__PING_HOST__', pingHost.replaceAll('"', '`"'))
+  .replaceAll('__AGENT_BASE64__', agentBase64)
+  .replaceAll('__TEST_BASE64__', testBase64)
+  .replaceAll('__AGENT_VERSION__', agentVersion)
+  .replaceAll('__GENERATED_AT__', generatedAt);
+
+fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+fs.writeFileSync(outputPath, ps, 'utf8');
+
+console.log(`Wrote ${outputPath}`);
+console.log(`Agent version ${agentVersion}, site ${siteId}, api ${apiBase}`);
+if (apiToken.includes('PASTE_SITE_AGENT_JWT')) {
+  console.log('Reminder: edit the generated file and replace <PASTE_SITE_AGENT_JWT_HERE> before uploading.');
+}

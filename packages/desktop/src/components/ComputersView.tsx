@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useDevices, formatRelativeTime } from '@starfleet/shared';
 import { StatusChip } from './StatusChip';
 
-type StatusFilter = 'all' | 'online' | 'offline' | 'stale';
+type StatusFilter = 'all' | 'online' | 'offline' | 'stale' | 'unknown';
 
 export function ComputersView() {
   const { devices, loading, error, refresh } = useDevices();
@@ -14,6 +14,7 @@ export function ComputersView() {
     online:  devices.filter(d => d.status === 'online').length,
     offline: devices.filter(d => d.status === 'offline').length,
     stale:   devices.filter(d => d.status === 'stale').length,
+    unknown: devices.filter(d => d.status === 'unknown').length,
   }), [devices]);
 
   const rows = useMemo(() => {
@@ -32,9 +33,9 @@ export function ComputersView() {
     });
   }, [devices, statusFilter, q]);
 
-  // Sort: offline → stale → online
+  // Sort: offline → stale → unknown → online
   const sorted = useMemo(() => {
-    const order: Record<string, number> = { offline: 0, stale: 1, online: 2 };
+    const order: Record<string, number> = { offline: 0, stale: 1, unknown: 2, online: 3 };
     return [...rows].sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
   }, [rows]);
 
@@ -58,7 +59,7 @@ export function ComputersView() {
           <div className="eyebrow">Endpoints</div>
           <h1 className="view__title">Computers</h1>
           <p className="view__lede">
-            {counts.online} online · {counts.stale} stale · {counts.offline} offline
+            {counts.online} online · {counts.stale} stale · {counts.offline} offline · {counts.unknown} unknown
             {' · '}{devices.length} total devices managed by Intune
           </p>
         </div>
@@ -79,7 +80,7 @@ export function ComputersView() {
       {/* Filter toolbar */}
       <div className="tbl-toolbar">
         <div className="seg">
-          {(['all', 'online', 'stale', 'offline'] as StatusFilter[]).map(sf => (
+          {(['all', 'online', 'stale', 'offline', 'unknown'] as StatusFilter[]).map(sf => (
             <button
               key={sf}
               className={`seg__btn${statusFilter === sf ? ' active' : ''}`}
@@ -179,11 +180,12 @@ export function ComputersView() {
 function DeviceStatusChip({
   status, staleMin,
 }: {
-  status: 'online' | 'offline' | 'stale';
+  status: 'online' | 'offline' | 'stale' | 'unknown';
   staleMin?: number | null;
 }) {
   if (status === 'online')  return <StatusChip status="online" />;
   if (status === 'offline') return <StatusChip status="dark" />;
+  if (status === 'unknown') return <StatusChip status="standby" />;
   // stale
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
