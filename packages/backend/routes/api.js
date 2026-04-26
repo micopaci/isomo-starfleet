@@ -248,25 +248,34 @@ router.get('/agent-health', async (req, res, next) => {
 // Generates a site-scoped JWT using the same production signing key as login.
 router.post('/agent-tokens', requireAdmin, async (req, res, next) => {
   try {
-    const siteId = Number(req.body?.site_id);
-    if (!Number.isInteger(siteId) || siteId <= 0) {
-      return res.status(400).json({ error: 'site_id must be a positive integer' });
+    const rawSiteId = req.body?.site_id;
+    const discovery = rawSiteId === 0 || rawSiteId === '0' || req.body?.scope === 'discovery';
+    const siteId = discovery && (rawSiteId === undefined || rawSiteId === null || rawSiteId === '')
+      ? 0
+      : Number(rawSiteId);
+    if (!Number.isInteger(siteId) || siteId < 0) {
+      return res.status(400).json({ error: 'site_id must be 0 for discovery or a positive integer' });
     }
 
-    const siteRes = await pool.query(`SELECT id, name FROM sites WHERE id = $1`, [siteId]);
-    if (!siteRes.rows.length) {
-      return res.status(404).json({ error: 'Site not found' });
+    let siteName = 'Unassigned / Discovery';
+    if (!discovery) {
+      const siteRes = await pool.query(`SELECT id, name FROM sites WHERE id = $1`, [siteId]);
+      if (!siteRes.rows.length) {
+        return res.status(404).json({ error: 'Site not found' });
+      }
+      siteName = siteRes.rows[0].name;
     }
 
     const expiresIn = normalizeAgentTokenTtl(req.body?.expires_in);
     const { key, options } = getAgentTokenSignOptions();
-    const subject = `agent-site-${siteId}`;
+    const subject = discovery ? 'agent-discovery' : `agent-site-${siteId}`;
     const token = jwt.sign(
       {
         sub: subject,
         email: `${subject}@starfleet.local`,
         role: 'agent',
         site_id: siteId,
+        scope: discovery ? 'discovery' : 'site',
       },
       key,
       { ...options, expiresIn },
@@ -277,7 +286,8 @@ router.post('/agent-tokens', requireAdmin, async (req, res, next) => {
       token_type: 'Bearer',
       role: 'agent',
       site_id: siteId,
-      site_name: siteRes.rows[0].name,
+      site_name: siteName,
+      scope: discovery ? 'discovery' : 'site',
       expires_in: expiresIn,
     });
   } catch (err) { next(err); }

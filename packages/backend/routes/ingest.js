@@ -5,10 +5,11 @@
  * POST /ingest/health    - Battery, RAM, and Disk % metrics
  */
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const pool = require('../db');
 const { broadcast } = require('../services/websocket');
 const { currentSignal } = require('../services/cache');
-const { resolveAndMaybeNotify } = require('../services/siteResolver');
+const { nearestSite, resolveAndMaybeNotify } = require('../services/siteResolver');
 const {
   heartbeatLimiter,
   signalLimiter,
@@ -19,6 +20,35 @@ const {
 } = require('../middleware/ingestRateLimit');
 
 const router = express.Router();
+
+function getAgentTokenSignOptions() {
+  if (process.env.JWT_PRIVATE_KEY && process.env.JWT_PRIVATE_KEY.startsWith('-----BEGIN')) {
+    return { key: process.env.JWT_PRIVATE_KEY, options: { algorithm: 'RS256' } };
+  }
+  return { key: process.env.JWT_SECRET || 'dev-secret-change-me', options: { algorithm: 'HS256' } };
+}
+
+function normalizeAgentTokenTtl(raw) {
+  const value = String(raw || process.env.AGENT_TOKEN_TTL || '365d').trim();
+  if (/^\d+[dh]$/.test(value)) return value;
+  return '365d';
+}
+
+function signAgentToken({ siteId, deviceSn, expiresIn }) {
+  const { key, options } = getAgentTokenSignOptions();
+  const subject = deviceSn ? `agent-site-${siteId}-${deviceSn}` : `agent-site-${siteId}`;
+  return jwt.sign(
+    {
+      sub: subject,
+      email: `${subject}@starfleet.local`,
+      role: 'agent',
+      site_id: siteId,
+      device_sn: deviceSn || undefined,
+    },
+    key,
+    { ...options, expiresIn: normalizeAgentTokenTtl(expiresIn) },
+  );
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -44,7 +74,10 @@ async function autoRegisterDevice(client, device_sn, site_id, hostname, metadata
      VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (windows_sn)
      DO UPDATE SET 
-       site_id = COALESCE(devices.site_id, EXCLUDED.site_id),
+       site_id = CASE
+         WHEN devices.site_id IS NULL OR devices.site_id = 0 THEN EXCLUDED.site_id
+         ELSE devices.site_id
+       END,
        hostname = COALESCE(EXCLUDED.hostname, devices.hostname),
        os = COALESCE(EXCLUDED.os, devices.os),
        model = COALESCE(EXCLUDED.model, devices.model),
@@ -57,8 +90,11 @@ async function autoRegisterDevice(client, device_sn, site_id, hostname, metadata
 
 function enforceAgentSiteScope(req, res, postedSiteId) {
   if (req.user?.role !== 'agent') return true;
-  const tokenSite = Number(req.user?.site_id || 0);
+  const tokenSite = Number(req.user?.site_id ?? -1);
   const bodySite = Number(postedSiteId || 0);
+  if (tokenSite === 0 && bodySite === 0) {
+    return true;
+  }
   if (!tokenSite || !bodySite || tokenSite !== bodySite) {
     res.status(403).json({ error: 'Forbidden — agent token site scope mismatch' });
     return false;
@@ -105,6 +141,24 @@ function starlinkIdentityCandidates(...values) {
   return [...out];
 }
 
+async function resolveSiteFromGpsOrIdentity(client, body = {}) {
+  const identitySiteId = await resolveSiteFromStarlinkIdentity(client, body);
+  if (identitySiteId) {
+    return { site_id: identitySiteId, source: 'starlink_identity' };
+  }
+
+  const lat = body.lat == null ? null : Number(body.lat);
+  const lon = body.lon == null ? null : Number(body.lon);
+  if (Number.isFinite(lat) && Number.isFinite(lon)) {
+    const resolved = await nearestSite(lat, lon);
+    if (resolved?.site_id) {
+      return { site_id: resolved.site_id, source: 'gps', distance_km: resolved.distance_km };
+    }
+  }
+
+  return null;
+}
+
 async function resolveSiteFromStarlinkIdentity(client, identities = {}) {
   const candidates = starlinkIdentityCandidates(
     identities.starlink_id,
@@ -127,6 +181,64 @@ async function resolveSiteFromStarlinkIdentity(client, identities = {}) {
 
   return rows[0]?.id ?? null;
 }
+
+// ── POST /ingest/bootstrap-token ─────────────────────────────────────────────
+// Exchanges a shared discovery token (site_id 0) for a device/site-scoped agent token.
+router.post('/bootstrap-token', agentHealthLimiter, async (req, res, next) => {
+  try {
+    if (req.user?.role !== 'agent' || Number(req.user?.site_id ?? -1) !== 0) {
+      return res.status(403).json({ error: 'Forbidden — discovery agent token required' });
+    }
+    if (!require400(res, req.body, ['device_sn'])) return;
+
+    const {
+      device_sn, hostname, os, model, manufacturer,
+      lat, lon, starlink_id, starlink_uuid, starlink_sn, kit_id,
+    } = req.body;
+
+    const client = await pool.connect();
+    try {
+      const resolved = await resolveSiteFromGpsOrIdentity(client, {
+        lat, lon, starlink_id, starlink_uuid, starlink_sn, kit_id,
+      });
+      const discoveryDeviceId = await autoRegisterDevice(client, device_sn, 0, hostname, {
+        os, model, manufacturer,
+      });
+
+      if (!resolved?.site_id) {
+        await markIngestSuccess(client, discoveryDeviceId, new Date().toISOString());
+        return res.status(409).json({
+          error: 'Unable to resolve site from Starlink GPS or identity yet',
+          site_id: 0,
+        });
+      }
+
+      await client.query(
+        `UPDATE devices SET site_id = $1, last_lat = COALESCE($2, last_lat),
+             last_lon = COALESCE($3, last_lon), last_gps_at = CASE WHEN $2 IS NULL OR $3 IS NULL THEN last_gps_at ELSE NOW() END
+         WHERE id = $4`,
+        [resolved.site_id, lat ?? null, lon ?? null, discoveryDeviceId],
+      );
+      await markIngestSuccess(client, discoveryDeviceId, new Date().toISOString());
+
+      const siteRes = await client.query(`SELECT name FROM sites WHERE id = $1`, [resolved.site_id]);
+      const expiresIn = normalizeAgentTokenTtl(process.env.AGENT_TOKEN_TTL || '365d');
+      const token = signAgentToken({ siteId: resolved.site_id, deviceSn: device_sn, expiresIn });
+      return res.status(201).json({
+        token,
+        token_type: 'Bearer',
+        role: 'agent',
+        site_id: resolved.site_id,
+        site_name: siteRes.rows[0]?.name || null,
+        source: resolved.source,
+        distance_km: resolved.distance_km ?? null,
+        expires_in: expiresIn,
+      });
+    } finally {
+      client.release();
+    }
+  } catch (err) { next(err); }
+});
 
 function median(values) {
   if (!values.length) return null;

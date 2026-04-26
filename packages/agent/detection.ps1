@@ -85,7 +85,7 @@ try {
         exit 1
     }
 
-    if ($null -ne $installSource.site_id -and [int]$tokenPayload.site_id -ne [int]$installSource.site_id) {
+    if ($null -ne $installSource.site_id -and [int]$installSource.site_id -gt 0 -and [int]$tokenPayload.site_id -ne [int]$installSource.site_id) {
         Write-Host "Configured token site_id $($tokenPayload.site_id) does not match install marker site_id $($installSource.site_id)."
         exit 1
     }

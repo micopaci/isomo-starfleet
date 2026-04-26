@@ -153,6 +153,37 @@ function Get-Config {
     }
 }
 
+function Save-AgentConfig {
+    param([object]$Config)
+
+    $value = @{
+        ApiBase = $Config.ApiBase
+        ApiToken = $Config.ApiToken
+        SiteId = [int]$Config.SiteId
+        PingHost = $Config.PingHost
+        GrpcurlPath = $Config.GrpcurlPath
+        MaxSiteRadiusKm = $Config.MaxSiteRadiusKm
+        QueueFlushLimit = $Config.QueueFlushLimit
+    }
+    Write-JsonFile -Path $ConfigPath -Value $value
+}
+
+function Update-InstallSourceSite {
+    param([int]$SiteId)
+
+    try {
+        $installSource = Read-JsonFile $InstallSourceFile
+        if ($null -eq $installSource) {
+            return
+        }
+        $installSource | Add-Member -NotePropertyName resolved_site_id -NotePropertyValue $SiteId -Force
+        $installSource | Add-Member -NotePropertyName resolved_at_utc -NotePropertyValue ((Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")) -Force
+        Write-JsonFile -Path $InstallSourceFile -Value $installSource
+    } catch {
+        Write-Log "WARN" "Unable to update install_source.json with resolved site: $($_.Exception.Message)"
+    }
+}
+
 function Get-AuthHeaders {
     param([object]$Config)
     return @{
@@ -1645,6 +1676,47 @@ function Resolve-SiteFromGps {
     return $null
 }
 
+function Request-BootstrapToken {
+    param(
+        [object]$Config,
+        [string]$DeviceSN,
+        [object]$Health,
+        [object]$Snapshot
+    )
+
+    try {
+        $headers = Get-AuthHeaders -Config $Config
+        $payload = @{
+            device_sn = $DeviceSN
+            hostname = $env:COMPUTERNAME
+            os = $Health.Os
+            model = $Health.Model
+            manufacturer = $Health.Manufacturer
+            lat = $Snapshot.Lat
+            lon = $Snapshot.Lon
+            starlink_id = $Snapshot.StarlinkId
+            starlink_uuid = $Snapshot.StarlinkUuid
+        }
+        $body = $payload | ConvertTo-Json -Depth 12 -Compress
+        $res = Invoke-RestMethod -Uri "$($Config.ApiBase)/ingest/bootstrap-token" -Method POST -Headers $headers -Body $body -TimeoutSec 30
+
+        if ([string]::IsNullOrWhiteSpace([string]$res.token) -or $null -eq $res.site_id -or [int]$res.site_id -le 0) {
+            Write-Log "WARN" "Bootstrap token exchange did not return a usable site token."
+            return $null
+        }
+
+        Write-Log "INFO" "Bootstrap resolved site $($res.site_id) via $($res.source); saving site-scoped agent token."
+        return [pscustomobject]@{
+            Token = [string]$res.token
+            SiteId = [int]$res.site_id
+        }
+    } catch {
+        $details = Get-HttpErrorDetails -ErrorRecord $_
+        Write-Log "WARN" "Bootstrap token exchange failed: $($details.Message)"
+        return $null
+    }
+}
+
 function Queue-Payload {
     param(
         [string]$Endpoint,
@@ -1924,8 +1996,24 @@ try {
     if ($siteId -le 0 -and $config.SiteId -gt 0) {
         $siteId = [int]$config.SiteId
     }
+
+    if ($config.SiteId -le 0) {
+        $bootstrap = Request-BootstrapToken -Config $config -DeviceSN $identity.DeviceSN -Health $health -Snapshot $snapshot
+        if ($null -ne $bootstrap) {
+            $config.ApiToken = $bootstrap.Token
+            $config.SiteId = $bootstrap.SiteId
+            $siteId = $bootstrap.SiteId
+            Save-AgentConfig -Config $config
+            Update-InstallSourceSite -SiteId $siteId
+        } elseif ($siteId -gt 0) {
+            Write-Log "WARN" "Using discovery site 0 for this run because site-scoped token exchange did not complete."
+            $siteId = 0
+        }
+    }
+
     if ($siteId -le 0) {
-        throw "Unable to determine site_id. Configure SiteId or provide GPS that resolves to a known site."
+        Write-Log "WARN" "Unable to determine site_id yet; reporting laptop under discovery site 0."
+        $siteId = 0
     }
     Save-DeviceIdentity -DeviceSN $identity.DeviceSN -SiteId $siteId
 
