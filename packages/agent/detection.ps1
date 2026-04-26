@@ -7,6 +7,30 @@ $LastHeartbeatPath = Join-Path $DataDir "last_heartbeat.txt"
 $TaskName = "StarfleetPulse"
 $ExpectedAgentVersion = "1.2.0"
 
+function ConvertFrom-Base64Url {
+    param([string]$Value)
+
+    $base64 = $Value.Replace("-", "+").Replace("_", "/")
+    switch ($base64.Length % 4) {
+        2 { $base64 += "==" }
+        3 { $base64 += "=" }
+        1 { throw "Invalid base64url length." }
+    }
+
+    return [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($base64))
+}
+
+function Read-JwtPayload {
+    param([string]$Token)
+
+    $parts = $Token.Split(".")
+    if ($parts.Count -ne 3) {
+        throw "Token is not a JWT with three parts."
+    }
+
+    return ConvertFrom-Base64Url -Value $parts[1] | ConvertFrom-Json
+}
+
 if (-not (Test-Path $AgentPath)) {
     Write-Host "Missing StarfleetAgent.ps1."
     exit 1
@@ -46,6 +70,35 @@ try {
     }
 } catch {
     Write-Host "Intune install marker is invalid JSON."
+    exit 1
+}
+
+try {
+    $tokenPayload = Read-JwtPayload -Token $config.ApiToken
+    if ($tokenPayload.role -ne "agent") {
+        Write-Host "Configured token role is '$($tokenPayload.role)', expected 'agent'."
+        exit 1
+    }
+
+    if ($null -eq $tokenPayload.site_id) {
+        Write-Host "Configured agent token is missing site_id."
+        exit 1
+    }
+
+    if ($null -ne $installSource.site_id -and [int]$tokenPayload.site_id -ne [int]$installSource.site_id) {
+        Write-Host "Configured token site_id $($tokenPayload.site_id) does not match install marker site_id $($installSource.site_id)."
+        exit 1
+    }
+
+    if ($null -ne $tokenPayload.exp) {
+        $expiresAt = [DateTimeOffset]::FromUnixTimeSeconds([int64]$tokenPayload.exp).UtcDateTime
+        if ($expiresAt -le (Get-Date).ToUniversalTime()) {
+            Write-Host "Configured agent token expired at $($expiresAt.ToString("yyyy-MM-ddTHH:mm:ssZ"))."
+            exit 1
+        }
+    }
+} catch {
+    Write-Host "Configured ApiToken is not a readable site-scoped JWT: $($_.Exception.Message)"
     exit 1
 }
 
