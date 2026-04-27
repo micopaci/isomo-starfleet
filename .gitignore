@@ -16,6 +16,10 @@ dist/
 build/
 out/
 .next/
+!packages/desktop/build/
+!packages/desktop/build/icon.png
+!packages/desktop/build/icon.ico
+!packages/desktop/build/icon.icns
 packages/desktop/dist/
 packages/desktop/out/
 

@@ -4,7 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="build-version" content="2026-04-25-v3" />
+  <meta name="theme-color" content="#c8553d" />
   <title>Starfleet · Isomo Ops</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
@@ -75,7 +81,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; height: 100%; }
+html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow-x: hidden; }
 body {
   font-family: var(--font-ui);
   color: var(--ink);
@@ -88,6 +94,17 @@ body {
 
 .mono { font-family: var(--font-mono); font-feature-settings: 'tnum' 1; font-size: .92em; letter-spacing: 0; }
 .muted { color: var(--muted); }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .eyebrow {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -148,6 +165,8 @@ body {
   margin-bottom: 6px;
 }
 .nav { display: flex; flex-direction: column; gap: 1px; }
+.nav__icon { width: 18px; height: 18px; display: inline-grid; place-items: center; flex-shrink: 0; }
+.nav__icon svg { width: 17px; height: 17px; display: block; }
 .nav__item {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 10px;
@@ -179,6 +198,8 @@ body {
 .side__pulse__label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 .side__pulse__value { font-family: var(--font-serif); font-size: 22px; letter-spacing: -.02em; margin-top: 4px; }
 .side__pulse__sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.bottom-nav { display: none; }
 
 /* ——— Topbar ——— */
 .top {
@@ -277,6 +298,13 @@ body {
 
 /* ——— Tables ——— */
 .tbl-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-scroll .tbl { min-width: 720px; }
+.table-scroll .tbl--data { min-width: 980px; }
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl th {
   text-align: left;
@@ -582,6 +610,66 @@ body {
 .tweaks__sw.is-active { outline: 2px solid var(--ink); outline-offset: 2px; }
 .tweaks__toggle { display: flex; align-items: center; gap: 8px; }
 
+/* ——— Login ——— */
+.login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+.login-card {
+  width: min(380px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  padding: 38px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.login-logo { text-align: center; }
+.login-logo__mark {
+  width: 44px;
+  height: 44px;
+  background: var(--ink);
+  color: var(--bg);
+  display: grid;
+  place-items: center;
+  margin: 0 auto 12px;
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 24px;
+}
+.login-logo h1 { font-family: var(--font-serif); font-size: 24px; font-weight: 500; margin: 0 0 4px; }
+.login-logo p { margin: 0; color: var(--muted); font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; }
+.login-card form { display: flex; flex-direction: column; gap: 14px; }
+.login-card label { display: flex; flex-direction: column; gap: 5px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.login-card input {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid var(--rule);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  outline: none;
+}
+.login-card input:focus { border-color: var(--accent); }
+.login-error { color: var(--bad); font-family: var(--font-mono); font-size: 12px; }
+.btn-primary {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--ink);
+  color: var(--bg);
+  border: 1px solid var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+
 /* ——— Density variants ——— */
 .density-cozy { --row-pad: 16px 18px; }
 .density-dense { --row-pad: 9px 14px; font-size: 13px; }
@@ -591,11 +679,203 @@ body {
 
 /* ——— Responsive ——— */
 @media (max-width: 900px) {
-  .app { grid-template-columns: 64px 1fr; }
+  .app { grid-template-columns: 64px minmax(0, 1fr); }
   .side__label, .side__head__name, .side__pulse { display: none; }
   .cards--4 { grid-template-columns: repeat(2, 1fr); }
   .top__pulse { display: none; }
   .drawer { width: 100vw; }
+  .view__header { align-items: flex-start; flex-wrap: wrap; }
+  .view__actions { flex-wrap: wrap; justify-content: flex-start; }
+  .tbl-toolbar { align-items: flex-start; flex-direction: column; }
+  .seg { max-width: 100%; overflow-x: auto; }
+  .map-legend { flex-wrap: wrap; justify-content: flex-start; }
+}
+
+@media (max-width: 720px) {
+  .app,
+  .app.is-tight {
+    display: block;
+    min-height: 100vh;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+  .side { display: none; }
+  .main { min-height: 100vh; overflow-x: hidden; }
+  .top {
+    padding: 10px 14px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .top__crumbs {
+    order: -1;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .top__spacer { display: none; }
+  .top__campus {
+    flex: 1 1 170px;
+    min-width: 0;
+    height: 34px;
+  }
+  .icon-btn { width: 34px; height: 34px; }
+  .view {
+    padding: 20px 14px calc(96px + env(safe-area-inset-bottom));
+    gap: 18px;
+  }
+  .view__header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    padding-bottom: 16px;
+  }
+  .view__title { font-size: 28px; }
+  .view__lede { max-width: none; }
+  .view__actions {
+    width: 100%;
+    align-items: stretch;
+  }
+  .view__actions .btn,
+  .view__actions .search { width: 100%; }
+  .search { width: 100%; min-width: 0; }
+  .cards--4,
+  .cards--2,
+  .campus-card__stats,
+  .campus-stats,
+  .drawer__grid,
+  .map-side__stats {
+    grid-template-columns: 1fr;
+  }
+  .stat { min-height: 0; padding: 14px 16px; }
+  .stat__value { font-size: 24px; }
+  .panel__header {
+    padding: 12px 14px;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .tbl-toolbar { align-items: stretch; }
+  .seg {
+    display: flex;
+    width: 100%;
+    overflow-x: auto;
+  }
+  .seg__btn { flex: 0 0 auto; }
+  .mix__legend { grid-template-columns: 1fr; }
+  .campus-grid { grid-template-columns: 1fr; }
+  .campus-card { padding: 16px 14px; }
+  .campus-card__head { flex-wrap: wrap; }
+  .campus-card__count { text-align: left; }
+  .alert {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 14px;
+  }
+  .alert__actions { flex-wrap: wrap; }
+  .drawer {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100vw;
+    max-width: 100vw;
+    border-left: 0;
+    padding: 18px 14px calc(92px + env(safe-area-inset-bottom));
+  }
+  .drawer__head,
+  .drawer__row,
+  .drawer__foot {
+    flex-wrap: wrap;
+  }
+  .drawer__title { font-size: 23px; }
+  .drawer-list li {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+  .drawer__foot .btn,
+  .map-side__foot .btn { flex: 1 1 140px; }
+  .map-stage {
+    aspect-ratio: 1 / 1;
+    min-height: 320px;
+  }
+  .map-side {
+    max-height: none;
+    padding: 16px 14px;
+  }
+  .map-side__header { flex-wrap: wrap; }
+  .map-side__title { white-space: normal !important; }
+  .tweaks {
+    left: 0;
+    right: 0;
+    bottom: calc(62px + env(safe-area-inset-bottom));
+    width: auto;
+    max-height: calc(100vh - 90px);
+    overflow: auto;
+    border-right: 0;
+    border-left: 0;
+  }
+  .bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 80;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--rule);
+    background: color-mix(in oklch, var(--bg) 94%, transparent);
+    backdrop-filter: blur(10px);
+  }
+  .bottom-nav__item {
+    position: relative;
+    min-width: 0;
+    height: 50px;
+    display: grid;
+    place-items: center;
+    color: var(--ink-3);
+    background: transparent;
+    border: 0;
+  }
+  .bottom-nav__item svg {
+    width: 19px;
+    height: 19px;
+    display: block;
+  }
+  .bottom-nav__item.is-active {
+    color: var(--ink);
+    background: var(--surface);
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .bottom-nav__count {
+    position: absolute;
+    top: 6px;
+    right: 9px;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 4px;
+    display: grid;
+    place-items: center;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    line-height: 1;
+  }
+}
+
+@media (max-width: 480px) {
+  .top { padding: 9px 10px; }
+  .view { padding: 16px 10px calc(92px + env(safe-area-inset-bottom)); }
+  .view__title { font-size: 24px; }
+  .panel__header { padding: 11px 12px; }
+  .stat { padding: 12px; }
+  .map-stage { min-height: 280px; }
+  .login-screen { padding: 14px; }
+  .login-card { padding: 24px 18px; }
 }
   </style>
 </head>
@@ -978,21 +1258,23 @@ function Overview({ data, ui, onOpenDish, onJump }) {
             <h2 className="panel__title">Needs attention</h2>
             <button className="link" onClick={()=>onJump('starlinks')}>View all dishes {Icon.arrow}</button>
           </header>
-          <table className="tbl">
-            <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th>Obstruction</th><th>Latency</th><th></th></tr></thead>
-            <tbody>
-              {topIssues.map(d => (
-                <tr key={d.id} onClick={()=>onOpenDish(d)} className="tbl__row--click">
-                  <td><div className="cell-primary">{d.name}</div><div className="cell-mono">{d.id}</div></td>
-                  <td>{campusName(data,d.campus)}</td>
-                  <td><StatusChip status={d.status} /></td>
-                  <td className="mono">{d.obstruction.toFixed(1)}%</td>
-                  <td className="mono">{d.latency?d.latency+'ms':'—'}</td>
-                  <td className="tbl__chev">{Icon.arrow}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-scroll">
+            <table className="tbl">
+              <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th>Obstruction</th><th>Latency</th><th></th></tr></thead>
+              <tbody>
+                {topIssues.map(d => (
+                  <tr key={d.id} onClick={()=>onOpenDish(d)} className="tbl__row--click">
+                    <td><div className="cell-primary">{d.name}</div><div className="cell-mono">{d.id}</div></td>
+                    <td>{campusName(data,d.campus)}</td>
+                    <td><StatusChip status={d.status} /></td>
+                    <td className="mono">{d.obstruction.toFixed(1)}%</td>
+                    <td className="mono">{d.latency?d.latency+'ms':'—'}</td>
+                    <td className="tbl__chev">{Icon.arrow}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
         <section className="panel">
           <header className="panel__header"><h2 className="panel__title">Fleet mix</h2></header>
@@ -1081,25 +1363,27 @@ function Starlinks({ data, filter, onOpenDish }) {
         <span className="muted mono">{rows.length} of {data.DISHES.length}</span>
       </div>
       <section className="panel panel--flush">
-        <table className="tbl tbl--data">
-          <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th className="num">Down</th><th className="num">Up</th><th className="num">Latency</th><th className="num">Obstruct.</th><th className="num">Uptime 30d</th><th>Throughput</th><th></th></tr></thead>
-          <tbody>
-            {rows.map(d => (
-              <tr key={d.id} onClick={()=>onOpenDish(d)} className="tbl__row--click">
-                <td><div className="cell-primary">{d.name}</div><div className="cell-mono">{d.id} · {d.sku}</div></td>
-                <td>{campusName(data,d.campus)}</td>
-                <td><StatusChip status={d.status} /></td>
-                <td className="num mono">{d.down||'—'}{d.down?' Mb':''}</td>
-                <td className="num mono">{d.up||'—'}{d.up?' Mb':''}</td>
-                <td className="num mono">{d.latency?d.latency+'ms':'—'}</td>
-                <td className="num mono">{d.obstruction.toFixed(1)}%</td>
-                <td className="num mono">{d.uptime.toFixed(2)}%</td>
-                <td><Sparkline points={d.throughputTrend} dim={d.status!=='online'} /></td>
-                <td className="tbl__chev">{Icon.arrow}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="tbl tbl--data">
+            <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th className="num">Down</th><th className="num">Up</th><th className="num">Latency</th><th className="num">Obstruct.</th><th className="num">Uptime 30d</th><th>Throughput</th><th></th></tr></thead>
+            <tbody>
+              {rows.map(d => (
+                <tr key={d.id} onClick={()=>onOpenDish(d)} className="tbl__row--click">
+                  <td><div className="cell-primary">{d.name}</div><div className="cell-mono">{d.id} · {d.sku}</div></td>
+                  <td>{campusName(data,d.campus)}</td>
+                  <td><StatusChip status={d.status} /></td>
+                  <td className="num mono">{d.down||'—'}{d.down?' Mb':''}</td>
+                  <td className="num mono">{d.up||'—'}{d.up?' Mb':''}</td>
+                  <td className="num mono">{d.latency?d.latency+'ms':'—'}</td>
+                  <td className="num mono">{d.obstruction.toFixed(1)}%</td>
+                  <td className="num mono">{d.uptime.toFixed(2)}%</td>
+                  <td><Sparkline points={d.throughputTrend} dim={d.status!=='online'} /></td>
+                  <td className="tbl__chev">{Icon.arrow}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
@@ -1130,23 +1414,25 @@ function Computers({ data, filter }) {
         <span className="muted mono">{rows.length} of {data.COMPUTERS.length}</span>
       </div>
       <section className="panel panel--flush">
-        <table className="tbl tbl--data">
-          <thead><tr><th>Tag</th><th>Assigned to</th><th>Model</th><th>OS</th><th>Status</th><th className="num">Storage</th><th className="num">Battery</th><th>Last seen</th></tr></thead>
-          <tbody>
-            {rows.slice(0,80).map(c => (
-              <tr key={c.id}>
-                <td><div className="cell-primary mono">{c.tag}</div><div className="cell-mono">{c.id}</div></td>
-                <td>{c.assignedTo||<span className="muted">— unassigned —</span>}</td>
-                <td>{c.model}<div className="cell-mono">{c.ram}GB · {c.vendor}</div></td>
-                <td className="muted">{c.os}</td>
-                <td><StatusChip status={c.status} /></td>
-                <td className="num"><StorageBar pct={c.storage} /></td>
-                <td className="num">{c.status==='offline'?'—':<BatteryCell pct={c.battery} />}</td>
-                <td className="muted mono">{c.lastSeen}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="tbl tbl--data">
+            <thead><tr><th>Tag</th><th>Assigned to</th><th>Model</th><th>OS</th><th>Status</th><th className="num">Storage</th><th className="num">Battery</th><th>Last seen</th></tr></thead>
+            <tbody>
+              {rows.slice(0,80).map(c => (
+                <tr key={c.id}>
+                  <td><div className="cell-primary mono">{c.tag}</div><div className="cell-mono">{c.id}</div></td>
+                  <td>{c.assignedTo||<span className="muted">— unassigned —</span>}</td>
+                  <td>{c.model}<div className="cell-mono">{c.ram}GB · {c.vendor}</div></td>
+                  <td className="muted">{c.os}</td>
+                  <td><StatusChip status={c.status} /></td>
+                  <td className="num"><StorageBar pct={c.storage} /></td>
+                  <td className="num">{c.status==='offline'?'—':<BatteryCell pct={c.battery} />}</td>
+                  <td className="muted mono">{c.lastSeen}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {rows.length>80 && <div className="tbl-footer muted">Showing 80 of {rows.length}</div>}
       </section>
     </div>
@@ -1179,25 +1465,27 @@ function Students({ data, filter }) {
         <span className="muted mono">{rows.length} of {data.STUDENTS.length}</span>
       </div>
       <section className="panel panel--flush">
-        <table className="tbl tbl--data">
-          <thead><tr><th>Student</th><th>Campus</th><th>Track</th><th>Issues</th><th className="num">Weekly hrs</th><th className="num">Attendance</th><th>Last active</th></tr></thead>
-          <tbody>
-            {rows.slice(0,80).map(s => (
-              <tr key={s.id}>
-                <td><div className="cell-primary">{s.name}</div><div className="cell-mono">{s.id}</div></td>
-                <td>{campusName(data,s.campus)}</td>
-                <td className="muted">{s.track}</td>
-                <td>
-                  {s.issues.length===0 && <span className="chip chip--ok"><StatusDot status="healthy"/>OK</span>}
-                  {s.issues.map(i=><span key={i} className={`chip chip--${i==='missed-sessions'?'bad':'warn'}`}><StatusDot status={i==='missed-sessions'?'critical':'degraded'}/>{i.replace('-',' ')}</span>)}
-                </td>
-                <td className="num mono">{s.weeklyHours}h</td>
-                <td className="num mono">{s.attendance}%</td>
-                <td className="muted mono">{s.lastActive}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="tbl tbl--data">
+            <thead><tr><th>Student</th><th>Campus</th><th>Track</th><th>Issues</th><th className="num">Weekly hrs</th><th className="num">Attendance</th><th>Last active</th></tr></thead>
+            <tbody>
+              {rows.slice(0,80).map(s => (
+                <tr key={s.id}>
+                  <td><div className="cell-primary">{s.name}</div><div className="cell-mono">{s.id}</div></td>
+                  <td>{campusName(data,s.campus)}</td>
+                  <td className="muted">{s.track}</td>
+                  <td>
+                    {s.issues.length===0 && <span className="chip chip--ok"><StatusDot status="healthy"/>OK</span>}
+                    {s.issues.map(i=><span key={i} className={`chip chip--${i==='missed-sessions'?'bad':'warn'}`}><StatusDot status={i==='missed-sessions'?'critical':'degraded'}/>{i.replace('-',' ')}</span>)}
+                  </td>
+                  <td className="num mono">{s.weeklyHours}h</td>
+                  <td className="num mono">{s.attendance}%</td>
+                  <td className="muted mono">{s.lastActive}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
@@ -1667,41 +1955,43 @@ function MapView({ data, onOpenDish, onJump }) {
           <h2 className="panel__title">All sites</h2>
           <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{pins.length} sites</span>
         </header>
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>Site</th>
-              <th>Coordinates</th>
-              <th>Status</th>
-              <th className="num">Dishes</th>
-              <th className="num">PCs</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pins.map(p => (
-              <tr key={p.id} onClick={() => setSelected(p.id)}
-                className={`tbl__row--click ${p.id === selected ? 'is-selected' : ''}`}>
-                <td><div className="cell-primary">{p.name}</div></td>
-                <td>
-                  {p.lat != null
-                    ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>
-                        {Math.abs(p.lat).toFixed(4)}°S, {Math.abs(p.lng).toFixed(4)}°E
-                      </span>
-                    : <span className="muted">—</span>
-                  }
-                </td>
-                <td>
-                  <span className={`chip chip--${p.health.tone === 'ok' ? 'ok' : p.health.tone === 'warn' ? 'warn' : 'bad'}`}>
-                    <MSDot status={p.health.tone === 'ok' ? 'healthy' : p.health.tone === 'warn' ? 'degraded' : 'offline'} />
-                    {p.health.tone === 'ok' ? 'Online' : p.health.tone === 'warn' ? 'Degraded' : 'Offline'}
-                  </span>
-                </td>
-                <td className="num mono">{p.health.onlineDishes}/{p.health.dishes}</td>
-                <td className="num mono">{p.health.pcs || '—'}</td>
+        <div className="table-scroll">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Site</th>
+                <th>Coordinates</th>
+                <th>Status</th>
+                <th className="num">Dishes</th>
+                <th className="num">PCs</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {pins.map(p => (
+                <tr key={p.id} onClick={() => setSelected(p.id)}
+                  className={`tbl__row--click ${p.id === selected ? 'is-selected' : ''}`}>
+                  <td><div className="cell-primary">{p.name}</div></td>
+                  <td>
+                    {p.lat != null
+                      ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>
+                          {Math.abs(p.lat).toFixed(4)}°S, {Math.abs(p.lng).toFixed(4)}°E
+                        </span>
+                      : <span className="muted">—</span>
+                    }
+                  </td>
+                  <td>
+                    <span className={`chip chip--${p.health.tone === 'ok' ? 'ok' : p.health.tone === 'warn' ? 'warn' : 'bad'}`}>
+                      <MSDot status={p.health.tone === 'ok' ? 'healthy' : p.health.tone === 'warn' ? 'degraded' : 'offline'} />
+                      {p.health.tone === 'ok' ? 'Online' : p.health.tone === 'warn' ? 'Degraded' : 'Offline'}
+                    </span>
+                  </td>
+                  <td className="num mono">{p.health.onlineDishes}/{p.health.dishes}</td>
+                  <td className="num mono">{p.health.pcs || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
@@ -1739,8 +2029,17 @@ const TYPE_PAIRINGS = {
 function NavItem({ icon, label, active, onClick, count }) {
   return (
     <button className={`nav__item ${active?'is-active':''}`} onClick={onClick}>
-      {icon}<span className="side__label">{label}</span>
+      <span className="nav__icon" aria-hidden>{icon}</span><span className="side__label">{label}</span>
       {count !== undefined && <span className="nav__count side__label">{count}</span>}
+    </button>
+  );
+}
+function BottomNavItem({ icon, label, active, onClick, count }) {
+  return (
+    <button className={`bottom-nav__item ${active?'is-active':''}`} onClick={onClick} aria-label={label} title={label}>
+      {icon}
+      <span className="sr-only">{label}</span>
+      {count ? <span className="bottom-nav__count">{count}</span> : null}
     </button>
   );
 }
@@ -1859,6 +2158,9 @@ function App() {
     try {
       const wsUrl = window._API.getBase().replace(/^http/, 'ws') + '?token=' + encodeURIComponent(localStorage.getItem('sf_tok') || '');
       const ws = new WebSocket(wsUrl);
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'auth', token: localStorage.getItem('sf_tok') || '' }));
+      };
       ws.onmessage = e => {
         try {
           const msg = JSON.parse(e.data);
@@ -2018,6 +2320,16 @@ function App() {
         {tab==='campuses'  && <Campuses  data={liveData} />}
         {tab==='map'       && <MapView   data={liveData} onOpenDish={setDish} onJump={setTab} />}
       </main>
+
+      <nav className="bottom-nav" aria-label="Primary navigation">
+        <BottomNavItem icon={AppIcon.overview} label="Overview" active={tab==='overview'} onClick={()=>setTab('overview')} />
+        <BottomNavItem icon={AppIcon.dish} label="Starlinks" active={tab==='starlinks'} onClick={()=>setTab('starlinks')} />
+        <BottomNavItem icon={AppIcon.laptop} label="Computers" active={tab==='computers'} onClick={()=>setTab('computers')} />
+        <BottomNavItem icon={AppIcon.user} label="Students" active={tab==='students'} onClick={()=>setTab('students')} />
+        <BottomNavItem icon={AppIcon.bell} label="Alerts" active={tab==='alerts'} onClick={()=>setTab('alerts')} count={openAlertCount || null} />
+        <BottomNavItem icon={AppIcon.campus} label="Campuses" active={tab==='campuses'} onClick={()=>setTab('campuses')} />
+        <BottomNavItem icon={AppIcon.map} label="Map" active={tab==='map'} onClick={()=>setTab('map')} />
+      </nav>
 
       <DishDetail dish={dish} data={liveData} onClose={()=>setDish(null)} />
 
