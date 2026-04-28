@@ -989,6 +989,17 @@ function timeAgoStr(iso) {
   return Math.floor(m/1440) + 'd ago';
 }
 
+function storageUsedPct(freeBytes, totalBytes) {
+  const free = Number(freeBytes);
+  const total = Number(totalBytes);
+  if (!Number.isFinite(free) || !Number.isFinite(total) || total <= 0) return null;
+  return Math.max(0, Math.min(100, Math.round(((total - free) / total) * 100)));
+}
+
+function compactJoin(parts) {
+  return parts.filter(Boolean).join(' · ');
+}
+
 // ── Data mapping: real API → view-compatible shape ────────────────────────────
 function mapSites(sites) {
   // Each Site IS a campus (one dish per campus)
@@ -1035,26 +1046,29 @@ function mapSites(sites) {
 }
 
 function mapDevices(devices) {
-  return devices.map(d => ({
-    id:         d.id,
-    tag:        d.hostname || d.windows_sn || `DEV-${d.id}`,
-    model:      d.manufacturer || 'Unknown',
-    vendor:     d.manufacturer || '—',
-    ram:        null,
-    os:         'Windows 11',
-    assignedTo: null,
-    campus:     d.site_id,
-    status:     d.status === 'online' ? 'healthy'
-              : d.status === 'stale'  ? 'needs-update'
-              : 'offline',
-    storage:    null,       // not in API
-    battery:    null,       // not in API
-    lastSeen:   timeAgoStr(d.last_seen),
-    staleMin:   d.stale_min ?? null,
-    siteName:   d.site_name,
-    windowsSn:  d.windows_sn,
-    role:       d.role,
-  }));
+  return devices.map(d => {
+    const seenAt = d.last_seen || d.intune_last_sync_at || d.agent_last_seen_at;
+    return {
+      id:         d.id,
+      tag:        d.hostname || d.windows_sn || `DEV-${d.id}`,
+      model:      d.model || d.manufacturer || 'Unknown',
+      vendor:     d.manufacturer || '—',
+      modelMeta:  compactJoin([d.os_version, d.manufacturer]),
+      os:         compactJoin([d.os, d.os_version]) || '—',
+      assignedTo: d.user_principal_name || null,
+      campus:     d.site_id,
+      status:     d.status === 'online' ? 'healthy'
+                : d.status === 'stale'  ? 'needs-update'
+                : 'offline',
+      storage:    storageUsedPct(d.free_storage_bytes, d.total_storage_bytes),
+      battery:    null,
+      lastSeen:   timeAgoStr(seenAt),
+      staleMin:   d.stale_min ?? null,
+      siteName:   d.site_name,
+      windowsSn:  d.windows_sn,
+      role:       d.role,
+    };
+  });
 }
 
 function buildAlerts(dishes) {
@@ -1395,7 +1409,7 @@ function Computers({ data, filter }) {
   const rows = data.COMPUTERS.filter(c => {
     if (filter.campus!=='all' && c.campus!==filter.campus) return false;
     if (sf!=='all' && c.status!==sf) return false;
-    if (q) { const t=q.toLowerCase(); if (!(c.tag.toLowerCase().includes(t)||c.model.toLowerCase().includes(t)||(c.assignedTo&&c.assignedTo.toLowerCase().includes(t)))) return false; }
+    if (q) { const t=q.toLowerCase(); if (![c.tag, c.model, c.vendor, c.windowsSn, c.siteName, c.assignedTo].some(v => String(v || '').toLowerCase().includes(t))) return false; }
     return true;
   });
   const counts = s => data.COMPUTERS.filter(c=>s==='all'?true:c.status===s).length;
@@ -1422,11 +1436,11 @@ function Computers({ data, filter }) {
                 <tr key={c.id}>
                   <td><div className="cell-primary mono">{c.tag}</div><div className="cell-mono">{c.id}</div></td>
                   <td>{c.assignedTo||<span className="muted">— unassigned —</span>}</td>
-                  <td>{c.model}<div className="cell-mono">{c.ram}GB · {c.vendor}</div></td>
+                  <td>{c.model}<div className="cell-mono">{c.modelMeta || c.vendor}</div></td>
                   <td className="muted">{c.os}</td>
                   <td><StatusChip status={c.status} /></td>
                   <td className="num"><StorageBar pct={c.storage} /></td>
-                  <td className="num">{c.status==='offline'?'—':<BatteryCell pct={c.battery} />}</td>
+                  <td className="num"><BatteryCell pct={c.battery} /></td>
                   <td className="muted mono">{c.lastSeen}</td>
                 </tr>
               ))}

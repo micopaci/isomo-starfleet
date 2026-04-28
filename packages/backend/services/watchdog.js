@@ -10,9 +10,12 @@
 const cron      = require('node-cron');
 const pool      = require('../db');
 const { broadcast } = require('./websocket');
-
-const STALE_THRESHOLD_HOURS = 9;
-const OFFLINE_THRESHOLD_HOURS = 24;
+const {
+  DEVICE_ONLINE_HOURS,
+  DEVICE_STALE_HOURS,
+  deviceSeenExpr,
+  deviceStaleWhere,
+} = require('./deviceStatus');
 
 /**
  * Check for stale devices and broadcast alerts.
@@ -21,13 +24,12 @@ async function runWatchdog() {
   try {
     const { rows: stale } = await pool.query(
       `SELECT d.id, d.hostname, d.windows_sn, d.site_id, s.name AS site_name,
-              COALESCE(d.intune_last_sync_at, d.last_seen) AS last_seen,
-              EXTRACT(EPOCH FROM (NOW() - COALESCE(d.intune_last_sync_at, d.last_seen))) / 60 AS stale_min
+              ${deviceSeenExpr('d')} AS last_seen,
+              EXTRACT(EPOCH FROM (NOW() - ${deviceSeenExpr('d')})) / 60 AS stale_min
        FROM devices d
        LEFT JOIN sites s ON s.id = d.site_id
-       WHERE COALESCE(d.intune_last_sync_at, d.last_seen) < NOW() - INTERVAL '${STALE_THRESHOLD_HOURS} hours'
-         AND COALESCE(d.intune_last_sync_at, d.last_seen) > NOW() - INTERVAL '${OFFLINE_THRESHOLD_HOURS} hours'
-       ORDER BY COALESCE(d.intune_last_sync_at, d.last_seen) ASC`
+       WHERE ${deviceStaleWhere('d')}
+       ORDER BY ${deviceSeenExpr('d')} ASC`
     );
 
     if (stale.length > 0) {
@@ -58,7 +60,7 @@ async function runWatchdog() {
 function scheduleWatchdog() {
   // Every 10 minutes
   cron.schedule('*/10 * * * *', runWatchdog);
-  console.log('[Watchdog] Device stale-check scheduled (every 10 min, Intune-first).');
+  console.log(`[Watchdog] Device stale-check scheduled (every 10 min, healthy=${DEVICE_ONLINE_HOURS}h, stale=${DEVICE_STALE_HOURS}h).`);
 }
 
 module.exports = { scheduleWatchdog, runWatchdog };
