@@ -25,6 +25,7 @@ const nodemailer = require('nodemailer');
 const fs         = require('fs');
 const path       = require('path');
 const pool       = require('../db');
+const { deviceStaleWhere } = require('./deviceStatus');
 
 const ENABLED      = process.env.DIGEST_ENABLED === 'true';
 const TEMPLATE_PATH = path.join(__dirname, '../templates/weekly-digest.html');
@@ -140,8 +141,7 @@ async function collectDigestData() {
   // Stale devices (Intune sync/agent heartbeat older than expected window)
   const staleRes = await pool.query(
     `SELECT COUNT(*) AS cnt FROM devices
-     WHERE COALESCE(intune_last_sync_at, last_seen) < NOW() - INTERVAL '9 hours'
-       AND COALESCE(intune_last_sync_at, last_seen) > NOW() - INTERVAL '24 hours'`
+     WHERE ${deviceStaleWhere(null)}`
   );
   const staleDeviceCount = parseInt(staleRes.rows[0].cnt || 0);
 

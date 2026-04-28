@@ -15,17 +15,17 @@ const { requireAdmin }   = require('../middleware/auth');
 const { currentSignal }  = require('../services/cache');
 const graphClient        = require('../services/graph');
 const { checkCoverageGap } = require('../services/orbitalSync');
+const {
+  deviceSeenExpr,
+  deviceStatusCase,
+  deviceOnlineWhere,
+  deviceStaleWhere,
+} = require('../services/deviceStatus');
 
 const router = express.Router();
 
-const DEVICE_SEEN_EXPR = 'COALESCE(d.intune_last_sync_at, d.last_seen)';
-const DEVICE_STATUS_CASE = `
-  CASE
-    WHEN ${DEVICE_SEEN_EXPR} IS NULL THEN 'unknown'
-    WHEN ${DEVICE_SEEN_EXPR} > NOW() - INTERVAL '9 hours' THEN 'online'
-    WHEN ${DEVICE_SEEN_EXPR} > NOW() - INTERVAL '24 hours' THEN 'stale'
-    ELSE 'offline'
-  END`;
+const DEVICE_SEEN_EXPR = deviceSeenExpr('d');
+const DEVICE_STATUS_CASE = deviceStatusCase('d');
 
 function parseMonthStart(raw) {
   if (!raw) return null;
@@ -94,7 +94,7 @@ router.get('/sites', async (req, res, next) => {
 
       const laptopsRes = await pool.query(
         `SELECT COUNT(*) AS total,
-                COUNT(*) FILTER (WHERE COALESCE(intune_last_sync_at, last_seen) > NOW() - INTERVAL '9 hours') AS online
+                COUNT(*) FILTER (WHERE ${deviceOnlineWhere(null)}) AS online
          FROM devices WHERE site_id = $1`,
         [site.id]
       );
@@ -194,16 +194,16 @@ router.get('/sites/:id/latency', async (req, res, next) => {
 });
 
 // ── GET /api/devices ──────────────────────────────────────────────────────────
-// Optional query param: ?filter=stale  (Intune/agent check-in older than 9h)
+// Optional query param: ?filter=stale  (Intune/agent check-in older than the healthy window)
 router.get('/devices', async (req, res, next) => {
   try {
     const staleOnly = req.query.filter === 'stale';
     const whereClause = staleOnly
-      ? `AND ${DEVICE_SEEN_EXPR} < NOW() - INTERVAL '9 hours' AND ${DEVICE_SEEN_EXPR} > NOW() - INTERVAL '24 hours'`
+      ? `AND ${deviceStaleWhere('d')}`
       : '';
 
     const result = await pool.query(
-      `SELECT d.id, d.hostname, d.windows_sn, d.manufacturer, d.model,
+      `SELECT d.id, d.site_id, d.hostname, d.windows_sn, d.manufacturer, d.model,
               d.intune_device_id, d.role, ${DEVICE_SEEN_EXPR} AS last_seen,
               d.last_seen AS agent_last_seen_at, d.intune_last_sync_at,
               d.intune_enrolled_at, d.last_ingest_ok_at, d.compliance_state,

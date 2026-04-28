@@ -103,10 +103,8 @@ export function DeviceDetailScreen({ route, navigation }: DeviceDetailProps) {
     );
   }
 
-  const isOnline = device.last_seen &&
-    Date.now() - new Date(device.last_seen).getTime() < 10 * 60_000;
   const chipStatus: 'online' | 'stale' | 'offline' =
-    isOnline ? 'online' : device.status === 'stale' ? 'stale' : 'offline';
+    device.status === 'online' ? 'online' : device.status === 'stale' ? 'stale' : 'offline';
 
   return (
     <ScrollView

@@ -86,9 +86,7 @@ export function SiteDetailScreen({ route, navigation }: SiteDetailProps) {
   const sig   = displaySite.signal;
   const cause = predictCause(sig ?? null);
 
-  const onlineDevices = displaySite.devices.filter(d =>
-    d.last_seen && Date.now() - new Date(d.last_seen).getTime() < 10 * 60_000,
-  ).length;
+  const onlineDevices = displaySite.devices.filter(d => d.status === 'online').length;
   const totalDevices = displaySite.devices.length;
 
   const scoreVal = displaySite.score ?? sig?.score ?? null;
@@ -177,10 +175,8 @@ export function SiteDetailScreen({ route, navigation }: SiteDetailProps) {
           <Text style={[styles.emptyText, { color: C.muted }]}>No devices registered</Text>
         ) : (
           displaySite.devices.map(d => {
-            const isOnline = d.last_seen &&
-              Date.now() - new Date(d.last_seen).getTime() < 10 * 60_000;
             const deviceStatus: 'online' | 'stale' | 'offline' =
-              isOnline ? 'online' : d.status === 'stale' ? 'stale' : 'offline';
+              d.status === 'online' ? 'online' : d.status === 'stale' ? 'stale' : 'offline';
             return (
               <TouchableOpacity
                 key={d.id}

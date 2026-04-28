@@ -63,7 +63,7 @@ export interface Device {
   disk_smart_status?: string | null;
   disk_smart_predict_failure?: boolean | null;
   disk_media_type?: string | null;
-  /** Intune-first status: online within 9h, stale within 24h, then offline. */
+  /** Intune-first status: online within 72h, stale within 14d, then offline by default. */
   status: 'online' | 'offline' | 'stale' | 'unknown';
   /** Minutes since last Intune sync, falling back to agent heartbeat. */
   stale_min?: number | null;
