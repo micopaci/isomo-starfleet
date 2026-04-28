@@ -379,6 +379,16 @@ body {
 .search__clear {
   background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1;
 }
+.sort-select {
+  font-family: var(--font-ui);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  padding: 6px 10px;
+  font-size: 12.5px;
+  outline: none;
+  min-width: 170px;
+}
 
 /* ——— Segmented ——— */
 .seg {
@@ -737,7 +747,8 @@ body {
     align-items: stretch;
   }
   .view__actions .btn,
-  .view__actions .search { width: 100%; }
+  .view__actions .search,
+  .view__actions .sort-select { width: 100%; }
   .search { width: 100%; min-width: 0; }
   .cards--4,
   .cards--2,
@@ -1034,6 +1045,9 @@ function mapSites(sites) {
       anomaly:      sig?.anomaly       ?? false,
       anomalyDelta: sig?.anomaly_delta ?? null,
       dataQuality:  sig?.data_quality  ?? null,
+      weather:      s.weather || null,
+      rainfall:     s.weather?.rainfall_mm ?? null,
+      cloudCover:   s.weather?.cloud_cover_pct ?? null,
       confidence:   sig?.confidence    ?? 'low',
       onlineLaptops: s.online_laptops,
       totalLaptops:  s.total_laptops,
@@ -1063,6 +1077,7 @@ function mapDevices(devices) {
       storage:    storageUsedPct(d.free_storage_bytes, d.total_storage_bytes),
       battery:    null,
       lastSeen:   timeAgoStr(seenAt),
+      lastSeenTs: seenAt ? new Date(seenAt).getTime() : null,
       staleMin:   d.stale_min ?? null,
       siteName:   d.site_name,
       windowsSn:  d.windows_sn,
@@ -1214,6 +1229,37 @@ window._SF = { Sparkline, StatusDot, StatusChip, Stat, Segmented, Search, Icon, 
 const { useState: uS, useMemo: uM } = React;
 const { StatusDot, StatusChip, Stat, Segmented, Search, Icon, campusName, Sparkline } = window._SF;
 
+function compareSortValues(a, b, dir = 'asc') {
+  const aMissing = a == null || a === '';
+  const bMissing = b == null || b === '';
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1;
+  if (bMissing) return -1;
+
+  let result;
+  if (typeof a === 'number' && typeof b === 'number') {
+    result = a - b;
+  } else {
+    result = String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+  }
+  return dir === 'desc' ? -result : result;
+}
+
+function sortRows(rows, sort, accessors) {
+  const [key, dir = 'asc'] = String(sort || '').split(':');
+  const getter = accessors[key];
+  if (!getter) return rows;
+  return [...rows].sort((a, b) => compareSortValues(getter(a), getter(b), dir));
+}
+
+function SortSelect({ value, onChange, options, label = 'Sort data' }) {
+  return (
+    <select className="sort-select" value={value} onChange={e => onChange(e.target.value)} aria-label={label}>
+      {options.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+    </select>
+  );
+}
+
 function MiniBar({ label, n, total, tone }) {
   const pct = (n/total)*100;
   return (
@@ -1349,11 +1395,21 @@ function Overview({ data, ui, onOpenDish, onJump }) {
 function Starlinks({ data, filter, onOpenDish }) {
   const [q, setQ] = uS('');
   const [sf, setSf] = uS('all');
-  const rows = data.DISHES.filter(d => {
+  const [sort, setSort] = uS('name:asc');
+  const filteredRows = data.DISHES.filter(d => {
     if (filter.campus!=='all' && d.campus!==filter.campus) return false;
     if (sf!=='all' && d.status!==sf) return false;
     if (q && !(`${d.name} ${d.id}`.toLowerCase().includes(q.toLowerCase()))) return false;
     return true;
+  });
+  const rows = sortRows(filteredRows, sort, {
+    name: d => d.name,
+    campus: d => campusName(data, d.campus),
+    status: d => ({ online: 1, degraded: 2, maintenance: 3, standby: 3, offline: 4 })[d.status] ?? 9,
+    latency: d => d.latency || null,
+    obstruction: d => d.obstruction,
+    uptime: d => d.uptime,
+    rain: d => d.rainfall,
   });
   const counts = {
     all: data.DISHES.length,
@@ -1366,7 +1422,18 @@ function Starlinks({ data, filter, onOpenDish }) {
     <div className="view">
       <div className="view__header">
         <div><div className="eyebrow">Connectivity</div><h1 className="view__title">Starlink dishes</h1></div>
-        <div className="view__actions"><Search value={q} onChange={setQ} placeholder="Search dishes…" /><button className="btn">Export CSV</button></div>
+        <div className="view__actions">
+          <Search value={q} onChange={setQ} placeholder="Search dishes…" />
+          <SortSelect value={sort} onChange={setSort} options={[
+            {id:'name:asc',label:'Dish A-Z'},
+            {id:'status:asc',label:'Status priority'},
+            {id:'latency:desc',label:'Latency high first'},
+            {id:'obstruction:desc',label:'Obstruction high first'},
+            {id:'rain:desc',label:'Rain high first'},
+            {id:'uptime:asc',label:'Uptime low first'},
+          ]} />
+          <button className="btn">Export CSV</button>
+        </div>
       </div>
       <div className="tbl-toolbar">
         <Segmented value={sf} onChange={setSf} options={[
@@ -1379,7 +1446,7 @@ function Starlinks({ data, filter, onOpenDish }) {
       <section className="panel panel--flush">
         <div className="table-scroll">
           <table className="tbl tbl--data">
-            <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th className="num">Down</th><th className="num">Up</th><th className="num">Latency</th><th className="num">Obstruct.</th><th className="num">Uptime 30d</th><th>Throughput</th><th></th></tr></thead>
+            <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th className="num">Down</th><th className="num">Up</th><th className="num">Latency</th><th className="num">Obstruct.</th><th className="num">Weather</th><th className="num">Uptime 30d</th><th>Throughput</th><th></th></tr></thead>
             <tbody>
               {rows.map(d => (
                 <tr key={d.id} onClick={()=>onOpenDish(d)} className="tbl__row--click">
@@ -1390,6 +1457,7 @@ function Starlinks({ data, filter, onOpenDish }) {
                   <td className="num mono">{d.up||'—'}{d.up?' Mb':''}</td>
                   <td className="num mono">{d.latency?d.latency+'ms':'—'}</td>
                   <td className="num mono">{d.obstruction.toFixed(1)}%</td>
+                  <td className="num mono">{d.rainfall == null ? '—' : `${Number(d.rainfall).toFixed(1)}mm`}</td>
                   <td className="num mono">{d.uptime.toFixed(2)}%</td>
                   <td><Sparkline points={d.throughputTrend} dim={d.status!=='online'} /></td>
                   <td className="tbl__chev">{Icon.arrow}</td>
@@ -1406,18 +1474,38 @@ function Starlinks({ data, filter, onOpenDish }) {
 function Computers({ data, filter }) {
   const [q, setQ] = uS('');
   const [sf, setSf] = uS('all');
-  const rows = data.COMPUTERS.filter(c => {
+  const [sort, setSort] = uS('lastSeen:desc');
+  const filteredRows = data.COMPUTERS.filter(c => {
     if (filter.campus!=='all' && c.campus!==filter.campus) return false;
     if (sf!=='all' && c.status!==sf) return false;
     if (q) { const t=q.toLowerCase(); if (![c.tag, c.model, c.vendor, c.windowsSn, c.siteName, c.assignedTo].some(v => String(v || '').toLowerCase().includes(t))) return false; }
     return true;
+  });
+  const rows = sortRows(filteredRows, sort, {
+    tag: c => c.tag,
+    assignee: c => c.assignedTo || '',
+    model: c => c.model,
+    status: c => ({ healthy: 1, 'needs-update': 2, 'low-storage': 3, critical: 4, offline: 5 })[c.status] ?? 9,
+    storage: c => c.storage,
+    lastSeen: c => c.lastSeenTs,
   });
   const counts = s => data.COMPUTERS.filter(c=>s==='all'?true:c.status===s).length;
   return (
     <div className="view">
       <div className="view__header">
         <div><div className="eyebrow">Endpoints</div><h1 className="view__title">Computers</h1></div>
-        <div className="view__actions"><Search value={q} onChange={setQ} placeholder="Tag, model, student…" /><button className="btn">Push update</button></div>
+        <div className="view__actions">
+          <Search value={q} onChange={setQ} placeholder="Tag, model, student…" />
+          <SortSelect value={sort} onChange={setSort} options={[
+            {id:'lastSeen:desc',label:'Last seen newest'},
+            {id:'lastSeen:asc',label:'Last seen oldest'},
+            {id:'status:asc',label:'Status priority'},
+            {id:'storage:desc',label:'Storage used high'},
+            {id:'tag:asc',label:'Tag A-Z'},
+            {id:'model:asc',label:'Model A-Z'},
+          ]} />
+          <button className="btn">Push update</button>
+        </div>
       </div>
       <div className="tbl-toolbar">
         <Segmented value={sf} onChange={setSf} options={[

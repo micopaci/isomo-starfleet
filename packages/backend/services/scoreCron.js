@@ -34,6 +34,7 @@ const cron = require('node-cron');
 const pool = require('../db');
 const { getLatestKIndex }  = require('./spaceWeather');
 const { checkCoverageGap } = require('./orbitalSync');
+const { annotateCauseWithWeather } = require('./weatherCorrelation');
 
 // ── Score Computation ─────────────────────────────────────────────────────────
 
@@ -184,7 +185,8 @@ async function runScoreCron() {
 
     // ── 3. Score + cause ──────────────────────────────────────────────────────
     const { score } = computeScore(avg);
-    const cause     = await getEnhancedDiagnosis(site_id, avg);
+    const baseCause = await getEnhancedDiagnosis(site_id, avg);
+    const cause     = await annotateCauseWithWeather(baseCause, site_id);
 
     // ── 4. 7-day rolling average ──────────────────────────────────────────────
     const avgRes = await pool.query(

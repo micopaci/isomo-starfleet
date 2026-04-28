@@ -327,6 +327,15 @@ app.post('/internal/run-space-weather', authMiddleware, async (req, res, next) =
   } catch (err) { next(err); }
 });
 
+// ── Internal — force-run site weather sync ───────────────────────────────────
+const { runWeatherSync } = require('./services/weatherCorrelation');
+app.post('/internal/run-weather', authMiddleware, async (req, res, next) => {
+  try {
+    const result = await runWeatherSync({ force: true });
+    res.json({ ok: true, ...result });
+  } catch (err) { next(err); }
+});
+
 // ── Error handler ─────────────────────────────────────────────────────────────
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

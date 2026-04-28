@@ -60,16 +60,21 @@ async function fetchWeatherForSite(site) {
     console.log(
       `[Weather] ${site.name}: ${dateStr} rain=${rainfall_mm ?? '--'}mm cloud=${cloud_pct ?? '--'}%`
     );
+    return { ok: true, site_id: site.id, date: dateStr, rainfall_mm, cloud_cover_pct: cloud_pct };
   } catch (err) {
     console.warn(`[Weather] Failed for site ${site.id} (${site.name}): ${err.message}`);
+    return { ok: false, site_id: site.id, error: err.message };
   }
 }
 
 /**
  * Fetch yesterday's weather for all GPS-equipped sites.
  */
-async function runWeatherSync() {
-  if (!ENABLED) return;
+async function runWeatherSync(options = {}) {
+  if (!ENABLED && !options.force) {
+    console.log('[Weather] OPEN_METEO_ENABLED=false — weather sync skipped.');
+    return { enabled: false, synced: 0, failed: 0, results: [] };
+  }
 
   const { rows: sites } = await pool.query(
     'SELECT id, name, lat, lng FROM sites WHERE lat IS NOT NULL AND lng IS NOT NULL'
@@ -77,18 +82,22 @@ async function runWeatherSync() {
 
   if (!sites.length) {
     console.log('[Weather] No sites with GPS coordinates — skipping sync.');
-    return;
+    return { enabled: true, synced: 0, failed: 0, results: [] };
   }
 
   console.log(`[Weather] Syncing weather for ${sites.length} sites…`);
 
   // Stagger requests by 200ms to be polite to the free API
+  const results = [];
   for (const site of sites) {
-    await fetchWeatherForSite(site);
+    results.push(await fetchWeatherForSite(site));
     await new Promise(r => setTimeout(r, 200));
   }
 
-  console.log('[Weather] Sync complete.');
+  const synced = results.filter(r => r.ok).length;
+  const failed = results.length - synced;
+  console.log(`[Weather] Sync complete. Synced ${synced}; failed ${failed}.`);
+  return { enabled: true, synced, failed, results };
 }
 
 /**
@@ -98,10 +107,9 @@ async function runWeatherSync() {
  * @returns {Promise<{ rainfall_mm: number|null, cloud_cover_pct: number|null }|null>}
  */
 async function getLatestWeather(site_id) {
-  if (!ENABLED) return null;
   try {
     const { rows } = await pool.query(
-      `SELECT rainfall_mm, cloud_cover_pct
+      `SELECT date::text AS date, rainfall_mm, cloud_cover_pct
        FROM weather_log
        WHERE site_id = $1
        ORDER BY date DESC LIMIT 1`,

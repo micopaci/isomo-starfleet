@@ -86,8 +86,18 @@ router.get('/sites', async (req, res, next) => {
     // Hydrate uptime + data-today maps in two flat queries (views from migration 015)
     const uptimeRes = await pool.query(`SELECT site_id, uptime_pct FROM site_uptime_today`);
     const dataRes   = await pool.query(`SELECT site_id, data_mb_today FROM site_data_today`);
+    const weatherRes = await pool.query(
+      `SELECT DISTINCT ON (site_id) site_id, date::text AS date, rainfall_mm, cloud_cover_pct
+       FROM weather_log
+       ORDER BY site_id, date DESC`
+    );
     const uptimeBy  = Object.fromEntries(uptimeRes.rows.map(r => [r.site_id, Number(r.uptime_pct)]));
     const dataBy    = Object.fromEntries(dataRes.rows.map(r => [r.site_id, Number(r.data_mb_today)]));
+    const weatherBy = Object.fromEntries(weatherRes.rows.map(r => [r.site_id, {
+      date: r.date,
+      rainfall_mm: r.rainfall_mm == null ? null : Number(r.rainfall_mm),
+      cloud_cover_pct: r.cloud_cover_pct == null ? null : Number(r.cloud_cover_pct),
+    }]));
 
     const sites = await Promise.all(sitesRes.rows.map(async (site) => {
       const signal = await getSiteSignal(site.id);
@@ -117,6 +127,7 @@ router.get('/sites', async (req, res, next) => {
         upload_mbps:    signal?.upload_mbps   ?? null,
         data_mb_today:  dataBy[site.id]   ?? 0,
         uptime_pct:     uptimeBy[site.id] ?? null,
+        weather:        weatherBy[site.id] ?? null,
       };
     }));
 
@@ -133,6 +144,21 @@ router.get('/sites/:id', async (req, res, next) => {
 
     const site    = siteRes.rows[0];
     const signal  = await getSiteSignal(id);
+    const weatherRes = await pool.query(
+      `SELECT date::text AS date, rainfall_mm, cloud_cover_pct
+       FROM weather_log
+       WHERE site_id = $1
+       ORDER BY date DESC
+       LIMIT 1`,
+      [id]
+    );
+    const weather = weatherRes.rows[0]
+      ? {
+          date: weatherRes.rows[0].date,
+          rainfall_mm: weatherRes.rows[0].rainfall_mm == null ? null : Number(weatherRes.rows[0].rainfall_mm),
+          cloud_cover_pct: weatherRes.rows[0].cloud_cover_pct == null ? null : Number(weatherRes.rows[0].cloud_cover_pct),
+        }
+      : null;
 
     const devicesRes = await pool.query(
       `SELECT d.id, d.site_id, d.hostname, d.windows_sn, d.manufacturer, d.model,
@@ -156,7 +182,7 @@ router.get('/sites/:id', async (req, res, next) => {
       [id]
     );
 
-    res.json({ ...site, signal, devices: devicesRes.rows });
+    res.json({ ...site, signal, weather, devices: devicesRes.rows });
   } catch (err) { next(err); }
 });
 
@@ -498,6 +524,21 @@ router.get('/intel/space-weather', async (req, res, next) => {
        FROM space_weather
        ORDER BY recorded_at DESC
        LIMIT 24`
+    );
+    res.json(result.rows);
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/intel/weather ───────────────────────────────────────────────────
+// Returns the latest Open-Meteo rainfall/cloud reading per site.
+router.get('/intel/weather', async (req, res, next) => {
+  try {
+    const result = await pool.query(
+      `SELECT DISTINCT ON (w.site_id)
+              w.site_id, s.name AS site_name, w.date::text AS date, w.rainfall_mm, w.cloud_cover_pct
+       FROM weather_log w
+       JOIN sites s ON s.id = w.site_id
+       ORDER BY w.site_id, w.date DESC`
     );
     res.json(result.rows);
   } catch (err) { next(err); }
