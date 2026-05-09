@@ -282,19 +282,63 @@ function scheduleIntuneDeviceSync() {
 // These GUIDs are provisioned once in Intune Admin Center → Endpoint security
 // → Device remediations → Scripts. Keep this map in sync with the portal.
 // Override any entry via env (e.g. REMEDIATION_POLICY_RESTART_STARLINK) for
-// tenants that recreate scripts and get new GUIDs.
+// tenants that recreate scripts and get new GUIDs. If the tenant uses one
+// shared Starfleet remediation package, set REMEDIATION_POLICY_ID once and all
+// action buttons will re-run that package.
+const DEFAULT_REMEDIATION_POLICY_ID =
+  process.env.REMEDIATION_POLICY_ID ||
+  process.env.REMEDIATION_POLICY_STARFLEET_AGENT ||
+  null;
+
 const REMEDIATION_POLICY_IDS = {
-  'restart-starlink': process.env.REMEDIATION_POLICY_RESTART_STARLINK || null,
-  'reboot_starlink':  process.env.REMEDIATION_POLICY_REBOOT_STARLINK  || process.env.REMEDIATION_POLICY_RESTART_STARLINK || null,
-  'clear-cache':      process.env.REMEDIATION_POLICY_CLEAR_CACHE      || null,
-  'reinstall-agent':  process.env.REMEDIATION_POLICY_REINSTALL_AGENT  || null,
-  'location_refresh': process.env.REMEDIATION_POLICY_LOCATION_REFRESH || null,
-  'data_pull':        process.env.REMEDIATION_POLICY_DATA_PULL        || null,
-  'diagnostics':      process.env.REMEDIATION_POLICY_DIAGNOSTICS      || null,
-  'ping_dish':        process.env.REMEDIATION_POLICY_PING_DISH        || null,
+  'restart-starlink': process.env.REMEDIATION_POLICY_RESTART_STARLINK || DEFAULT_REMEDIATION_POLICY_ID,
+  'reboot_starlink':  process.env.REMEDIATION_POLICY_REBOOT_STARLINK  || process.env.REMEDIATION_POLICY_RESTART_STARLINK || DEFAULT_REMEDIATION_POLICY_ID,
+  'clear-cache':      process.env.REMEDIATION_POLICY_CLEAR_CACHE      || DEFAULT_REMEDIATION_POLICY_ID,
+  'reinstall-agent':  process.env.REMEDIATION_POLICY_REINSTALL_AGENT  || DEFAULT_REMEDIATION_POLICY_ID,
+  'location_refresh': process.env.REMEDIATION_POLICY_LOCATION_REFRESH || DEFAULT_REMEDIATION_POLICY_ID,
+  'data_pull':        process.env.REMEDIATION_POLICY_DATA_PULL        || DEFAULT_REMEDIATION_POLICY_ID,
+  'diagnostics':      process.env.REMEDIATION_POLICY_DIAGNOSTICS      || DEFAULT_REMEDIATION_POLICY_ID,
+  'ping_dish':        process.env.REMEDIATION_POLICY_PING_DISH        || DEFAULT_REMEDIATION_POLICY_ID,
 };
 
+function validateRemediationConfig(type) {
+  if (!process.env.GRAPH_TENANT_ID || !process.env.GRAPH_CLIENT_ID || !process.env.GRAPH_CLIENT_SECRET) {
+    return {
+      ok: false,
+      status: 503,
+      error: 'Microsoft Graph credentials are not configured on the backend.',
+    };
+  }
+
+  if (!REMEDIATION_POLICY_IDS[type]) {
+    return {
+      ok: false,
+      status: 503,
+      error: `Remediation policy for "${type}" is not configured. Set REMEDIATION_POLICY_ID for the shared Starfleet remediation policy, or set REMEDIATION_POLICY_${type.toUpperCase().replace(/-/g, '_')} for this action.`,
+    };
+  }
+
+  return { ok: true };
+}
+
+function getRuntimeConfigStatus() {
+  return {
+    graph: {
+      configured: Boolean(process.env.GRAPH_TENANT_ID && process.env.GRAPH_CLIENT_ID && process.env.GRAPH_CLIENT_SECRET),
+      sync_enabled: process.env.GRAPH_INTUNE_SYNC_ENABLED !== 'false',
+      sync_interval_min: Math.max(5, Number(process.env.GRAPH_INTUNE_SYNC_INTERVAL_MIN || 30)),
+    },
+    remediation_policies: Object.fromEntries(
+      Object.keys(REMEDIATION_POLICY_IDS).map(type => [type, Boolean(REMEDIATION_POLICY_IDS[type])])
+    ),
+    remediation_default_configured: Boolean(DEFAULT_REMEDIATION_POLICY_ID),
+  };
+}
+
 async function triggerRemediationScript(device_id, type, trigger_id) {
+  const config = validateRemediationConfig(type);
+  if (!config.ok) throw new Error(config.error);
+
   // Read the Azure-side UUID (intune_device_id), NOT the BIOS serial (windows_sn).
   // Graph's managedDevices/{id} path parameter is the Azure device GUID.
   const devRes = await pool.query(
@@ -311,7 +355,7 @@ async function triggerRemediationScript(device_id, type, trigger_id) {
   if (!scriptPolicyId) {
     throw new Error(
       `Unknown remediation type "${type}". ` +
-      `Set REMEDIATION_POLICY_${type.toUpperCase().replace(/-/g, '_')} env var to the policy GUID.`
+      `Set REMEDIATION_POLICY_ID or REMEDIATION_POLICY_${type.toUpperCase().replace(/-/g, '_')} env var to the policy GUID.`
     );
   }
 
@@ -379,6 +423,8 @@ function startTriggerPoller() {
 
 module.exports = {
   triggerRemediationScript,
+  validateRemediationConfig,
+  getRuntimeConfigStatus,
   startTriggerPoller,
   getAccessToken,
   listManagedDevices,

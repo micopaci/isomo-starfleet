@@ -130,6 +130,14 @@ export class StarfleetApi {
     });
   }
 
+  /** POST /api/trigger/devices — admin only, trigger every Intune-managed laptop */
+  triggerAllDevices(type: TriggerType): Promise<{ ok: boolean; count: number; trigger_ids: number[] }> {
+    return this.request<{ ok: boolean; count: number; trigger_ids: number[] }>('/api/trigger/devices', {
+      method: 'POST',
+      body: JSON.stringify({ type }),
+    });
+  }
+
   /** POST /api/usage/monthly-import — admin only, import Starlink portal totals */
   importMonthlyUsage(
     month: string,

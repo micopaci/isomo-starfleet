@@ -303,13 +303,23 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
     const client = await pool.connect();
     try {
       const device_id = await autoRegisterDevice(client, device_sn, hintedSiteId, null);
+      const identitySiteId = await resolveSiteFromStarlinkIdentity(client, {
+        starlink_id, starlink_uuid, starlink_sn, kit_id
+      });
+      if (identitySiteId) {
+        await client.query(
+          `UPDATE devices
+           SET site_id = $1
+           WHERE id = $2
+             AND (site_id IS NULL OR site_id = 0)`,
+          [identitySiteId, device_id]
+        );
+      }
+
       if (await isDuplicatePayload(client, 'signal', device_id, payload_id)) {
         return res.status(200).json({ ok: true, duplicate: true });
       }
 
-      const identitySiteId = await resolveSiteFromStarlinkIdentity(client, {
-        starlink_id, starlink_uuid, starlink_sn, kit_id
-      });
       const fallbackSiteId = identitySiteId || hintedSiteId;
 
       // Site inference: Starlink inventory supplies the fallback hint when GPS is missing.

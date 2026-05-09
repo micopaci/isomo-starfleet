@@ -34,7 +34,7 @@ SELECT
     ELSE
       (
         COUNT(*) FILTER (
-          WHERE COALESCE(d.intune_last_sync_at, d.last_seen) >= NOW() - INTERVAL '9 hours'
+          WHERE GREATEST(d.intune_last_sync_at, d.last_seen) >= NOW() - INTERVAL '9 hours'
         )
       )::NUMERIC / COUNT(*)::NUMERIC * 100.0
   END AS uptime_pct

@@ -11,7 +11,7 @@ const DEVICE_STALE_HOURS = Math.max(
 
 function deviceSeenExpr(alias = 'd') {
   const prefix = alias ? `${alias}.` : '';
-  return `COALESCE(${prefix}intune_last_sync_at, ${prefix}last_seen)`;
+  return `GREATEST(${prefix}intune_last_sync_at, ${prefix}last_seen)`;
 }
 
 function deviceStatusCase(alias = 'd') {

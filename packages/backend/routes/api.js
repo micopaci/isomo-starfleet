@@ -16,6 +16,8 @@ const { currentSignal }  = require('../services/cache');
 const graphClient        = require('../services/graph');
 const { checkCoverageGap } = require('../services/orbitalSync');
 const {
+  DEVICE_ONLINE_HOURS,
+  DEVICE_STALE_HOURS,
   deviceSeenExpr,
   deviceStatusCase,
   deviceOnlineWhere,
@@ -322,6 +324,130 @@ router.get('/agent-health', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── GET /api/ops/freshness (admin only) ──────────────────────────────────────
+// Redacted operational audit for device freshness, ingest health, and Graph setup.
+router.get('/ops/freshness', requireAdmin, async (req, res, next) => {
+  try {
+    const [freshnessRes, sourceRes, ingestRes, triggerRes, agentHealthRes, discoveryRes] = await Promise.all([
+      pool.query(
+        `SELECT
+           NOW() AS db_now,
+           COUNT(*)::INT AS total_devices,
+           COUNT(*) FILTER (WHERE ${DEVICE_SEEN_EXPR} > NOW() - INTERVAL '${DEVICE_ONLINE_HOURS} hours')::INT AS online_by_latest_seen,
+           COUNT(*) FILTER (
+             WHERE ${DEVICE_SEEN_EXPR} <= NOW() - INTERVAL '${DEVICE_ONLINE_HOURS} hours'
+               AND ${DEVICE_SEEN_EXPR} > NOW() - INTERVAL '${DEVICE_STALE_HOURS} hours'
+           )::INT AS stale_by_latest_seen,
+           COUNT(*) FILTER (WHERE ${DEVICE_SEEN_EXPR} <= NOW() - INTERVAL '${DEVICE_STALE_HOURS} hours')::INT AS offline_by_latest_seen,
+           COUNT(*) FILTER (WHERE ${DEVICE_SEEN_EXPR} IS NULL)::INT AS unknown_latest_seen,
+           COUNT(*) FILTER (WHERE intune_device_id IS NOT NULL)::INT AS intune_managed,
+           COUNT(*) FILTER (WHERE last_seen > NOW() - INTERVAL '${DEVICE_ONLINE_HOURS} hours')::INT AS agent_seen_recent,
+           COUNT(*) FILTER (WHERE intune_last_sync_at > NOW() - INTERVAL '${DEVICE_ONLINE_HOURS} hours')::INT AS intune_seen_recent,
+           COUNT(*) FILTER (WHERE last_ingest_ok_at > NOW() - INTERVAL '${DEVICE_ONLINE_HOURS} hours')::INT AS ingest_seen_recent,
+           COUNT(*) FILTER (WHERE last_seen IS NOT NULL AND intune_last_sync_at IS NOT NULL AND last_seen > intune_last_sync_at)::INT AS agent_newer_than_intune,
+           COUNT(*) FILTER (WHERE site_id IS NULL OR site_id = 0)::INT AS unresolved_site
+         FROM devices d`
+      ),
+      pool.query(
+        `SELECT source, bucket, COUNT(*)::INT AS count
+         FROM (
+           SELECT 'agent_last_seen' AS source,
+                  CASE WHEN last_seen IS NULL THEN 'never'
+                       WHEN last_seen > NOW() - INTERVAL '${DEVICE_ONLINE_HOURS} hours' THEN 'recent'
+                       WHEN last_seen > NOW() - INTERVAL '${DEVICE_STALE_HOURS} hours' THEN 'stale'
+                       ELSE 'offline' END AS bucket
+           FROM devices
+           UNION ALL
+           SELECT 'intune_last_sync',
+                  CASE WHEN intune_last_sync_at IS NULL THEN 'never'
+                       WHEN intune_last_sync_at > NOW() - INTERVAL '${DEVICE_ONLINE_HOURS} hours' THEN 'recent'
+                       WHEN intune_last_sync_at > NOW() - INTERVAL '${DEVICE_STALE_HOURS} hours' THEN 'stale'
+                       ELSE 'offline' END
+           FROM devices
+           UNION ALL
+           SELECT 'last_ingest_ok',
+                  CASE WHEN last_ingest_ok_at IS NULL THEN 'never'
+                       WHEN last_ingest_ok_at > NOW() - INTERVAL '${DEVICE_ONLINE_HOURS} hours' THEN 'recent'
+                       WHEN last_ingest_ok_at > NOW() - INTERVAL '${DEVICE_STALE_HOURS} hours' THEN 'stale'
+                       ELSE 'offline' END
+           FROM devices
+         ) x
+         GROUP BY source, bucket
+         ORDER BY source, bucket`
+      ),
+      pool.query(
+        `SELECT metric, latest, rows_24h
+         FROM (
+           SELECT 'devices.last_seen' AS metric, MAX(last_seen) AS latest, COUNT(*) FILTER (WHERE last_seen > NOW() - INTERVAL '24 hours')::INT AS rows_24h FROM devices
+           UNION ALL SELECT 'devices.intune_last_sync_at', MAX(intune_last_sync_at), COUNT(*) FILTER (WHERE intune_last_sync_at > NOW() - INTERVAL '24 hours')::INT FROM devices
+           UNION ALL SELECT 'devices.last_ingest_ok_at', MAX(last_ingest_ok_at), COUNT(*) FILTER (WHERE last_ingest_ok_at > NOW() - INTERVAL '24 hours')::INT FROM devices
+           UNION ALL SELECT 'signal_readings', MAX(recorded_at), COUNT(*) FILTER (WHERE recorded_at > NOW() - INTERVAL '24 hours')::INT FROM signal_readings
+           UNION ALL SELECT 'latency_readings', MAX(recorded_at), COUNT(*) FILTER (WHERE recorded_at > NOW() - INTERVAL '24 hours')::INT FROM latency_readings
+           UNION ALL SELECT 'device_health', MAX(recorded_at), COUNT(*) FILTER (WHERE recorded_at > NOW() - INTERVAL '24 hours')::INT FROM device_health
+           UNION ALL SELECT 'agent_health_snapshots', MAX(recorded_at), COUNT(*) FILTER (WHERE recorded_at > NOW() - INTERVAL '24 hours')::INT FROM agent_health_snapshots
+         ) metrics`
+      ),
+      pool.query(
+        `SELECT type, status, COUNT(*)::INT AS count, MIN(triggered_at) AS oldest, MAX(triggered_at) AS newest
+         FROM script_triggers
+         WHERE triggered_at > NOW() - INTERVAL '14 days'
+         GROUP BY type, status
+         ORDER BY newest DESC NULLS LAST`
+      ),
+      pool.query(
+        `WITH latest AS (
+           SELECT DISTINCT ON (device_id) device_id, recorded_at, queue_depth, oldest_queue_age_sec,
+                  agent_version, last_error, last_success_at
+           FROM agent_health_snapshots
+           ORDER BY device_id, recorded_at DESC
+         )
+         SELECT
+           COUNT(*)::INT AS reporting_devices,
+           MAX(recorded_at) AS latest_report,
+           COUNT(*) FILTER (WHERE recorded_at > NOW() - INTERVAL '24 hours')::INT AS reports_24h,
+           COUNT(*) FILTER (WHERE queue_depth > 0)::INT AS with_queue,
+           MAX(queue_depth)::INT AS max_queue,
+           COUNT(*) FILTER (WHERE last_error IS NOT NULL AND last_error <> '')::INT AS with_last_error
+         FROM latest`
+      ),
+      pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE d.site_id IS NULL OR d.site_id = 0)::INT AS unresolved_total,
+           COUNT(*) FILTER (
+             WHERE (d.site_id IS NULL OR d.site_id = 0)
+               AND d.last_seen > NOW() - INTERVAL '${DEVICE_ONLINE_HOURS} hours'
+           )::INT AS unresolved_agent_recent,
+           COUNT(*) FILTER (
+             WHERE (d.site_id IS NULL OR d.site_id = 0)
+               AND d.intune_last_sync_at > NOW() - INTERVAL '${DEVICE_ONLINE_HOURS} hours'
+           )::INT AS unresolved_intune_recent,
+           COUNT(*) FILTER (
+             WHERE (d.site_id IS NULL OR d.site_id = 0)
+               AND d.last_lat IS NOT NULL
+               AND d.last_lon IS NOT NULL
+           )::INT AS unresolved_with_gps,
+           COUNT(*) FILTER (
+             WHERE (d.site_id IS NULL OR d.site_id = 0)
+               AND d.last_gps_at > NOW() - INTERVAL '${DEVICE_ONLINE_HOURS} hours'
+           )::INT AS unresolved_fresh_gps,
+           (SELECT COUNT(*)::INT FROM site_move_candidates) AS pending_site_move_candidates,
+           (SELECT MAX(updated_at) FROM site_move_candidates) AS latest_site_move_candidate
+         FROM devices d`
+      ),
+    ]);
+
+    res.json({
+      config: graphClient.getRuntimeConfigStatus(),
+      freshness: freshnessRes.rows[0],
+      by_source: sourceRes.rows,
+      ingest: ingestRes.rows,
+      trigger_summary_14d: triggerRes.rows,
+      agent_health: agentHealthRes.rows[0],
+      discovery: discoveryRes.rows[0],
+    });
+  } catch (err) { next(err); }
+});
+
 // ── POST /api/intune/sync (admin only) ───────────────────────────────────────
 router.post('/intune/sync', requireAdmin, async (req, res, next) => {
   try {
@@ -387,6 +513,15 @@ const TRIGGER_TYPES = [
   'reboot_starlink',
 ];
 
+function ensureTriggerConfig(res, type) {
+  const config = graphClient.validateRemediationConfig(type);
+  if (!config.ok) {
+    res.status(config.status || 500).json({ error: config.error });
+    return false;
+  }
+  return true;
+}
+
 async function createDeviceTrigger(client, device_id, type, email) {
   const triggerRes = await client.query(
     `INSERT INTO script_triggers (device_id, triggered_by, type, status)
@@ -419,6 +554,7 @@ router.post('/trigger', requireAdmin, async (req, res, next) => {
     if (!TRIGGER_TYPES.includes(type)) {
       return res.status(400).json({ error: `type must be one of: ${TRIGGER_TYPES.join(', ')}` });
     }
+    if (!ensureTriggerConfig(res, type)) return;
 
     const client = await pool.connect();
     try {
@@ -442,6 +578,7 @@ router.post('/trigger/site', requireAdmin, async (req, res, next) => {
     if (!TRIGGER_TYPES.includes(type)) {
       return res.status(400).json({ error: `type must be one of: ${TRIGGER_TYPES.join(', ')}` });
     }
+    if (!ensureTriggerConfig(res, type)) return;
 
     const client = await pool.connect();
     try {
@@ -460,6 +597,40 @@ router.post('/trigger/site', requireAdmin, async (req, res, next) => {
       }
 
       res.json({ ok: true, site_id: siteId, type, count: trigger_ids.length, trigger_ids });
+    } finally {
+      client.release();
+    }
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/trigger/devices (admin only) ───────────────────────────────────
+// Body: { type } → triggers every Intune-managed laptop in the fleet.
+router.post('/trigger/devices', requireAdmin, async (req, res, next) => {
+  try {
+    const { type } = req.body;
+    if (!type) {
+      return res.status(400).json({ error: 'type is required' });
+    }
+    if (!TRIGGER_TYPES.includes(type)) {
+      return res.status(400).json({ error: `type must be one of: ${TRIGGER_TYPES.join(', ')}` });
+    }
+    if (!ensureTriggerConfig(res, type)) return;
+
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query(
+        `SELECT id
+         FROM devices
+         WHERE intune_device_id IS NOT NULL
+         ORDER BY last_seen DESC NULLS LAST, id ASC`
+      );
+
+      const trigger_ids = [];
+      for (const row of rows) {
+        trigger_ids.push(await createDeviceTrigger(client, row.id, type, req.user.email));
+      }
+
+      res.json({ ok: true, type, count: trigger_ids.length, trigger_ids });
     } finally {
       client.release();
     }
