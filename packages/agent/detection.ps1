@@ -5,7 +5,7 @@ $ConfigPath = Join-Path $DataDir "agent.config.json"
 $InstallSourcePath = Join-Path $DataDir "install_source.json"
 $LastHeartbeatPath = Join-Path $DataDir "last_heartbeat.txt"
 $TaskName = "StarfleetPulse"
-$ExpectedAgentVersion = "1.2.0"
+$ExpectedAgentVersion = "1.2.1"
 
 function ConvertFrom-Base64Url {
     param([string]$Value)
@@ -108,17 +108,20 @@ if (-not $task) {
     exit 1
 }
 
-if (Test-Path $LastHeartbeatPath) {
-    try {
-        $lastHeartbeat = [datetime](Get-Content -Path $LastHeartbeatPath -Raw)
-        if ($lastHeartbeat.ToUniversalTime() -lt (Get-Date).ToUniversalTime().AddMinutes(-30)) {
-            Write-Host "Last successful heartbeat is older than 30 minutes."
-            exit 1
-        }
-    } catch {
-        Write-Host "Last heartbeat timestamp is invalid."
+if (-not (Test-Path $LastHeartbeatPath)) {
+    Write-Host "No successful heartbeat has been recorded yet."
+    exit 1
+}
+
+try {
+    $lastHeartbeat = [datetime](Get-Content -Path $LastHeartbeatPath -Raw)
+    if ($lastHeartbeat.ToUniversalTime() -lt (Get-Date).ToUniversalTime().AddMinutes(-30)) {
+        Write-Host "Last successful heartbeat is older than 30 minutes."
         exit 1
     }
+} catch {
+    Write-Host "Last heartbeat timestamp is invalid."
+    exit 1
 }
 
 Write-Host "Starfleet agent is installed and healthy from Intune remediation version $ExpectedAgentVersion."

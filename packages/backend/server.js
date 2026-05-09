@@ -25,7 +25,7 @@ const { scheduleWatchdog }          = require('./services/watchdog');
 const { scheduleWeeklyDigest }      = require('./services/weeklyDigest');
 const { scheduleIngestDedupPrune }  = require('./services/ingestDedup');
 const { scheduleUsageArchive }      = require('./services/usageArchive');
-const { DEVICE_ONLINE_HOURS }       = require('./services/deviceStatus');
+const { DEVICE_ONLINE_HOURS, deviceSeenExpr } = require('./services/deviceStatus');
 
 const app    = express();
 const server = http.createServer(app);
@@ -236,7 +236,7 @@ async function ensureRuntimeSchema() {
           ELSE
             (
               COUNT(*) FILTER (
-                WHERE COALESCE(d.intune_last_sync_at, d.last_seen) >= NOW() - INTERVAL '${DEVICE_ONLINE_HOURS} hours'
+                WHERE ${deviceSeenExpr('d')} >= NOW() - INTERVAL '${DEVICE_ONLINE_HOURS} hours'
               )
             )::NUMERIC / COUNT(*)::NUMERIC * 100.0
         END AS uptime_pct

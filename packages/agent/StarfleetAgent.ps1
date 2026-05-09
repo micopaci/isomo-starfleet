@@ -13,11 +13,12 @@ $InstallSourceFile = Join-Path $DataDir "install_source.json"
 $LastHeartbeatFile = Join-Path $DataDir "last_heartbeat.txt"
 $UsageBaselineFile = Join-Path $DataDir "usage_baseline.json"
 $SchemaVersion = "1.1"
-$AgentVersion = "1.2.0"
+$AgentVersion = "1.2.1"
 $RunId = [guid]::NewGuid().ToString()
 $SampleWindowSec = 300
 $UsageAdapterPolicy = "wifi_default_route"
 $script:LastSendError = $null
+$script:LastSendStatusCode = $null
 $script:DisableAgentHealthEndpoint = $false
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -1739,6 +1740,18 @@ function Queue-Payload {
     }
 }
 
+function Should-DropQueuedFailure {
+    param([object]$StatusCode)
+
+    if ($null -eq $StatusCode) {
+        return $false
+    }
+
+    # 4xx auth/body/scope failures are permanent for that saved payload. Keeping
+    # them at the head of the queue blocks newer healthy readings forever.
+    return @(400, 401, 403, 404, 409).Contains([int]$StatusCode)
+}
+
 function Send-Ingest {
     param(
         [object]$Config,
@@ -1752,6 +1765,7 @@ function Send-Ingest {
         $body = $Payload | ConvertTo-Json -Depth 12 -Compress
         Invoke-RestMethod -Uri "$($Config.ApiBase)/ingest/$Endpoint" -Method POST -Headers $headers -Body $body -TimeoutSec 30 | Out-Null
         $script:LastSendError = $null
+        $script:LastSendStatusCode = $null
         return $true
     } catch {
         $errorDetails = Get-HttpErrorDetails -ErrorRecord $_
@@ -1764,11 +1778,13 @@ function Send-Ingest {
             }
             $script:DisableAgentHealthEndpoint = $true
             $script:LastSendError = $null
+            $script:LastSendStatusCode = $null
             return $true
         }
 
         Write-Log "WARN" "POST /ingest/$Endpoint failed: $($errorDetails.Message)"
         $script:LastSendError = [string]$errorDetails.Message
+        $script:LastSendStatusCode = $statusCode
         if ($QueueOnFailure -and -not ($Endpoint -eq "agent-health" -and $script:DisableAgentHealthEndpoint)) {
             Queue-Payload -Endpoint $Endpoint -Payload $Payload
         }
@@ -1794,6 +1810,9 @@ function Flush-Queue {
             $ok = Send-Ingest -Config $Config -Endpoint ([string]$item.endpoint) -Payload $item.payload -QueueOnFailure $false
             if ($ok) {
                 Remove-Item -Path $file.FullName -Force
+            } elseif (Should-DropQueuedFailure -StatusCode $script:LastSendStatusCode) {
+                Write-Log "WARN" "Dropping non-retryable queued payload $($file.Name) after HTTP $($script:LastSendStatusCode)."
+                Remove-Item -Path $file.FullName -Force -ErrorAction SilentlyContinue
             } else {
                 break
             }

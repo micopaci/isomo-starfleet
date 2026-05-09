@@ -465,6 +465,8 @@ body {
 .sbar__fill--ok   { background: var(--ok); }
 .sbar__fill--warn { background: var(--warn); }
 .sbar__fill--bad  { background: var(--bad); }
+.inline-note { display:flex; justify-content:space-between; align-items:center; gap:14px; padding:10px 12px; border:1px solid var(--rule); background:var(--surface-2); color:var(--ink-2); font-size:12.5px; }
+.inline-note--bad { border-color:color-mix(in oklch, var(--bad) 35%, var(--rule)); background:var(--bad-soft); color:var(--bad); }
 
 /* ——— Alerts ——— */
 .alerts { list-style: none; margin: 0; padding: 0; }
@@ -920,11 +922,20 @@ let _ws      = null;
 
 function isAuthed() { return !!_token; }
 
-async function apiFetch(path) {
+async function apiFetch(path, options = {}) {
   let r;
+  const hasBody = options.body !== undefined && options.body !== null;
   try {
     r = await fetch(_apiBase + path, {
-      headers: { Authorization: `Bearer ${_token}` },
+      ...options,
+      headers: {
+        Authorization: `Bearer ${_token}`,
+        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.headers || {}),
+      },
+      body: hasBody && typeof options.body !== 'string'
+        ? JSON.stringify(options.body)
+        : options.body,
     });
   } catch (netErr) {
     // Network failure (server down, CORS preflight blocked, etc.)
@@ -941,8 +952,21 @@ async function apiFetch(path) {
     }
     throw new Error('Session expired — please sign in again');
   }
-  if (!r.ok) throw new Error(`Server error: HTTP ${r.status}`);
+  if (!r.ok) {
+    const text = await r.text().catch(() => '');
+    let detail = text;
+    try {
+      const body = JSON.parse(text);
+      detail = body.error || body.detail || text;
+    } catch {}
+    throw new Error(detail || `Server error: HTTP ${r.status}`);
+  }
+  if (r.status === 204) return null;
   return r.json();
+}
+
+function apiPost(path, body = {}) {
+  return apiFetch(path, { method: 'POST', body });
 }
 
 async function doLogin(email, pass, base) {
@@ -1109,7 +1133,7 @@ function buildAlerts(dishes) {
   return alerts;
 }
 
-window._API = { apiFetch, doLogin, doLogout, isAuthed, DEFAULT_API, getBase: () => _apiBase };
+window._API = { apiFetch, apiPost, doLogin, doLogout, isAuthed, DEFAULT_API, getBase: () => _apiBase };
 window._MAPPERS = { mapSites, mapDevices, buildAlerts };
 
 // Placeholder so later scripts don't crash during initial render
@@ -1471,12 +1495,12 @@ function Starlinks({ data, filter, onOpenDish }) {
   );
 }
 
-function Computers({ data, filter }) {
+function Computers({ data, filter, onPushUpdate, pushBusy, pushMessage, pushError }) {
   const [q, setQ] = uS('');
   const [sf, setSf] = uS('all');
   const [sort, setSort] = uS('lastSeen:desc');
   const filteredRows = data.COMPUTERS.filter(c => {
-    if (filter.campus!=='all' && c.campus!==filter.campus) return false;
+    if (filter.campus!=='all' && String(c.campus)!==String(filter.campus)) return false;
     if (sf!=='all' && c.status!==sf) return false;
     if (q) { const t=q.toLowerCase(); if (![c.tag, c.model, c.vendor, c.windowsSn, c.siteName, c.assignedTo].some(v => String(v || '').toLowerCase().includes(t))) return false; }
     return true;
@@ -1504,9 +1528,17 @@ function Computers({ data, filter }) {
             {id:'tag:asc',label:'Tag A-Z'},
             {id:'model:asc',label:'Model A-Z'},
           ]} />
-          <button className="btn">Push update</button>
+          <button className="btn" onClick={() => onPushUpdate(filter.campus)} disabled={pushBusy}>
+            {pushBusy ? 'Pushing…' : 'Push update'}
+          </button>
         </div>
       </div>
+      {(pushMessage || pushError) && (
+        <div className={`inline-note ${pushError ? 'inline-note--bad' : ''}`}>
+          <span>{pushError || pushMessage}</span>
+          {!pushError && <span className="muted">Devices update as Intune and remediation complete.</span>}
+        </div>
+      )}
       <div className="tbl-toolbar">
         <Segmented value={sf} onChange={setSf} options={[
           {id:'all',label:'All',count:counts('all')},{id:'healthy',label:'Healthy',count:counts('healthy')},
@@ -2217,6 +2249,9 @@ function App() {
   const [devices, setDevices] = aUS([]);
   const [loading, setLoading] = aUS(false);
   const [loadErr, setLoadErr] = aUS(null);
+  const [pushBusy, setPushBusy] = aUS(false);
+  const [pushMessage, setPushMessage] = aUS(null);
+  const [pushError, setPushError] = aUS(null);
   const [tweaks, setTweaks] = usePersisted('starfleet.tweaks', TWEAK_DEFAULTS);
   const [tweaksOpen, setTweaksOpen] = aUS(false);
   const [tab, setTab] = usePersisted('starfleet.tab', tweaks.landingTab || 'overview');
@@ -2247,6 +2282,30 @@ function App() {
       if (!e.message.includes('Session expired')) setLoadErr(e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const pushLaptopUpdate = async (targetCampus = 'all') => {
+    setPushBusy(true);
+    setPushMessage(null);
+    setPushError(null);
+    try {
+      const syncResult = await window._API.apiPost('/api/intune/sync', {});
+      const allCampuses = targetCampus === 'all';
+      try {
+        const result = allCampuses
+          ? await window._API.apiPost('/api/trigger/devices', { type: 'data_pull' })
+          : await window._API.apiPost('/api/trigger/site', { site_id: Number(targetCampus), type: 'data_pull' });
+        const noun = result.count === 1 ? 'laptop' : 'laptops';
+        setPushMessage(`Synced ${syncResult.upserted} Intune devices and queued data refresh for ${result.count} Intune-managed ${noun}.`);
+      } catch (triggerErr) {
+        setPushError(`Synced ${syncResult.upserted} Intune devices, but device push failed: ${triggerErr.message || triggerErr}`);
+      }
+      await loadAll();
+    } catch (e) {
+      setPushError(e.message || 'Push update failed');
+    } finally {
+      setPushBusy(false);
     }
   };
 
@@ -2416,7 +2475,16 @@ function App() {
 
         {tab==='overview'  && <Overview  data={liveData} ui={tweaks} onOpenDish={setDish} onJump={setTab} />}
         {tab==='starlinks' && <Starlinks data={liveData} filter={{campus}} onOpenDish={setDish} />}
-        {tab==='computers' && <Computers data={liveData} filter={{campus}} />}
+        {tab==='computers' && (
+          <Computers
+            data={liveData}
+            filter={{campus}}
+            onPushUpdate={pushLaptopUpdate}
+            pushBusy={pushBusy}
+            pushMessage={pushMessage}
+            pushError={pushError}
+          />
+        )}
         {tab==='students'  && <Students  data={liveData} filter={{campus}} />}
         {tab==='alerts'    && <Alerts    data={liveData} setAlerts={handleSetAlerts} />}
         {tab==='campuses'  && <Campuses  data={liveData} />}
