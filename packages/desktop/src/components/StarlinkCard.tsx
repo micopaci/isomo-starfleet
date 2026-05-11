@@ -50,6 +50,14 @@ export function StarlinkCard({ site, isAdmin, onTrigger }: Props) {
       </div>
 
       <p className="cause-label">{cause}</p>
+      <p className="cause-label muted" style={{ marginTop: -6 }}>
+        Weather predictor: {site.weather_predictor?.label ?? 'No weather reading yet'}
+      </p>
+      {site.weather_predictor?.explanation && (
+        <p className="cause-label muted" style={{ marginTop: -6 }}>
+          {site.weather_predictor.explanation}
+        </p>
+      )}
 
       <div className="signal-grid">
         <div className="sig-metric">
@@ -69,8 +77,32 @@ export function StarlinkCard({ site, isAdmin, onTrigger }: Props) {
           <span className="sig-value">{formatLatency(sig?.pop_latency_ms)}</span>
         </div>
         <div className="sig-metric">
-          <span className="sig-label">Reporters</span>
+          <span className="sig-label">Speed ↓/↑</span>
+          <span className="sig-value">
+            {formatSpeed(site.download_mbps ?? sig?.download_mbps ?? null, site.upload_mbps ?? sig?.upload_mbps ?? null)}
+          </span>
+        </div>
+        <div className="sig-metric">
+          <span className="sig-label">Connected (all)</span>
           <span className="sig-value">{site.online_laptops} laptop{site.online_laptops !== 1 ? 's' : ''}</span>
+        </div>
+        <div className="sig-metric">
+          <span className="sig-label">Intune</span>
+          <span className="sig-value">{site.online_intune_laptops ?? 0}/{site.total_intune_laptops ?? 0}</span>
+        </div>
+        <div className="sig-metric">
+          <span className="sig-label">Chromebooks</span>
+          <span className="sig-value">{site.online_chromebooks ?? 0}/{site.total_chromebooks ?? 0}</span>
+        </div>
+        <div className="sig-metric">
+          <span className="sig-label">Uptime today</span>
+          <span className="sig-value">
+            {site.uptime_pct != null
+              ? <span style={{ color: site.uptime_pct >= 90 ? 'var(--ok)' : site.uptime_pct >= 70 ? 'var(--warn)' : 'var(--bad)' }}>
+                  {site.uptime_pct.toFixed(1)}%
+                </span>
+              : '—'}
+          </span>
         </div>
         <div className="sig-metric">
           <span className="sig-label">Status</span>
@@ -93,4 +125,9 @@ export function StarlinkCard({ site, isAdmin, onTrigger }: Props) {
       )}
     </div>
   );
+}
+
+function formatSpeed(download: number | null | undefined, upload: number | null | undefined): string {
+  if (download == null && upload == null) return '—';
+  return `${download != null ? download.toFixed(1) : '—'} / ${upload != null ? upload.toFixed(1) : '—'} Mbps`;
 }
