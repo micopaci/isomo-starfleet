@@ -16,11 +16,21 @@ export interface Site {
   signal: SignalSummary | null;
   online_laptops: number;
   total_laptops: number;
+  online_intune_laptops?: number;
+  total_intune_laptops?: number;
+  online_chromebooks?: number;
+  total_chromebooks?: number;
   /** Latest daily score (Stage 2+) */
   score: number | null;
   cause: string | null;
   /** Stage 5: rolling 7-day average score */
   score_7day_avg: number | null;
+  download_mbps?: number | null;
+  upload_mbps?: number | null;
+  /** Fraction of today the Starlink link was up (0–100). Returned by /api/sites from site_uptime_today view. */
+  uptime_pct?: number | null;
+  weather?: WeatherReading | null;
+  weather_predictor?: WeatherPredictor | null;
 }
 
 export interface SignalSummary {
@@ -28,6 +38,8 @@ export interface SignalSummary {
   pop_latency_ms: number | null;
   obstruction_pct: number | null;
   ping_drop_pct: number | null;
+  download_mbps?: number | null;
+  upload_mbps?: number | null;
   confidence: 'high' | 'low';
   spread_ms: number | null;
   updatedAt: string;
@@ -37,6 +49,21 @@ export interface SignalSummary {
   anomaly: boolean | null;
   /** Stage 5: delta from 7-day average */
   anomaly_delta: number | null;
+}
+
+export interface WeatherReading {
+  date: string;
+  rainfall_mm: number | null;
+  cloud_cover_pct: number | null;
+}
+
+export interface WeatherPredictor {
+  level: 'high' | 'medium' | 'low' | 'unknown';
+  label: string;
+  explanation: string;
+  based_on_date: string | null;
+  rainfall_mm: number | null;
+  cloud_cover_pct: number | null;
 }
 
 export interface Device {
@@ -58,6 +85,8 @@ export interface Device {
   compliance_state?: string | null;
   user_principal_name?: string | null;
   device_category?: string | null;
+  battery_pct?: number | null;
+  battery_health_pct?: number | null;
   free_storage_bytes?: number | null;
   total_storage_bytes?: number | null;
   disk_smart_status?: string | null;
@@ -171,6 +200,10 @@ export interface FleetSummary {
   dark_sites: number;
   total_laptops: number;
   online_laptops: number;
+  total_intune_laptops?: number;
+  online_intune_laptops?: number;
+  total_chromebooks?: number;
+  online_chromebooks?: number;
   /** Stage 5 */
   stale_devices: number;
   anomaly_sites: number;

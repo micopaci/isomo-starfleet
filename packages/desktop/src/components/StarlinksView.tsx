@@ -142,9 +142,12 @@ export function StarlinksView({ sites, isAdmin, onSelectSite, onTriggerSite, onI
                   <th>Status</th>
                   <th className="num">Score</th>
                   <th className="num">Latency</th>
+                  <th className="num">Speed ↓/↑</th>
                   <th className="num">SNR</th>
                   <th className="num">Obstruct.</th>
                   <th className="num">Ping drop</th>
+                  <th className="num">Uptime</th>
+                  <th>Weather predictor</th>
                   <th className="num">Laptops</th>
                   <th></th>
                 </tr>
@@ -182,6 +185,12 @@ export function StarlinksView({ sites, isAdmin, onSelectSite, onTriggerSite, onI
                         <LatCell ms={sig?.pop_latency_ms} />
                       </td>
                       <td className="num mono">
+                        <SpeedCell
+                          download={site.download_mbps ?? sig?.download_mbps ?? null}
+                          upload={site.upload_mbps ?? sig?.upload_mbps ?? null}
+                        />
+                      </td>
+                      <td className="num mono">
                         {sig?.snr != null
                           ? <span style={{ color: sig.snr < 7 ? 'var(--warn)' : 'inherit' }}>
                               {sig.snr.toFixed(1)}
@@ -203,10 +212,37 @@ export function StarlinksView({ sites, isAdmin, onSelectSite, onTriggerSite, onI
                           : '—'}
                       </td>
                       <td className="num mono">
-                        <span style={{ color: site.online_laptops === 0 ? 'var(--bad)' : 'inherit' }}>
-                          {site.online_laptops}
-                        </span>
-                        <span className="muted">/{site.total_laptops}</span>
+                        <UptimeCell pct={site.uptime_pct} />
+                      </td>
+                      <td>
+                        <div className="cell-primary" style={{ fontSize: 12 }}>
+                          {site.weather_predictor?.label ?? 'No weather reading yet'}
+                        </div>
+                        <div className="cell-mono" style={{ fontSize: 10 }}>
+                          {site.weather_predictor?.explanation ?? ''}
+                        </div>
+                        <div className="cell-mono" style={{ fontSize: 10 }}>
+                          {(site.weather_predictor?.rainfall_mm ?? site.weather?.rainfall_mm) != null
+                            ? `Rain ${Number(site.weather_predictor?.rainfall_mm ?? site.weather?.rainfall_mm).toFixed(1)}mm`
+                            : 'Rain —'}
+                          {' · '}
+                          {(site.weather_predictor?.cloud_cover_pct ?? site.weather?.cloud_cover_pct) != null
+                            ? `Cloud ${Math.round(Number(site.weather_predictor?.cloud_cover_pct ?? site.weather?.cloud_cover_pct))}%`
+                            : 'Cloud —'}
+                        </div>
+                      </td>
+                      <td className="num mono">
+                        <div>
+                          <span style={{ color: site.online_laptops === 0 ? 'var(--bad)' : 'inherit' }}>
+                            {site.online_laptops}
+                          </span>
+                          <span className="muted">/{site.total_laptops}</span>
+                        </div>
+                        <div className="muted" style={{ fontSize: 10 }}>
+                          I {site.online_intune_laptops ?? 0}/{site.total_intune_laptops ?? 0}
+                          {' · '}
+                          C {site.online_chromebooks ?? 0}/{site.total_chromebooks ?? 0}
+                        </div>
                       </td>
                       <td className="row-chevron">→</td>
                     </tr>
@@ -214,7 +250,7 @@ export function StarlinksView({ sites, isAdmin, onSelectSite, onTriggerSite, onI
                 })}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="empty-state">No dishes match the current filter.</td>
+                    <td colSpan={12} className="empty-state">No dishes match the current filter.</td>
                   </tr>
                 )}
               </tbody>
@@ -263,6 +299,29 @@ function LatCell({ ms }: { ms: number | null | undefined }) {
   return <span style={{ color }}>{ms}ms</span>;
 }
 
+function UptimeCell({ pct }: { pct: number | null | undefined }) {
+  if (pct == null) return <span className="muted">—</span>;
+  const color = pct >= 90 ? 'var(--ok)' : pct >= 70 ? 'var(--warn)' : 'var(--bad)';
+  return <span style={{ color }}>{pct.toFixed(1)}%</span>;
+}
+
+function SpeedCell({
+  download,
+  upload,
+}: {
+  download: number | null | undefined;
+  upload: number | null | undefined;
+}) {
+  if (download == null && upload == null) return <span className="muted">—</span>;
+  return (
+    <span>
+      {download != null ? `${download.toFixed(1)}↓` : '—↓'}
+      {' / '}
+      {upload != null ? `${upload.toFixed(1)}↑` : '—↑'}
+    </span>
+  );
+}
+
 function buildStarlinksCsv(sites: Site[]): string {
   const rows = sites.map(site => {
     const sig = site.signal;
@@ -277,15 +336,26 @@ function buildStarlinksCsv(sites: Site[]): string {
       site.total_laptops,
       site.score ?? '',
       sig?.pop_latency_ms ?? '',
+      site.download_mbps ?? sig?.download_mbps ?? '',
+      site.upload_mbps ?? sig?.upload_mbps ?? '',
       sig?.snr ?? '',
       sig?.obstruction_pct ?? '',
       sig?.ping_drop_pct ?? '',
+      site.weather_predictor?.label ?? '',
+      site.weather_predictor?.explanation ?? '',
+      site.weather_predictor?.rainfall_mm ?? site.weather?.rainfall_mm ?? '',
+      site.weather_predictor?.cloud_cover_pct ?? site.weather?.cloud_cover_pct ?? '',
+      site.online_intune_laptops ?? '',
+      site.total_intune_laptops ?? '',
+      site.online_chromebooks ?? '',
+      site.total_chromebooks ?? '',
       sig?.updatedAt ?? '',
+      site.uptime_pct ?? '',
     ];
   });
 
   return toCsv([
-    ['site_id', 'site_name', 'status', 'location', 'starlink_sn', 'starlink_uuid', 'online_laptops', 'total_laptops', 'score', 'latency_ms', 'snr', 'obstruction_pct', 'ping_drop_pct', 'updated_at'],
+    ['site_id', 'site_name', 'status', 'location', 'starlink_sn', 'starlink_uuid', 'online_laptops', 'total_laptops', 'score', 'latency_ms', 'download_mbps', 'upload_mbps', 'snr', 'obstruction_pct', 'ping_drop_pct', 'weather_predictor', 'weather_explanation', 'rainfall_mm', 'cloud_cover_pct', 'online_intune_laptops', 'total_intune_laptops', 'online_chromebooks', 'total_chromebooks', 'updated_at', 'uptime_pct'],
     ...rows,
   ]);
 }

@@ -16,6 +16,10 @@ export function OverviewView({ sites, summary, onSelectSite, onRunDiagnostics }:
 
   const totalLaptops  = summary?.total_laptops ?? 0;
   const onlineLaptops = summary?.online_laptops ?? 0;
+  const totalIntuneLaptops = summary?.total_intune_laptops ?? sites.reduce((a, s) => a + (s.total_intune_laptops ?? 0), 0);
+  const onlineIntuneLaptops = summary?.online_intune_laptops ?? sites.reduce((a, s) => a + (s.online_intune_laptops ?? 0), 0);
+  const totalChromebooks = summary?.total_chromebooks ?? sites.reduce((a, s) => a + (s.total_chromebooks ?? 0), 0);
+  const onlineChromebooks = summary?.online_chromebooks ?? sites.reduce((a, s) => a + (s.online_chromebooks ?? 0), 0);
   const staleLaptops  = summary?.stale_devices ?? 0;
   const openIssues    = darkSites.length + degradedSites.length;
   const [busy, setBusy] = useState(false);
@@ -177,6 +181,8 @@ export function OverviewView({ sites, summary, onSelectSite, onRunDiagnostics }:
           <div className="minibars">
             <MiniBar label="Online"       n={onlineLaptops}                  total={totalLaptops} tone="ok" />
             <MiniBar label="Offline"      n={totalLaptops - onlineLaptops}   total={totalLaptops} tone="bad" />
+            <MiniBar label="Intune online" n={onlineIntuneLaptops} total={Math.max(totalIntuneLaptops, 1)} tone="ok" />
+            <MiniBar label="Chromebook online" n={onlineChromebooks} total={Math.max(totalChromebooks, 1)} tone="ok" />
             {staleLaptops > 0 && <MiniBar label="Stale (&gt;5min)" n={staleLaptops} total={totalLaptops} tone="warn" />}
           </div>
         </section>
@@ -208,6 +214,27 @@ export function OverviewView({ sites, summary, onSelectSite, onRunDiagnostics }:
                 <div className="campus-stat-row">
                   <div><dt>Total</dt><dd>{site.total_laptops}</dd></div>
                   <div><dt>Offline</dt><dd className={site.total_laptops - site.online_laptops > 0 ? 'warn' : ''}>{site.total_laptops - site.online_laptops}</dd></div>
+                  <div>
+                    <dt>Speed ↓</dt>
+                    <dd style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                      {(site.download_mbps ?? site.signal?.download_mbps) != null
+                        ? `${Number(site.download_mbps ?? site.signal?.download_mbps).toFixed(1)} M`
+                        : '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Uptime</dt>
+                    <dd style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 12,
+                      color: site.uptime_pct == null ? 'inherit'
+                        : site.uptime_pct >= 90 ? 'var(--ok)'
+                        : site.uptime_pct >= 70 ? 'var(--warn)'
+                        : 'var(--bad)',
+                    }}>
+                      {site.uptime_pct != null ? `${site.uptime_pct.toFixed(0)}%` : '—'}
+                    </dd>
+                  </div>
                 </div>
               </div>
             );
@@ -231,9 +258,19 @@ function buildFleetCsv(sites: Site[]): string {
     'score',
     'score_7day_avg',
     'latency_ms',
+    'download_mbps',
+    'upload_mbps',
     'snr',
     'obstruction_pct',
     'ping_drop_pct',
+    'weather_predictor',
+    'weather_explanation',
+    'rainfall_mm',
+    'cloud_cover_pct',
+    'online_intune_laptops',
+    'total_intune_laptops',
+    'online_chromebooks',
+    'total_chromebooks',
     'updated_at',
   ];
 
@@ -249,9 +286,19 @@ function buildFleetCsv(sites: Site[]): string {
     site.score ?? '',
     site.score_7day_avg ?? '',
     site.signal?.pop_latency_ms ?? '',
+    site.download_mbps ?? site.signal?.download_mbps ?? '',
+    site.upload_mbps ?? site.signal?.upload_mbps ?? '',
     site.signal?.snr ?? '',
     site.signal?.obstruction_pct ?? '',
     site.signal?.ping_drop_pct ?? '',
+    site.weather_predictor?.label ?? '',
+    site.weather_predictor?.explanation ?? '',
+    site.weather_predictor?.rainfall_mm ?? site.weather?.rainfall_mm ?? '',
+    site.weather_predictor?.cloud_cover_pct ?? site.weather?.cloud_cover_pct ?? '',
+    site.online_intune_laptops ?? '',
+    site.total_intune_laptops ?? '',
+    site.online_chromebooks ?? '',
+    site.total_chromebooks ?? '',
     site.signal?.updatedAt ?? '',
   ]);
 

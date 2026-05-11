@@ -58,7 +58,16 @@ export function useFleetSummary(): {
     const unsub1 = _ws.on('device_online', () => { load(); });
     const unsub2 = _ws.on('signal_update', (evt) => {
       setSites(prev => prev.map(s =>
-        s.id === evt.site_id ? { ...s, signal: evt.signal } : s,
+        s.id === evt.site_id
+          ? {
+              ...s,
+              signal: evt.signal,
+              // Keep root-level speed fields in sync so components using
+              // `site.download_mbps ?? sig?.download_mbps` see live values.
+              download_mbps: evt.signal.download_mbps ?? s.download_mbps,
+              upload_mbps:   evt.signal.upload_mbps   ?? s.upload_mbps,
+            }
+          : s,
       ));
     });
     // Stage 5: watchdog broadcasts stale device count
@@ -76,6 +85,10 @@ export function useFleetSummary(): {
     dark_sites:     sites.filter(s => siteStatus(s) === 'dark').length,
     total_laptops:  sites.reduce((a, s) => a + s.total_laptops, 0),
     online_laptops: sites.reduce((a, s) => a + s.online_laptops, 0),
+    total_intune_laptops: sites.reduce((a, s) => a + (s.total_intune_laptops ?? 0), 0),
+    online_intune_laptops: sites.reduce((a, s) => a + (s.online_intune_laptops ?? 0), 0),
+    total_chromebooks: sites.reduce((a, s) => a + (s.total_chromebooks ?? 0), 0),
+    online_chromebooks: sites.reduce((a, s) => a + (s.online_chromebooks ?? 0), 0),
     stale_devices:  staleCount,
     anomaly_sites:  sites.filter(s => {
       const sig = s.signal;
@@ -120,7 +133,14 @@ export function useSite(id: number | null): {
     if (!_ws || id == null) return;
     const unsub = _ws.on('signal_update', (evt) => {
       if (evt.site_id === id) {
-        setSite(prev => prev ? { ...prev, signal: evt.signal } : prev);
+        setSite(prev => prev
+          ? {
+              ...prev,
+              signal: evt.signal,
+              download_mbps: evt.signal.download_mbps ?? prev.download_mbps,
+              upload_mbps:   evt.signal.upload_mbps   ?? prev.upload_mbps,
+            }
+          : prev);
       }
     });
     return unsub;
