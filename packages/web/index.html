@@ -465,6 +465,14 @@ body {
 .sbar__fill--ok   { background: var(--ok); }
 .sbar__fill--warn { background: var(--warn); }
 .sbar__fill--bad  { background: var(--bad); }
+.sbar-stack { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.weather-cell { max-width: 280px; line-height: 1.35; text-align: left; }
+.weather-cell__title { font-weight: 500; color: var(--ink); }
+.weather-cell--high .weather-cell__title { color: var(--bad); }
+.weather-cell--medium .weather-cell__title { color: var(--warn); }
+.drawer-callout { padding: 12px 14px; border: 1px solid var(--rule); background: var(--surface-2); }
+.drawer-callout--high { border-color: color-mix(in oklch, var(--bad) 35%, var(--rule)); background: var(--bad-soft); }
+.drawer-callout--medium { border-color: color-mix(in oklch, var(--warn) 35%, var(--rule)); background: var(--warn-soft); }
 .inline-note { display:flex; justify-content:space-between; align-items:center; gap:14px; padding:10px 12px; border:1px solid var(--rule); background:var(--surface-2); color:var(--ink-2); font-size:12.5px; }
 .inline-note--bad { border-color:color-mix(in oklch, var(--bad) 35%, var(--rule)); background:var(--bad-soft); color:var(--bad); }
 
@@ -1035,6 +1043,60 @@ function compactJoin(parts) {
   return parts.filter(Boolean).join(' · ');
 }
 
+function numberOrNull(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function firstNumber(...values) {
+  for (const value of values) {
+    const n = numberOrNull(value);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+function pctOrNull(value) {
+  const n = firstNumber(value);
+  if (n == null) return null;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function rainExplanation(rainfallMm) {
+  if (rainfallMm == null) return 'No rainfall reading is available yet, so weather impact is unknown.';
+  const rain = Number(rainfallMm);
+  const mm = rain.toFixed(1);
+  if (rain > 10) return `Heavy rain (${mm} mm in the last day) can cause packet loss, higher ping, and slower speeds. Check this before blaming the laptops.`;
+  if (rain > 5) return `Moderate rain (${mm} mm in the last day) can add some latency or brief drops, especially on already weak signals.`;
+  if (rain > 0) return `Light rain (${mm} mm in the last day) is usually not enough by itself to explain a major slowdown.`;
+  return 'No rain was detected in the last day, so rain is unlikely to be driving this issue.';
+}
+
+function formatMbps(value) {
+  const n = numberOrNull(value);
+  if (n == null) return '—';
+  return `${n >= 100 ? n.toFixed(0) : n.toFixed(1)} Mb`;
+}
+
+function normalizeWeatherPredictor(site, weather) {
+  const wp = site.weather_predictor || site.weatherPredictor || weather?.predictor || null;
+  if (wp) return wp;
+  const rainfall = firstNumber(weather?.rainfall_mm, site.rainfall_mm, site.rainfall);
+  const cloud = firstNumber(weather?.cloud_cover_pct, site.cloud_cover_pct, site.cloudCover);
+  if (rainfall == null && cloud == null) return null;
+  const level = rainfall > 10 ? 'high' : rainfall > 5 ? 'medium' : 'low';
+  const label = rainfall > 10 ? 'Rain warning (heavy)' : rainfall > 5 ? 'Rain warning (moderate)' : 'Weather looks normal';
+  return {
+    level,
+    label,
+    explanation: rainExplanation(rainfall),
+    rainfall_mm: rainfall,
+    cloud_cover_pct: cloud,
+    based_on_date: weather?.date || site.weather_date || null,
+  };
+}
+
 // ── Data mapping: real API → view-compatible shape ────────────────────────────
 function mapSites(sites) {
   // Each Site IS a campus (one dish per campus)
@@ -1050,6 +1112,8 @@ function mapSites(sites) {
   const DISHES = sites.map(s => {
     const sig = s.signal;
     const st  = siteStatusStr(s);
+    const weather = s.weather || null;
+    const weatherPredictor = normalizeWeatherPredictor(s, weather);
     return {
       _siteId:      s.id,
       id:           s.starlink_sn || `DISH-${s.id}`,
@@ -1061,20 +1125,25 @@ function mapSites(sites) {
       latency:      sig?.pop_latency_ms ?? 0,
       snr:          sig?.snr          ?? 0,
       obstruction:  sig?.obstruction_pct ?? 0,
-      down:         null,       // throughput not in API
-      up:           null,
+      down:         firstNumber(s.download_mbps, sig?.download_mbps),
+      up:           firstNumber(s.upload_mbps, sig?.upload_mbps),
       uptime:       s.score     ?? 0,
       score:        s.score,
       score7d:      s.score_7day_avg,
       anomaly:      sig?.anomaly       ?? false,
       anomalyDelta: sig?.anomaly_delta ?? null,
       dataQuality:  sig?.data_quality  ?? null,
-      weather:      s.weather || null,
-      rainfall:     s.weather?.rainfall_mm ?? null,
-      cloudCover:   s.weather?.cloud_cover_pct ?? null,
+      weather,
+      weatherPredictor,
+      rainfall:     firstNumber(weather?.rainfall_mm, weatherPredictor?.rainfall_mm, s.rainfall_mm),
+      cloudCover:   firstNumber(weather?.cloud_cover_pct, weatherPredictor?.cloud_cover_pct, s.cloud_cover_pct),
       confidence:   sig?.confidence    ?? 'low',
-      onlineLaptops: s.online_laptops,
-      totalLaptops:  s.total_laptops,
+      onlineLaptops: firstNumber(s.online_laptops, s.onlineLaptops) ?? 0,
+      totalLaptops:  firstNumber(s.total_laptops, s.totalLaptops) ?? 0,
+      onlineIntuneLaptops: firstNumber(s.online_intune_laptops, s.online_intune) ?? 0,
+      totalIntuneLaptops:  firstNumber(s.total_intune_laptops, s.total_intune) ?? 0,
+      onlineChromebooks:   firstNumber(s.online_chromebooks, s.online_chrome) ?? 0,
+      totalChromebooks:    firstNumber(s.total_chromebooks, s.total_chrome) ?? 0,
       throughputTrend: [],
       latencyTrend:    [],
     };
@@ -1099,7 +1168,8 @@ function mapDevices(devices) {
                 : d.status === 'stale'  ? 'needs-update'
                 : 'offline',
       storage:    storageUsedPct(d.free_storage_bytes, d.total_storage_bytes),
-      battery:    null,
+      battery:    pctOrNull(d.battery_pct ?? d.battery_level ?? d.batteryPercentage ?? d.battery),
+      batteryHealth: pctOrNull(d.battery_health_pct ?? d.battery_health ?? d.batteryHealth),
       lastSeen:   timeAgoStr(seenAt),
       lastSeenTs: seenAt ? new Date(seenAt).getTime() : null,
       staleMin:   d.stale_min ?? null,
@@ -1128,6 +1198,11 @@ function buildAlerts(dishes) {
     if (d.dataQuality === 'low_data') {
       alerts.push({ id: `A-${n++}`, severity: 'info', source: d.id, campus: d.campus,
         message: `Low data quality at ${d.name}`, ts: 'now', ack: false, assignee: null });
+    }
+    const wp = d.weatherPredictor;
+    if (wp && (wp.level === 'high' || wp.level === 'medium')) {
+      alerts.push({ id: `A-${n++}`, severity: wp.level === 'high' ? 'warning' : 'info', source: d.id, campus: d.campus,
+        message: `${wp.label} at ${d.name}: ${wp.explanation || rainExplanation(d.rainfall)}`, ts: 'now', ack: false, assignee: null });
     }
   });
   return alerts;
@@ -1299,10 +1374,39 @@ function StorageBar({ pct }) {
   const tone = pct > 90 ? 'bad' : pct > 75 ? 'warn' : 'ok';
   return <div className="sbar"><span className="mono">{pct}%</span><div className="sbar__track"><span className={`sbar__fill sbar__fill--${tone}`} style={{width:`${pct}%`}} /></div></div>;
 }
-function BatteryCell({ pct }) {
-  if (pct == null) return <span className="muted">—</span>;
-  const tone = pct < 20 ? 'bad' : pct < 40 ? 'warn' : 'ok';
-  return <div className="sbar"><span className="mono">{pct}%</span><div className="sbar__track"><span className={`sbar__fill sbar__fill--${tone}`} style={{width:`${pct}%`}} /></div></div>;
+function BatteryCell({ pct, health }) {
+  if (pct == null && health == null) return <span className="muted">—</span>;
+  const tone = pct == null ? 'ok' : pct < 20 ? 'bad' : pct < 40 ? 'warn' : 'ok';
+  const width = pct == null ? 0 : pct;
+  return (
+    <div className="sbar-stack">
+      <div className="sbar">
+        <span className="mono">{pct == null ? '—' : `${pct}%`}</span>
+        <div className="sbar__track"><span className={`sbar__fill sbar__fill--${tone}`} style={{width:`${width}%`}} /></div>
+      </div>
+      {health != null && <div className="cell-mono">health {health}%</div>}
+    </div>
+  );
+}
+
+function WeatherCell({ dish }) {
+  const wp = dish.weatherPredictor;
+  const rain = numberOrNull(dish.rainfall);
+  const cloud = numberOrNull(dish.cloudCover);
+  if (!wp && rain == null && cloud == null) return <span className="muted">—</span>;
+  const level = wp?.level || 'low';
+  const title = wp?.label || (rain == null ? 'Weather reading' : `${rain.toFixed(1)} mm rain`);
+  const explanation = wp?.explanation || rainExplanation(rain);
+  const parts = [];
+  if (rain != null) parts.push(`${rain.toFixed(1)} mm rain`);
+  if (cloud != null) parts.push(`${Math.round(cloud)}% cloud`);
+  return (
+    <div className={`weather-cell weather-cell--${level}`}>
+      <div className="weather-cell__title">{title}</div>
+      <div className="cell-mono">{parts.length ? parts.join(' · ') : 'weather predictor'}</div>
+      <div className="muted">{explanation}</div>
+    </div>
+  );
 }
 
 function Overview({ data, ui, onOpenDish, onJump }) {
@@ -1470,18 +1574,18 @@ function Starlinks({ data, filter, onOpenDish }) {
       <section className="panel panel--flush">
         <div className="table-scroll">
           <table className="tbl tbl--data">
-            <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th className="num">Down</th><th className="num">Up</th><th className="num">Latency</th><th className="num">Obstruct.</th><th className="num">Weather</th><th className="num">Uptime 30d</th><th>Throughput</th><th></th></tr></thead>
+            <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th className="num">Down</th><th className="num">Up</th><th className="num">Latency</th><th className="num">Obstruct.</th><th>Weather warning</th><th className="num">Uptime 30d</th><th>Throughput</th><th></th></tr></thead>
             <tbody>
               {rows.map(d => (
                 <tr key={d.id} onClick={()=>onOpenDish(d)} className="tbl__row--click">
                   <td><div className="cell-primary">{d.name}</div><div className="cell-mono">{d.id} · {d.sku}</div></td>
                   <td>{campusName(data,d.campus)}</td>
                   <td><StatusChip status={d.status} /></td>
-                  <td className="num mono">{d.down||'—'}{d.down?' Mb':''}</td>
-                  <td className="num mono">{d.up||'—'}{d.up?' Mb':''}</td>
+                  <td className="num mono">{formatMbps(d.down)}</td>
+                  <td className="num mono">{formatMbps(d.up)}</td>
                   <td className="num mono">{d.latency?d.latency+'ms':'—'}</td>
                   <td className="num mono">{d.obstruction.toFixed(1)}%</td>
-                  <td className="num mono">{d.rainfall == null ? '—' : `${Number(d.rainfall).toFixed(1)}mm`}</td>
+                  <td><WeatherCell dish={d} /></td>
                   <td className="num mono">{d.uptime.toFixed(2)}%</td>
                   <td><Sparkline points={d.throughputTrend} dim={d.status!=='online'} /></td>
                   <td className="tbl__chev">{Icon.arrow}</td>
@@ -1536,7 +1640,7 @@ function Computers({ data, filter, onPushUpdate, pushBusy, pushMessage, pushErro
       {(pushMessage || pushError) && (
         <div className={`inline-note ${pushError ? 'inline-note--bad' : ''}`}>
           <span>{pushError || pushMessage}</span>
-          {!pushError && <span className="muted">Devices update as Intune and remediation complete.</span>}
+          {!pushError && <span className="muted">Devices update as Intune completes the remediation.</span>}
         </div>
       )}
       <div className="tbl-toolbar">
@@ -1560,7 +1664,7 @@ function Computers({ data, filter, onPushUpdate, pushBusy, pushMessage, pushErro
                   <td className="muted">{c.os}</td>
                   <td><StatusChip status={c.status} /></td>
                   <td className="num"><StorageBar pct={c.storage} /></td>
-                  <td className="num"><BatteryCell pct={c.battery} /></td>
+                  <td className="num"><BatteryCell pct={c.battery} health={c.batteryHealth} /></td>
                   <td className="muted mono">{c.lastSeen}</td>
                 </tr>
               ))}
@@ -1726,19 +1830,35 @@ function DishDetail({ dish, data, onClose }) {
           <div>
             <div className="eyebrow">Starlink dish</div>
             <h2 className="drawer__title">{dish.name}</h2>
-            <div className="cell-mono">{dish.id} · {dish.sku} · installed {dish.installed}</div>
+            <div className="cell-mono">{dish.id} · {dish.sku}{dish.installed ? ` · installed ${dish.installed}` : ''}</div>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="Close">{Ic.close}</button>
         </header>
         <div className="drawer__row"><SChip status={dish.status} /><span className="muted">{cName(data,dish.campus)}</span></div>
         <div className="drawer__grid">
-          <StatC label="Download" value={dish.down?dish.down+' Mb':'—'} />
-          <StatC label="Upload"   value={dish.up?dish.up+' Mb':'—'} />
+          <StatC label="Download" value={formatMbps(dish.down)} />
+          <StatC label="Upload"   value={formatMbps(dish.up)} />
           <StatC label="Latency"  value={dish.latency?dish.latency+'ms':'—'} tone={dish.latency>80?'warn':null} />
           <StatC label="SNR"      value={dish.snr?dish.snr.toFixed(1):'—'} />
           <StatC label="Obstruct." value={dish.obstruction.toFixed(1)+'%'} tone={dish.obstruction>5?'warn':null} />
           <StatC label="Uptime 30d" value={dish.uptime.toFixed(2)+'%'} />
+          <StatC label="Connected" value={`${dish.onlineLaptops ?? 0}/${dish.totalLaptops ?? 0}`} />
+          <StatC label="Intune laptops" value={`${dish.onlineIntuneLaptops ?? 0}/${dish.totalIntuneLaptops ?? 0}`} />
+          <StatC label="Chromebooks" value={`${dish.onlineChromebooks ?? 0}/${dish.totalChromebooks ?? 0}`} />
         </div>
+        {dish.weatherPredictor && (
+          <section className="drawer__section">
+            <h4 className="panel__subtitle">Weather predictor</h4>
+            <div className={`drawer-callout drawer-callout--${dish.weatherPredictor.level}`}>
+              <div className="weather-cell__title">{dish.weatherPredictor.label}</div>
+              <div className="cell-mono">
+                {dish.rainfall == null ? 'rain unknown' : `${Number(dish.rainfall).toFixed(1)} mm rain`}
+                {dish.cloudCover != null ? ` · ${Math.round(Number(dish.cloudCover))}% cloud` : ''}
+              </div>
+              <div className="muted">{dish.weatherPredictor.explanation || rainExplanation(dish.rainfall)}</div>
+            </div>
+          </section>
+        )}
         <section className="drawer__section">
           <h4 className="panel__subtitle">Throughput · last 24h</h4>
           <div className="chart">

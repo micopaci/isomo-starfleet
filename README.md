@@ -37,6 +37,7 @@ ops visibility          field/admin companion
 |---|---|
 | `packages/backend` | Express API, ingest endpoints, auth, migrations, scoring, notifications, site resolution |
 | `packages/desktop` | React/Electron dashboard for fleet operations |
+| `packages/web` | Static browser dashboard/PWA shell for Vercel and backend-served local use |
 | `packages/mobile` | React Native mobile app |
 | `packages/shared` | Shared TypeScript API client, hooks, and types |
 | `packages/agent` | Windows PowerShell agent, Intune detection/remediation scripts, diagnostics |
@@ -55,6 +56,10 @@ ops visibility          field/admin companion
 | Site inference | Resolves the real site from Starlink UUID inventory first, then GPS proximity, then configured fallback |
 | Offline queue | Writes failed agent payloads to `C:\ProgramData\Starfleet\queue` and replays later |
 | Dashboard visibility | Shows sites, laptops, usage, signal quality, latency, and agent health |
+| Desktop console | Electron/Vite dashboard with overview, Starlinks, computers, alerts, map, and site detail views |
+| Web dashboard | Static Vercel dashboard and same-origin backend-served browser entrypoint |
+| Mobile companion | React Native app with overview, map, campuses, Starlinks, alerts, and settings |
+| Intune/Graph sync | Optional Microsoft Graph managed-device sync and on-demand remediation triggers |
 | Notifications | Supports site change events, email/push plumbing, and WebSocket broadcasts |
 
 ## Local Development
@@ -108,6 +113,10 @@ Important environment variables:
 | `PORT` | API port, defaults to Railway-provided port in production |
 | `ALLOWED_ORIGINS` | Extra CORS origins, including the Vercel dashboard domain |
 | `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET` | Optional Microsoft Graph/Intune integration |
+| `GRAPH_INTUNE_SYNC_ENABLED`, `GRAPH_INTUNE_SYNC_INTERVAL_MIN` | Optional scheduled Intune managed-device sync controls |
+| `REMEDIATION_POLICY_*` | Optional Intune Device Health Script policy GUIDs for on-demand actions |
+| `DEVICE_ONLINE_HOURS`, `DEVICE_STALE_HOURS` | Device online/stale status windows |
+| `AGENT_TOKEN_TTL` | Agent JWT lifetime, defaults to `365d` |
 | `SMTP_*` | Optional email notifications and digest delivery |
 | `DASHBOARD_URL` | Public dashboard URL used in emails |
 | `OPEN_METEO_ENABLED` | Enables weather correlation without an API key |
@@ -151,6 +160,8 @@ packages/agent/INTUNE_SETUP.md
 | Database | Neon PostgreSQL |
 | Backend API | Railway |
 | Frontend dashboard | Vercel |
+| Desktop dashboard | Electron package built locally |
+| Mobile app | React Native Android package |
 | Windows agent rollout | Microsoft Intune Remediations |
 
 Typical backend release flow:
@@ -194,18 +205,25 @@ no 401 Unauthorized ingest failures
 | Document | Purpose |
 |---|---|
 | `docs/SYSTEM_REQUIREMENTS.md` | Functional, technical, deployment, security, and operational requirements |
+| `docs/PLATFORM_TECHNICAL_GUIDE.md` | Per-platform runtime, ownership, deployment, and maintenance guide |
+| `docs/API_REFERENCE.md` | Current REST, ingest, CSV export, and WebSocket route reference |
 | `docs/PROJECT_TRACKER.md` | End-to-end project tracker, status, risks, next milestones |
 | `docs/SITE_AUTO_DETECTION.md` | Starlink UUID/GPS based site resolution design |
+| `packages/backend/README.md` | Backend runtime, route groups, env vars, services, and checks |
+| `packages/desktop/README.md` | Electron desktop dashboard run/build notes |
+| `packages/web/README.md` | Static web dashboard and Vercel routing notes |
+| `packages/mobile/README.md` | React Native Android companion app notes |
+| `packages/shared/README.md` | Shared API client, WebSocket client, hooks, and type contract |
 | `packages/agent/README.md` | Windows agent behavior, files, validation, and notes |
 | `packages/agent/INTUNE_SETUP.md` | Intune remediation packaging and verification |
 
 ## Current Priorities
 
-1. Finish Intune test rollout on the VM using the self-contained remediation.
-2. Confirm ingest succeeds with a site-scoped agent token.
-3. Confirm Starlink UUID based site inference works when GPS is unavailable.
-4. Cleanly separate manual/legacy agent logs from Intune-managed installs.
-5. Continue hardening dashboard and operations views for laptop and site health.
+1. Validate discovery remediation on the VM and confirm token bootstrap to a real site.
+2. Confirm Intune managed-device sync populates laptop model, OS, compliance, storage, and Chromebook counts.
+3. Confirm on-demand remediation policy GUIDs are configured for diagnostics, location refresh, data pull, ping dish, and Starlink reboot.
+4. Continue hardening desktop, web, and mobile operations views for laptop, site, alert, and usage workflows.
+5. Define agent token rotation and dashboard/mobile release ownership.
 
 ## Security Notes
 

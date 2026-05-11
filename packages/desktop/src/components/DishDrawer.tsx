@@ -114,20 +114,42 @@ export function DishDrawer({ site, onClose, onOpenFull, isAdmin, onTriggerSite }
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             <DrawerStat label="Score" value={score !== null ? String(score) : '—'} tone={scoreTone(score)} />
             <DrawerStat label="Latency" value={sig?.pop_latency_ms != null ? `${sig.pop_latency_ms}ms` : '—'} tone={latTone(sig?.pop_latency_ms)} />
+            <DrawerStat
+              label="Speed ↓/↑"
+              value={formatSpeed(site.download_mbps ?? sig?.download_mbps ?? null, site.upload_mbps ?? sig?.upload_mbps ?? null)}
+              tone={null}
+            />
             <DrawerStat label="SNR" value={sig?.snr != null ? sig.snr.toFixed(1) : '—'} tone={sig?.snr != null && sig.snr < 7 ? 'warn' : null} />
             <DrawerStat label="Obstruct." value={sig?.obstruction_pct != null ? `${sig.obstruction_pct.toFixed(1)}%` : '—'} tone={sig?.obstruction_pct != null && sig.obstruction_pct > 5 ? 'warn' : null} />
             <DrawerStat label="Ping drop" value={sig?.ping_drop_pct != null ? `${sig.ping_drop_pct.toFixed(1)}%` : '—'} tone={sig?.ping_drop_pct != null && sig.ping_drop_pct > 3 ? 'warn' : null} />
             <DrawerStat label="Confidence" value={sig?.confidence === 'high' ? 'High' : sig?.confidence === 'low' ? 'Low' : '—'} tone={sig?.confidence === 'low' ? 'warn' : null} />
+            <DrawerStat label="Weather risk" value={site.weather_predictor?.level ?? 'unknown'} tone={weatherTone(site.weather_predictor?.level)} />
+          </div>
+          <div className="muted" style={{ marginTop: 10, fontSize: 11 }}>
+            {site.weather_predictor?.label ?? 'No weather reading yet'}
+          </div>
+          <div className="muted" style={{ marginTop: 4, fontSize: 11 }}>
+            {site.weather_predictor?.explanation ?? ''}
           </div>
         </div>
 
         {/* Laptops */}
         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--rule-2)' }}>
           <div className="eyebrow" style={{ marginBottom: 12 }}>Devices</div>
-          <div style={{ display: 'flex', gap: 24 }}>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
             <DrawerStat label="Online" value={String(site.online_laptops)} tone={site.online_laptops === 0 ? 'bad' : 'ok'} />
             <DrawerStat label="Total" value={String(site.total_laptops)} tone={null} />
             <DrawerStat label="Offline" value={String(site.total_laptops - site.online_laptops)} tone={site.total_laptops - site.online_laptops > 0 ? 'warn' : null} />
+            <DrawerStat
+              label="Intune online"
+              value={`${site.online_intune_laptops ?? 0}/${site.total_intune_laptops ?? 0}`}
+              tone={(site.total_intune_laptops ?? 0) > 0 && (site.online_intune_laptops ?? 0) === 0 ? 'warn' : null}
+            />
+            <DrawerStat
+              label="Chromebook online"
+              value={`${site.online_chromebooks ?? 0}/${site.total_chromebooks ?? 0}`}
+              tone={(site.total_chromebooks ?? 0) > 0 && (site.online_chromebooks ?? 0) === 0 ? 'warn' : null}
+            />
           </div>
         </div>
 
@@ -163,6 +185,22 @@ export function DishDrawer({ site, onClose, onOpenFull, isAdmin, onTriggerSite }
                 {sig.anomaly_delta > 0 ? '+' : ''}{sig.anomaly_delta}pt vs 7-day avg
               </span>
             )}
+          </div>
+        )}
+
+        {/* Weather warning */}
+        {site.weather_predictor && site.weather_predictor.level !== 'low' && site.weather_predictor.level !== 'unknown' && (
+          <div style={{
+            margin: '16px 24px 0',
+            padding: '12px 14px',
+            background: 'var(--warn-soft)',
+            borderLeft: '3px solid var(--warn)',
+            fontSize: 12.5,
+          }}>
+            <strong style={{ color: 'var(--warn)' }}>{site.weather_predictor.label}</strong>
+            <div style={{ color: 'var(--ink-2)', marginTop: 4 }}>
+              {site.weather_predictor.explanation}
+            </div>
           </div>
         )}
 
@@ -250,6 +288,18 @@ function latTone(ms: number | null | undefined): 'ok' | 'warn' | 'bad' | null {
   if (ms < 40) return 'ok';
   if (ms < 80) return 'warn';
   return 'bad';
+}
+
+function weatherTone(level: string | null | undefined): 'ok' | 'warn' | 'bad' | null {
+  if (!level || level === 'unknown') return null;
+  if (level === 'low') return 'ok';
+  if (level === 'medium') return 'warn';
+  return 'bad';
+}
+
+function formatSpeed(download: number | null | undefined, upload: number | null | undefined): string {
+  if (download == null && upload == null) return '—';
+  return `${download != null ? download.toFixed(1) : '—'} / ${upload != null ? upload.toFixed(1) : '—'} Mbps`;
 }
 
 function ScoreSparkline({ points }: { points: number[] }) {

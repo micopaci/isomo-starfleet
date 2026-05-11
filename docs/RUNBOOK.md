@@ -1,5 +1,31 @@
 # Starfleet Operations Runbook
 
+Document date: April 30, 2026
+
+## Platform health checks
+
+Backend:
+
+```bash
+curl https://api.starfleet.icircles.rw/health
+npm run intune:check --workspace=packages/backend
+npm run weather:check --workspace=packages/backend
+```
+
+Desktop, web, and mobile clients all depend on the backend API and JWT auth. If
+a client can log in but data does not refresh, check the API base URL, CORS
+origin, and WebSocket connection first.
+
+Expected production surfaces:
+
+| Surface | Check |
+|---|---|
+| Backend | `/health` returns `status=ok` and `db=ok` |
+| Web | Vercel route serves `packages/web/index.html` and backend CORS allows the domain |
+| Desktop | API base points to the intended backend and WebSocket auth succeeds |
+| Mobile | Settings API base points to the intended backend; token expiry is visible in Settings |
+| Agent | `last_heartbeat.txt` is recent and queue depth is 0 |
+
 ## Intune agent rollout
 
 Use the discovery remediation package for broad deployment. It installs the agent with `site_id=0`, lets the laptop read the Starlink dish identity and GPS, then exchanges the discovery token for a site-scoped token.
@@ -44,6 +70,45 @@ REMEDIATION_POLICY_REBOOT_STARLINK
 
 `REMEDIATION_POLICY_RESTART_STARLINK` is also accepted as a fallback for reboot.
 
+After configuring the GUIDs, test one device before using a site-wide action:
+
+```bash
+curl -X POST "https://api.starfleet.icircles.rw/api/trigger" \
+  -H "Authorization: Bearer <ADMIN_DASHBOARD_JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"device_id":123,"type":"diagnostics"}'
+```
+
+For a site-wide action:
+
+```bash
+curl -X POST "https://api.starfleet.icircles.rw/api/trigger/site" \
+  -H "Authorization: Bearer <ADMIN_DASHBOARD_JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"site_id":41,"type":"diagnostics"}'
+```
+
+## Intune managed-device sync
+
+If laptop model, OS, compliance, storage, Chromebook counts, or Intune sync time
+look stale, run:
+
+```bash
+curl -X POST "https://api.starfleet.icircles.rw/api/intune/sync" \
+  -H "Authorization: Bearer <ADMIN_DASHBOARD_JWT>"
+```
+
+The scheduled sync requires:
+
+```text
+GRAPH_TENANT_ID
+GRAPH_CLIENT_ID
+GRAPH_CLIENT_SECRET
+```
+
+Set `GRAPH_INTUNE_SYNC_ENABLED=false` to disable the scheduled sync without
+removing credentials.
+
 ## Monthly Starlink data
 
 On the Starlinks page, upload a CSV with:
@@ -55,3 +120,12 @@ site_id,gb_total
 ```
 
 The importer also accepts `mb_total` or `bytes_total` instead of `gb_total`.
+
+The dashboard reads monthly history from:
+
+```text
+GET /api/sites/:id/usage?months=6
+```
+
+Admin CSV exports are available for signal, latency, monthly usage totals, and
+archived usage under `/api/export/*`.

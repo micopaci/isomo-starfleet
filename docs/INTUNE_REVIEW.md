@@ -1,13 +1,33 @@
-# Intune Pipeline Review — Pre-Push Audit
-_Reviewed: April 18, 2026 | Scope: packages/agent/*.ps1, services/graph.js, routes/ingest.js, scripts/import_devices.js_
+# Intune Pipeline Review
+_Reviewed: April 30, 2026 | Scope: packages/agent/*.ps1, services/graph.js, routes/ingest.js, backend Intune routes_
 
 ## TL;DR
 
-Two **blocking bugs** in `services/graph.js` that would cause every Graph API remediation call to fail silently. Everything else (agent, detection, ingest) is sound. Recommend patching before pushing, then deploying.
+The previous Graph blockers have been addressed: `services/graph.js` now uses
+`devices.intune_device_id` for Microsoft Graph managed-device calls and the
+on-demand remediation path uses the beta
+`initiateOnDemandProactiveRemediation` endpoint with policy GUIDs from
+`REMEDIATION_POLICY_*` environment variables.
+
+The remaining Intune work is operational validation: configure real policy GUIDs
+in production, run one device-level trigger, then run one site-level trigger
+after the single-device path is confirmed.
 
 ---
 
 ## How a Device Gets a Site — End-to-End
+
+There are two supported assignment modes:
+
+| Mode | Use |
+|---|---|
+| Discovery remediation | Preferred broad rollout when a laptop does not know its school at first boot |
+| Site-scoped remediation | Targeted rollout when the Intune group already represents one known school |
+
+Discovery mode installs with `site_id=0`, reads Starlink identity/GPS, then
+exchanges the discovery token through `/ingest/bootstrap-token` for a real
+site/device-scoped token. Site-scoped mode still bakes a known site ID into the
+generated remediation package.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -51,51 +71,35 @@ Two **blocking bugs** in `services/graph.js` that would cause every Graph API re
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Bottom line:** Site assignment is pushed from Intune → agent config → every ingest
-payload. It's re-asserted every 5 min, so a laptop moved to a different school
-will self-correct as soon as its Intune group changes.
+**Bottom line:** For site-scoped remediation, site assignment is pushed from
+Intune to agent config to every ingest payload. For discovery remediation, the
+backend resolves the real site from Starlink identity/GPS and returns a
+site-scoped token. In both modes, the backend keeps site-scoped agent tokens from
+writing data into the wrong school.
 
 ---
 
-## Blocker #1 — graph.js uses the wrong device identifier
+## Resolved — graph.js uses the Intune device identifier
 
-**File:** `packages/backend/services/graph.js`, lines 102–104 and 142–146
+**File:** `packages/backend/services/graph.js`
 
-```js
-const devRes = await pool.query(`SELECT windows_sn FROM devices WHERE id = $1`, [device_id]);
-const intuneDeviceId = devRes.rows[0].windows_sn;  // ← WRONG
+Graph calls now read `intune_device_id`, not `windows_sn`. This matches the
+`managedDevices/{id}` path requirement and aligns with the Graph managed-device
+sync that upserts Intune metadata into `devices`.
+
+## Resolved — On-demand remediation endpoint
+
+**File:** `packages/backend/services/graph.js`
+
+The backend maps internal trigger types to pre-provisioned Intune Device Health
+Script policy GUIDs, then calls:
+
+```text
+POST /beta/deviceManagement/managedDevices/{id}/initiateOnDemandProactiveRemediation
 ```
 
-- `windows_sn` is the **hardware serial** from the BIOS (e.g. `DZT73D3`)
-- Microsoft Graph's `managedDevices/{id}` path expects the **Azure device UUID**
-  (e.g. `cf0971fc-f7ca-48d5-b8e4-06c54d21d2d3`)
-- Migration 006 added an `intune_device_id` column. `scripts/import_devices.js`
-  already populates it correctly. `graph.js` simply reads the wrong column.
-
-Every `triggerRemediationScript()` call currently returns 404, and the trigger
-poller silently keeps the row as `running` forever.
-
-**Fix:** change the column in both queries from `windows_sn` to `intune_device_id`.
-
-## Blocker #2 — Wrong Graph endpoint for remediation
-
-**File:** `packages/backend/services/graph.js`, lines 107–117
-
-```js
-`https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/${intuneDeviceId}/runRemediationScript`
-```
-
-- `runRemediationScript` is not a real Graph endpoint
-- The body `{scriptType: type}` isn't a real parameter either
-- Real flow is **two-step**:
-  1. Create a `deviceHealthScript` policy in Intune (done once, in the portal)
-  2. Call the beta endpoint:
-     `POST /beta/deviceManagement/managedDevices/{id}/initiateOnDemandProactiveRemediation`
-     with body `{ "scriptPolicyId": "<policy-guid>" }`
-
-**Fix:** map each internal `type` (e.g. `restart-starlink`, `clear-cache`) to a
-pre-provisioned `scriptPolicyId`, then hit the beta endpoint. Requires the
-Graph app registration to have `DeviceManagementManagedDevices.PrivilegedOperations.All`.
+The Graph app registration still needs
+`DeviceManagementManagedDevices.PrivilegedOperations.All`.
 
 ---
 
@@ -106,8 +110,8 @@ Graph app registration to have `DeviceManagementManagedDevices.PrivilegedOperati
 | 1 | **JWT in plaintext** on disk (`StarfleetAgent.ps1`) | A non-SYSTEM tool on the same box could read it | DPAPI-encrypt via `ConvertTo-SecureString`; decrypt at run time |
 | 2 | **No JWT refresh** | All laptops silently die when token expires | Either 1-year service-account JWT + documented rotation, or `/auth/refresh` endpoint |
 | 3 | **Offline queue cap = 1000 files** | ~16h at 5 min × 5 endpoints; a Friday–Monday outage loses telemetry | Raise cap to 3000, or batch multiple payloads per file |
-| 4 | **Parallels VMs share BIOS serial** | Current seed already has one (`Parallels-7C939B8B3E…`); colliding serials clobber each other's `site_id` on every heartbeat | Fall back to `Win32_ComputerSystemProduct.UUID` when BIOS serial is empty or starts with `Parallels-` |
-| 5 | **No payload idempotency** | Replay queue can double-insert `signal_readings` if the network blips mid-response | Client generates a ULID per payload; server-side `UNIQUE(device_id, ingest_ulid)` |
+| 4 | **Parallels VMs share BIOS serial** | Colliding serials can merge VM test records | Prefer hardware UUID when BIOS serial is empty or known virtualized |
+| 5 | **Payload idempotency coverage** | Mostly handled by `payload_id`, but older queued payloads may lack it | Keep agent and server payload schema aligned; prune old queues before broad rollout |
 | 6 | **JWT per-site impersonation** | If one site's token leaks, attacker forges heartbeats for any site | Optional HMAC-sign payload with per-site secret stored in DPAPI blob |
 | 7 | **Agent always exits 0** | Scheduled Task never reports failure back to Intune | Track a per-endpoint failure count; exit 2 if >3 consecutive failures |
 
@@ -120,6 +124,5 @@ Graph app registration to have `DeviceManagementManagedDevices.PrivilegedOperati
 | `packages/agent/StarfleetAgent.ps1` | ✅ Solid. Good offline queue, ISO-8601 timestamp, graceful degradation when Starlink dish unreachable |
 | `packages/agent/detection.ps1` | ✅ Solid. Uses `ParseExact` with `InvariantCulture` — correctly handles non-English Rwanda Windows installs |
 | `packages/agent/remediation.ps1` | ✅ Solid. Validates `$SiteId` is a positive integer before regex-substituting |
-| `packages/backend/routes/ingest.js` | ✅ Solid. `autoRegisterDevice` is idempotent; uses `COALESCE` to avoid blanking the hostname |
-| `packages/backend/scripts/import_devices.js` | ✅ Solid. Proper CSV parsing with quote handling; transactional |
-| `packages/backend/services/graph.js` | 🐛 Blockers #1 and #2 above |
+| `packages/backend/routes/ingest.js` | ✅ Solid. Agent scope enforcement, dedup, bootstrap-token, signal, latency, health, usage, and agent-health routes are present |
+| `packages/backend/services/graph.js` | ✅ Updated. Uses `intune_device_id`, syncs managed-device metadata, and triggers proactive remediation by policy GUID |

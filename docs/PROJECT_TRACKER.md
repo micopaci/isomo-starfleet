@@ -1,6 +1,6 @@
 # Isomo Pulse Starfleet Monitor - Project Tracker
 
-Document date: April 26, 2026
+Document date: April 30, 2026
 
 ## 1. Project Summary
 
@@ -13,13 +13,15 @@ identity, and making the dashboard reflect real site/device health.
 
 | Workstream | Status | Notes |
 |---|---|---|
-| Backend API | In progress, deployable | Railway backend is healthy; recent work added Starlink identity site resolution and agent token generation |
-| Neon database | In progress, deployable | Migrations include Starlink UUID/site master sheet fields and usage hardening |
-| Windows agent | In progress, test-ready | Agent version 1.2.0 supports gRPC-web fallback, Starlink ID extraction, offline queue, and Intune marker |
-| Intune deployment | In progress, VM test | Moving from split Platform Script/remediation to one self-contained Remediation package |
-| Dashboard | In progress | Sites, laptops, usage, and detail views are evolving |
-| Mobile app | Early/in progress | React Native app exists; field/admin workflows still need validation |
-| Documentation | In progress | Root README, requirements, tracker, Intune setup, and site detection docs now exist |
+| Backend API | In progress, deployable | Railway backend owns auth, ingest, Graph sync, scoring, weather/orbital intelligence, CSV exports, and WebSocket events |
+| Neon database | In progress, deployable | Migrations include Starlink identity, site master IDs, usage hardening, archive tables, Intune status, and agent health |
+| Windows agent | In progress, test-ready | Agent version 1.2.0 supports gRPC-web fallback, Starlink ID extraction, offline queue, discovery bootstrap, and Intune marker |
+| Intune deployment | In progress, VM test | Preferred rollout is one remediation package, with discovery remediation for unknown first-boot site |
+| Web dashboard | In progress | Static Vercel/browser dashboard exists and can also be served by backend `/` |
+| Desktop dashboard | In progress | Electron/Vite app has overview, Starlinks, computers, alerts, map, and site detail views |
+| Mobile app | In progress | React Native Android app has overview, map, campuses, Starlinks, alerts, and settings; release path still needs validation |
+| Shared client | In progress | TypeScript API/WebSocket clients and hooks are shared by desktop and mobile |
+| Documentation | In progress | Platform guide, API reference, package READMEs, requirements, tracker, runbook, Intune setup, and site detection docs now exist |
 
 ## 3. Recently Completed
 
@@ -31,6 +33,7 @@ identity, and making the dashboard reflect real site/device health.
 | 2026-04-26 | Added Intune install marker | Agent install writes `install_source=intune_remediation` and `agent_version=1.2.0` |
 | 2026-04-26 | Tightened detection script | Detection now forces remediation for old/manual installs |
 | 2026-04-26 | Confirmed VM old install symptoms | Old install lacked marker and showed `401 Unauthorized` ingest failures |
+| 2026-04-30 | Added platform technical documentation | Backend, web, desktop, mobile, shared, agent, API, and operations docs updated to current repo state |
 
 ## 4. Next Milestones
 
@@ -42,7 +45,9 @@ identity, and making the dashboard reflect real site/device health.
 | M4: Confirm platform ingest | Backend receives heartbeat, health, latency, usage, and agent-health from VM | Admin/Codex | Pending |
 | M5: Confirm Starlink site inference | Backend maps Starlink UUID to the correct real site when GPS is unavailable | Admin/Codex | Pending |
 | M6: Expand pilot | Assign remediation to a small school/device group after VM validation | Admin/Ops | Pending |
-| M7: Production rollout | Deploy to all target managed laptops with monitoring and rollback plan | Admin/Ops | Pending |
+| M7: Validate Intune/Graph sync | Managed-device sync populates model, OS, compliance, storage, Chromebook counts, and last sync | Admin/Codex | Pending |
+| M8: Validate app surfaces | Web, desktop, and mobile all authenticate and show live site/device data | Admin/Codex | Pending |
+| M9: Production rollout | Deploy to all target managed laptops with monitoring and rollback plan | Admin/Ops | Pending |
 
 ## 5. Workstream Tracker
 
@@ -55,6 +60,9 @@ identity, and making the dashboard reflect real site/device health.
 | Idempotent queued payload replay | Must | Done | Payload metadata protects usage writes |
 | Starlink UUID site lookup | Must | Done | Uses raw and normalized terminal identities |
 | Agent token generation API | Must | Done | Admin route exists and returns site-scoped token |
+| Discovery bootstrap route | Must | Done | `/ingest/bootstrap-token` exchanges discovery token for site/device token |
+| Intune managed-device sync | Should | Done | `/api/intune/sync` and scheduled Graph sync exist; tenant validation pending |
+| CSV export endpoints | Should | Done | Signal, latency, monthly usage totals, and usage archive exports |
 | Master sheet site import/update | Must | In progress | Site ID, UUID, SN, location, district fields are modeled |
 | Token rotation and revocation policy | Should | Not started | Needs operations decision |
 
@@ -76,22 +84,25 @@ identity, and making the dashboard reflect real site/device health.
 | Task | Priority | Status | Notes |
 |---|---|---|---|
 | Single remediation package pattern | Must | Done | Do not split with Platform Script |
+| Discovery remediation package | Must | Done | Shared site `0` install bootstraps real site through Starlink identity/GPS |
 | Detection script forces remediation for old installs | Must | Done | Requires Intune marker and version |
 | Self-contained remediation upload script | Must | Done | Generated under `dist/intune` |
 | Upload to Intune test VM group | Must | Pending | Needs real token pasted into generated script |
 | Verify Intune device status | Must | Pending | Expect detection with issues, remediation fixed, then without issues |
 | Disable legacy Platform Script during test | Should | Pending | Avoid duplicate installers touching same files |
 
-### 5.4 Dashboard And Mobile
+### 5.4 Web, Desktop, And Mobile
 
 | Task | Priority | Status | Notes |
 |---|---|---|---|
-| Sites overview | Must | In progress | Shows site inventory and metrics |
-| Laptop list | Must | In progress | Tracks online/stale devices |
-| Site detail | Must | In progress | Shows devices and latest signal |
-| Usage chart | Should | In progress | New component exists in worktree |
-| Alerts/site changes UI | Should | In progress | Backend events available |
-| Mobile app field workflows | Should | Not validated | Needs test plan |
+| Static web dashboard | Should | In progress | Vercel route and backend-served static entrypoint exist |
+| Desktop overview | Must | In progress | Shows site inventory, metrics, and fleet diagnostics action |
+| Desktop computers view | Must | In progress | Tracks Intune/agent online, stale, and offline devices |
+| Desktop site detail | Must | In progress | Shows devices, latest signal, latency, usage, and actions |
+| Desktop Starlinks view | Should | In progress | Includes site actions and monthly usage import |
+| Desktop alerts/site changes UI | Should | In progress | Backend events available |
+| Mobile field workflows | Should | In progress | Overview, map, campuses, Starlinks, alerts, settings implemented; device testing pending |
+| Shared API/WebSocket hooks | Must | Done | Used by desktop and mobile |
 
 ## 6. Validation Checklist
 
@@ -135,6 +146,7 @@ Expected:
 | Device last seen | VM/laptop updates within expected interval |
 | Agent health | Version 1.2.0 and queue depth visible |
 | Site assignment | Real site is resolved from Starlink UUID/GPS or fallback |
+| Intune metadata | Model, OS, compliance, storage, category, and Intune last sync are populated when Graph sync is configured |
 | Usage | Daily usage appears without duplicate spikes |
 | Latency | Recent laptop-side latency appears |
 
@@ -148,6 +160,7 @@ Expected:
 | Starlink GPS disabled by update/config | Medium | Backend uses Starlink UUID inventory as primary fallback |
 | Generated token script committed | High | `dist/` ignored; review `git status` before commits |
 | Incomplete site inventory | Medium | Continue importing Starlink UUID/SN/location/site records |
+| App release paths undefined | Medium | Decide mobile and desktop distribution before broad non-developer use |
 
 ## 8. Decisions Needed
 
@@ -158,6 +171,8 @@ Expected:
 | Dashboard domain and CORS | Prevents auth/API failures | Confirm final Vercel URL and backend `ALLOWED_ORIGINS` |
 | Notification recipients | Determines who gets site move alerts | Define admin/ops recipients and acknowledgement workflow |
 | Site master sheet ownership | Prevents stale UUID/location data | Assign one source-of-truth owner |
+| Mobile distribution | Controls field install/update process | Pick internal APK, managed Play, or MDM distribution |
+| Desktop signing/distribution | Controls operator install/update process | Decide signing, update feed, and supported OS list |
 
 ## 9. Immediate Next Actions
 
@@ -167,7 +182,9 @@ Expected:
 4. Sync the VM and wait for remediation status.
 5. Run the VM validation commands.
 6. Confirm backend/platform shows fresh ingest without `401`.
-7. If the VM passes, pilot a small real laptop group.
+7. Run `/api/intune/sync` and confirm Intune fields populate in Computers view.
+8. Validate web, desktop, and mobile login plus core views against production API.
+9. If the VM passes, pilot a small real laptop group.
 
 ## 10. Definition Of Done For Current Phase
 
@@ -180,4 +197,3 @@ This phase is complete when:
 | Starlink mapping | Starlink UUID resolves the correct site when GPS is unavailable |
 | Dashboard | Operators can see VM/laptop health and site assignment in the platform |
 | Runbook | Intune setup and validation steps are documented and repeatable |
-

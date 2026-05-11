@@ -28,6 +28,14 @@ const router = express.Router();
 
 const DEVICE_SEEN_EXPR = deviceSeenExpr('d');
 const DEVICE_STATUS_CASE = deviceStatusCase('d');
+const CHROMEBOOK_DEVICE_WHERE = `
+(
+  LOWER(COALESCE(d.device_category, '')) LIKE '%chromebook%'
+  OR LOWER(COALESCE(d.device_category, '')) LIKE '%chrome os%'
+  OR LOWER(COALESCE(d.os, '')) LIKE '%chrome os%'
+  OR LOWER(COALESCE(d.os, '')) LIKE '%chromeos%'
+  OR LOWER(COALESCE(d.model, '')) LIKE '%chromebook%'
+)`;
 
 function parseMonthStart(raw) {
   if (!raw) return null;
@@ -78,12 +86,70 @@ async function getSiteSignal(siteId) {
   };
 }
 
+function buildWeatherPredictor(weather) {
+  if (!weather) {
+    return {
+      level: 'unknown',
+      label: 'No weather reading yet',
+      explanation: 'No recent rain/cloud data has been collected for this site yet.',
+      based_on_date: null,
+      rainfall_mm: null,
+      cloud_cover_pct: null,
+    };
+  }
+
+  const rain = weather.rainfall_mm;
+  const cloud = weather.cloud_cover_pct;
+
+  if (rain != null && rain > 10) {
+    return {
+      level: 'high',
+      label: 'Rain warning (heavy)',
+      explanation: `Heavy rain (${rain.toFixed(1)} mm in the last day) can cause packet loss, higher ping, and slower speeds.`,
+      based_on_date: weather.date,
+      rainfall_mm: rain,
+      cloud_cover_pct: cloud,
+    };
+  }
+
+  if (rain != null && rain > 5) {
+    return {
+      level: 'medium',
+      label: 'Rain warning (moderate)',
+      explanation: `Moderate rain (${rain.toFixed(1)} mm in the last day) may cause brief link instability and speed dips.`,
+      based_on_date: weather.date,
+      rainfall_mm: rain,
+      cloud_cover_pct: cloud,
+    };
+  }
+
+  if (cloud != null && cloud > 85) {
+    return {
+      level: 'medium',
+      label: 'Cloud advisory',
+      explanation: `Very dense cloud cover (${Math.round(cloud)}%) may add minor latency or throughput variability.`,
+      based_on_date: weather.date,
+      rainfall_mm: rain,
+      cloud_cover_pct: cloud,
+    };
+  }
+
+  return {
+    level: 'low',
+    label: 'Weather risk low',
+    explanation: `Rainfall is low (${rain != null ? `${rain.toFixed(1)} mm` : 'no rain data'}) and cloud levels are not currently a strong signal risk.`,
+    based_on_date: weather.date,
+    rainfall_mm: rain,
+    cloud_cover_pct: cloud,
+  };
+}
+
 // ── GET /api/sites ────────────────────────────────────────────────────────────
 // Enriched with throughput (download/upload Mbps), today's data usage, and
 // uptime % so the Ranking screen can sort on any metric without more round-trips.
 router.get('/sites', async (req, res, next) => {
   try {
-    const sitesRes = await pool.query(`SELECT id, site_master_id, name, starlink_sn, starlink_uuid, kit_id, location, district, lat, lng FROM sites ORDER BY COALESCE(site_master_id, id), id`);
+    const sitesRes = await pool.query(`SELECT id, site_master_id, name, starlink_sn, starlink_uuid, kit_id, location, district, lat, lng, score_7day_avg FROM sites ORDER BY COALESCE(site_master_id, id), id`);
 
     // Hydrate uptime + data-today maps in two flat queries (views from migration 015)
     const uptimeRes = await pool.query(`SELECT site_id, uptime_pct FROM site_uptime_today`);
@@ -106,8 +172,13 @@ router.get('/sites', async (req, res, next) => {
 
       const laptopsRes = await pool.query(
         `SELECT COUNT(*) AS total,
-                COUNT(*) FILTER (WHERE ${deviceOnlineWhere(null)}) AS online
-         FROM devices WHERE site_id = $1`,
+                COUNT(*) FILTER (WHERE ${deviceOnlineWhere('d')}) AS online,
+                COUNT(*) FILTER (WHERE d.intune_device_id IS NOT NULL) AS total_intune,
+                COUNT(*) FILTER (WHERE d.intune_device_id IS NOT NULL AND ${deviceOnlineWhere('d')}) AS online_intune,
+                COUNT(*) FILTER (WHERE ${CHROMEBOOK_DEVICE_WHERE}) AS total_chromebooks,
+                COUNT(*) FILTER (WHERE ${CHROMEBOOK_DEVICE_WHERE} AND ${deviceOnlineWhere('d')}) AS online_chromebooks
+         FROM devices d
+         WHERE d.site_id = $1`,
         [site.id]
       );
 
@@ -119,9 +190,14 @@ router.get('/sites', async (req, res, next) => {
 
       return {
         ...site,
+        score_7day_avg: site.score_7day_avg == null ? null : Number(site.score_7day_avg),
         signal,
         online_laptops: parseInt(laptopsRes.rows[0].online),
         total_laptops:  parseInt(laptopsRes.rows[0].total),
+        online_intune_laptops: parseInt(laptopsRes.rows[0].online_intune),
+        total_intune_laptops: parseInt(laptopsRes.rows[0].total_intune),
+        online_chromebooks: parseInt(laptopsRes.rows[0].online_chromebooks),
+        total_chromebooks: parseInt(laptopsRes.rows[0].total_chromebooks),
         score:          scoreRes.rows[0]?.score  ?? null,
         cause:          scoreRes.rows[0]?.cause  ?? null,
         // Ranking metrics
@@ -130,6 +206,7 @@ router.get('/sites', async (req, res, next) => {
         data_mb_today:  dataBy[site.id]   ?? 0,
         uptime_pct:     uptimeBy[site.id] ?? null,
         weather:        weatherBy[site.id] ?? null,
+        weather_predictor: buildWeatherPredictor(weatherBy[site.id] ?? null),
       };
     }));
 
@@ -141,7 +218,7 @@ router.get('/sites', async (req, res, next) => {
 router.get('/sites/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const siteRes = await pool.query(`SELECT id, site_master_id, name, starlink_sn, starlink_uuid, kit_id, location, district, lat, lng, created_at FROM sites WHERE id = $1`, [id]);
+    const siteRes = await pool.query(`SELECT id, site_master_id, name, starlink_sn, starlink_uuid, kit_id, location, district, lat, lng, score_7day_avg, created_at FROM sites WHERE id = $1`, [id]);
     if (!siteRes.rows.length) return res.status(404).json({ error: 'Site not found' });
 
     const site    = siteRes.rows[0];
@@ -161,6 +238,23 @@ router.get('/sites/:id', async (req, res, next) => {
           cloud_cover_pct: weatherRes.rows[0].cloud_cover_pct == null ? null : Number(weatherRes.rows[0].cloud_cover_pct),
         }
       : null;
+    const weatherPredictor = buildWeatherPredictor(weather);
+
+    const laptopsRes = await pool.query(
+      `SELECT COUNT(*) AS total,
+              COUNT(*) FILTER (WHERE ${deviceOnlineWhere('d')}) AS online,
+              COUNT(*) FILTER (WHERE d.intune_device_id IS NOT NULL) AS total_intune,
+              COUNT(*) FILTER (WHERE d.intune_device_id IS NOT NULL AND ${deviceOnlineWhere('d')}) AS online_intune,
+              COUNT(*) FILTER (WHERE ${CHROMEBOOK_DEVICE_WHERE}) AS total_chromebooks,
+              COUNT(*) FILTER (WHERE ${CHROMEBOOK_DEVICE_WHERE} AND ${deviceOnlineWhere('d')}) AS online_chromebooks
+       FROM devices d
+       WHERE d.site_id = $1`,
+      [id]
+    );
+    const scoreRes = await pool.query(
+      `SELECT score, cause FROM daily_scores WHERE site_id = $1 ORDER BY date DESC LIMIT 1`,
+      [id]
+    );
 
     const devicesRes = await pool.query(
       `SELECT d.id, d.site_id, d.hostname, d.windows_sn, d.manufacturer, d.model,
@@ -169,12 +263,14 @@ router.get('/sites/:id', async (req, res, next) => {
               d.intune_enrolled_at, d.last_ingest_ok_at, d.compliance_state,
               d.user_principal_name, d.os, d.os_version,
               d.free_storage_bytes, d.total_storage_bytes,
+              dh.battery_pct, dh.battery_health_pct,
               dh.disk_smart_status, dh.disk_smart_predict_failure, dh.disk_media_type,
               ${DEVICE_STATUS_CASE} AS status,
               ROUND(EXTRACT(EPOCH FROM (NOW() - ${DEVICE_SEEN_EXPR})) / 60)::INT AS stale_min
        FROM devices d
        LEFT JOIN LATERAL (
-         SELECT disk_smart_status, disk_smart_predict_failure, disk_media_type
+         SELECT battery_pct, battery_health_pct,
+                disk_smart_status, disk_smart_predict_failure, disk_media_type
          FROM device_health
          WHERE device_id = d.id
          ORDER BY recorded_at DESC
@@ -184,7 +280,24 @@ router.get('/sites/:id', async (req, res, next) => {
       [id]
     );
 
-    res.json({ ...site, signal, weather, devices: devicesRes.rows });
+    res.json({
+      ...site,
+      score_7day_avg: site.score_7day_avg == null ? null : Number(site.score_7day_avg),
+      signal,
+      weather,
+      weather_predictor: weatherPredictor,
+      online_laptops: parseInt(laptopsRes.rows[0].online),
+      total_laptops: parseInt(laptopsRes.rows[0].total),
+      online_intune_laptops: parseInt(laptopsRes.rows[0].online_intune),
+      total_intune_laptops: parseInt(laptopsRes.rows[0].total_intune),
+      online_chromebooks: parseInt(laptopsRes.rows[0].online_chromebooks),
+      total_chromebooks: parseInt(laptopsRes.rows[0].total_chromebooks),
+      score: scoreRes.rows[0]?.score ?? null,
+      cause: scoreRes.rows[0]?.cause ?? null,
+      download_mbps: signal?.download_mbps ?? null,
+      upload_mbps: signal?.upload_mbps ?? null,
+      devices: devicesRes.rows,
+    });
   } catch (err) { next(err); }
 });
 
@@ -238,13 +351,15 @@ router.get('/devices', async (req, res, next) => {
               d.user_principal_name, d.os, d.os_version, d.device_category,
               d.free_storage_bytes, d.total_storage_bytes,
               s.name AS site_name,
+              dh.battery_pct, dh.battery_health_pct,
               dh.disk_smart_status, dh.disk_smart_predict_failure, dh.disk_media_type,
               ${DEVICE_STATUS_CASE} AS status,
               ROUND(EXTRACT(EPOCH FROM (NOW() - ${DEVICE_SEEN_EXPR})) / 60)::INT AS stale_min
        FROM devices d
        LEFT JOIN sites s ON s.id = d.site_id
        LEFT JOIN LATERAL (
-         SELECT disk_smart_status, disk_smart_predict_failure, disk_media_type
+         SELECT battery_pct, battery_health_pct,
+                disk_smart_status, disk_smart_predict_failure, disk_media_type
          FROM device_health
          WHERE device_id = d.id
          ORDER BY recorded_at DESC
