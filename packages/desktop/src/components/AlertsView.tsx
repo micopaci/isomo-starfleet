@@ -79,6 +79,22 @@ function synthesizeAlerts(sites: Site[]): Alert[] {
         ts: sig.updatedAt ? formatTs(sig.updatedAt) : 'Unknown',
       });
     }
+
+    if (site.weather_predictor?.level === 'high' || site.weather_predictor?.level === 'medium') {
+      const rainMeta = site.weather_predictor.rainfall_mm != null
+        ? `Rain ${site.weather_predictor.rainfall_mm.toFixed(1)}mm`
+        : 'Rain data unavailable';
+      alerts.push({
+        id: `weather-${site.id}`,
+        severity: 'warning',
+        message: `${site.weather_predictor.label} at ${site.name}`,
+        meta: `${rainMeta} · ${site.weather_predictor.explanation}`,
+        siteId: site.id,
+        siteName: site.name,
+        acked: false,
+        ts: site.weather_predictor.based_on_date ?? 'Latest weather',
+      });
+    }
   }
 
   // Sort: critical first, then warning, then info

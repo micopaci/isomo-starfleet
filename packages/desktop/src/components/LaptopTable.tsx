@@ -144,7 +144,7 @@ export function LaptopTable({ devices, siteId, isAdmin, onTrigger, onTriggerAll 
                 </td>
                 <td>—</td>
                 <td>—</td>
-                <td>—</td>
+                <td>{formatBattery(d.battery_pct, d.battery_health_pct)}</td>
                 <td>{formatStorage(d.free_storage_bytes, d.total_storage_bytes)}</td>
                 <td>{formatSmart(d.disk_smart_status, d.disk_smart_predict_failure, d.disk_media_type)}</td>
                 {isAdmin && (
@@ -177,6 +177,16 @@ export function LaptopTable({ devices, siteId, isAdmin, onTrigger, onTriggerAll 
 function formatStorage(free: number | null | undefined, total: number | null | undefined): string {
   if (free == null || total == null || total <= 0) return '—';
   return `${(free / 1024 / 1024 / 1024).toFixed(1)} / ${(total / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
+function formatBattery(
+  batteryPct: number | null | undefined,
+  batteryHealthPct: number | null | undefined,
+): string {
+  if (batteryPct == null && batteryHealthPct == null) return '—';
+  const charge = batteryPct == null ? '—' : `${Math.round(batteryPct)}%`;
+  if (batteryHealthPct == null) return charge;
+  return `${charge} · health ${Math.round(batteryHealthPct)}%`;
 }
 
 function formatSmart(

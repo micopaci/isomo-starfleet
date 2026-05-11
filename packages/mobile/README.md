@@ -1,19 +1,23 @@
 # Isomo Starfleet — Android Companion App
 
-React Native (TypeScript) companion to the Starfleet web dashboard. Read-mostly
-field tool for iCircles staff visiting the 41 sites (40 schools + Bridge2Rwanda
-HQ). Runs on Android 9+ (API 28+).
+React Native (TypeScript) companion to the Starfleet dashboard. Read-mostly
+field/admin tool for Isomo staff visiting schools and reviewing fleet health.
+The canonical package path is `packages/mobile`; the checked-in
+`packages/mobile/android` tree is the Android native project, not a separate app.
 
 ## What it does
 
 | Screen | Purpose |
 |---|---|
 | **Login** | JWT auth against `POST /auth/login`. Persists token in `AsyncStorage`. |
-| **Sites** | Fleet-wide list sorted by health: red → amber → green. Each card shows signal score, predicted cause, laptop counts, last-seen age. Offline-first: falls back to last-saved snapshot. |
-| **Site Detail** | Score hero + 4 metric tiles (SNR, Ping Drop, Obstruction, PoP Latency) + 7-day sparkline + laptop list. Admins can tap "Refresh all" to trigger a remediation script on every endpoint. |
-| **Laptop Detail** | Per-device history, last heartbeat, script trigger buttons (restart-starlink, clear-cache, reinstall-agent). |
-| **Ranking** | Sites sorted by PoP latency — quick sanity check after a space-weather event. |
-| **Settings** | User profile, notification toggles, theme preference, cache management, API endpoint, version. |
+| **Overview** | Fleet-wide summary using `useFleetSummary()`: sites, status counts, laptop totals, Intune and Chromebook counts. |
+| **Map** | Field map view for site selection and geographic context. |
+| **Sites / Campuses** | Fleet-wide campus list sorted by health. Cards show score, signal, laptop counts, and cached/offline state. |
+| **Site Detail** | Score hero, metric tiles, signal history, latency/usage context, and laptop list. |
+| **Laptop Detail** | Per-device status, last heartbeat/check-in, health, usage, and admin trigger actions where enabled. |
+| **Starlinks** | Starlink/site health view for throughput, signal, and service status. |
+| **Alerts** | Site-change alerts with a badge for unacknowledged items. |
+| **Settings** | Account, role, session expiry, API endpoint, app version, and sign out. |
 
 ## Architecture
 
@@ -21,8 +25,11 @@ HQ). Runs on Android 9+ (API 28+).
 App.tsx
   └─ RootNavigator (Login vs Main tabs)
        └─ AppNavigator (Bottom tabs)
+            ├─ OverviewScreen
+            ├─ MapScreen
             ├─ SitesStack → Sites → SiteDetail → LaptopDetail
-            ├─ RankingScreen
+            ├─ StarlinksScreen
+            ├─ AlertsScreen
             └─ SettingsScreen
 ```
 
@@ -30,13 +37,15 @@ App.tsx
 - **Cache**: `AsyncStorage` keyed by site ID, with `ageLabel()` helper so the offline banner reads "Last updated 4m ago" when serving stale data.
 - **Auth**: JWT persisted to `AsyncStorage`, 401 from the API triggers `clearToken()` and bounces the user back to `LoginScreen`.
 - **Theme**: `useColorScheme()` picks `light` or `dark` from `theme/colors.ts`. Both palettes mirror the web version's B2R-inspired tokens.
-- **Push**: `useFCM` hook registers the device token with the backend; the server fans out site-down and degraded-signal alerts via Firebase Cloud Messaging.
+- **Push**: Firebase messaging is intentionally omitted for now. `useFCM` is a
+  placeholder until `@react-native-firebase/app`, messaging, and
+  `android/app/google-services.json` are added.
 
 ## How site data flows into the phone
 
 ```
 backend /api/sites
-   │  (WebSocket push + REST fallback every 30s)
+   │  (REST fetch + WebSocket signal/stale-device updates)
    ▼
 @starfleet/shared useFleetSummary()
    │
@@ -52,18 +61,21 @@ useDevice(deviceId) → LaptopDetail
 
 The phone is read-mostly — the only writes are:
 1. Login (`POST /auth/login`)
-2. Admin remediation trigger (`POST /api/devices/:id/trigger`)
-3. FCM token registration (`POST /api/devices/fcm-token`)
+2. Admin device remediation trigger (`POST /api/trigger`)
+3. Admin site remediation trigger (`POST /api/trigger/site`)
+4. Alert acknowledgement (`POST /api/site-changes/:id/ack`) when enabled in UI flows
 
 ## Running locally
 
 ```bash
-cd packages/android
-yarn install
-# Requires a running backend (default: https://api.starfleet.icircles.rw)
-# Override via EXPO_PUBLIC_API_URL env var
-yarn android
+cd packages/mobile
+npm install
+npm run start
+npm run android
 ```
+
+Default API base is currently `https://starfleet.yourdomain.com`. Use the
+Settings screen to point a device at production or a reachable development API.
 
 ## Preview
 
@@ -74,8 +86,9 @@ The preview uses the same colour tokens the RN app reads from `theme/colors.ts`.
 ## Files
 
 ```
-packages/android/
-├── App.tsx                        # Root: JWT restore, theme, nav
+packages/mobile/
+├── src/App.tsx                    # Root: JWT restore, theme, nav
+├── index.js                       # React Native Android entry point
 ├── src/
 │   ├── components/
 │   │   ├── SiteCard.tsx           # Fleet list row
@@ -86,9 +99,12 @@ packages/android/
 │   ├── screens/
 │   │   ├── LoginScreen.tsx
 │   │   ├── SitesScreen.tsx
+│   │   ├── OverviewScreen.tsx
+│   │   ├── MapScreen.tsx
+│   │   ├── StarlinksScreen.tsx
+│   │   ├── AlertsScreen.tsx
 │   │   ├── SiteDetailScreen.tsx
 │   │   ├── LaptopDetailScreen.tsx
-│   │   ├── RankingScreen.tsx
 │   │   └── SettingsScreen.tsx
 │   ├── navigation/
 │   │   ├── RootNavigator.tsx      # Login vs Main
@@ -99,7 +115,7 @@ packages/android/
 │   │   ├── auth.ts                # JWT + API client wiring
 │   │   └── cache.ts               # AsyncStorage site snapshots
 │   ├── hooks/
-│   │   └── useFCM.ts              # Firebase Cloud Messaging
+│   │   └── useFCM.ts              # Push placeholder
 │   └── theme/
 │       └── colors.ts              # light + dark tokens + scoreColor()
 ├── app.json

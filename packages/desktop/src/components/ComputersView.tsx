@@ -18,6 +18,9 @@ export function ComputersView({ isAdmin }: Props) {
   const [q, setQ]                       = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [syncing, setSyncing]           = useState(false);
+  const [refreshingData, setRefreshingData] = useState(false);
+  const [refreshingDeviceId, setRefreshingDeviceId] = useState<number | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const counts = useMemo(() => ({
     all:     devices.length,
@@ -65,6 +68,7 @@ export function ComputersView({ isAdmin }: Props) {
 
   async function syncIntune() {
     setSyncing(true);
+    setActionMessage(null);
     try {
       const result = await makeApi().syncIntuneDevices();
       const failed = result.failed ? ` ${result.failed} failed.` : '';
@@ -74,6 +78,42 @@ export function ComputersView({ isAdmin }: Props) {
       alert(err instanceof Error ? err.message : 'Intune sync failed.');
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function refreshLaptopData() {
+    setRefreshingData(true);
+    setActionMessage(null);
+    try {
+      const api = makeApi();
+      const syncResult = await api.syncIntuneDevices();
+      try {
+        const result = await api.triggerAllDevices('data_pull');
+        const noun = result.count === 1 ? 'laptop' : 'laptops';
+        setActionMessage(`Synced ${syncResult.upserted} Intune devices and queued data refresh for ${result.count} Intune-managed ${noun}.`);
+      } catch (triggerErr) {
+        const detail = triggerErr instanceof Error ? triggerErr.message : 'device push failed';
+        setActionMessage(`Synced ${syncResult.upserted} Intune devices, but device push failed: ${detail}`);
+      }
+      refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Laptop data refresh failed.');
+    } finally {
+      setRefreshingData(false);
+    }
+  }
+
+  async function refreshOneLaptop(deviceId: number) {
+    setRefreshingDeviceId(deviceId);
+    setActionMessage(null);
+    try {
+      await makeApi().triggerScript(deviceId, 'data_pull');
+      setActionMessage('Queued data refresh for 1 laptop.');
+      refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Laptop data refresh failed.');
+    } finally {
+      setRefreshingDeviceId(null);
     }
   }
 
@@ -100,13 +140,25 @@ export function ComputersView({ isAdmin }: Props) {
             />
           </div>
           {isAdmin && (
-            <button className="btn" onClick={() => void syncIntune()} disabled={syncing}>
-              {syncing ? 'Syncing…' : 'Sync Intune'}
-            </button>
+            <>
+              <button className="btn btn--primary" onClick={() => void refreshLaptopData()} disabled={refreshingData || syncing}>
+                {refreshingData ? 'Queuing…' : 'Refresh laptop data'}
+              </button>
+              <button className="btn" onClick={() => void syncIntune()} disabled={syncing || refreshingData}>
+                {syncing ? 'Syncing…' : 'Sync Intune'}
+              </button>
+            </>
           )}
           <button className="btn" onClick={refresh}>Refresh</button>
         </div>
       </div>
+
+      {actionMessage && (
+        <div className="inline-notice">
+          <span>{actionMessage}</span>
+          <span className="muted">Updates appear as laptops complete their next pull.</span>
+        </div>
+      )}
 
       {/* Filter toolbar */}
       <div className="tbl-toolbar">
@@ -142,7 +194,7 @@ export function ComputersView({ isAdmin }: Props) {
                 <th>Intune sync</th>
                 <th>Agent seen</th>
                 <th>Enrolled</th>
-                <th></th>
+                {isAdmin && <th>Action</th>}
               </tr>
             </thead>
             <tbody>
@@ -187,12 +239,23 @@ export function ComputersView({ isAdmin }: Props) {
                   <td className="muted mono" style={{ fontSize: 11.5 }}>
                     {formatRelativeTime(device.intune_enrolled_at)}
                   </td>
-                  <td />
+                  {isAdmin && (
+                    <td className="row-actions">
+                      <button
+                        className="btn btn--sm"
+                        disabled={!device.intune_device_id || refreshingData || refreshingDeviceId !== null}
+                        onClick={() => void refreshOneLaptop(device.id)}
+                        title={device.intune_device_id ? 'Refresh laptop data from this device' : 'This device is not managed by Intune'}
+                      >
+                        {refreshingDeviceId === device.id ? 'Queuing…' : 'Refresh'}
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
               {sorted.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="empty-state">No devices match the current filter.</td>
+                  <td colSpan={isAdmin ? 10 : 9} className="empty-state">No devices match the current filter.</td>
                 </tr>
               )}
             </tbody>
