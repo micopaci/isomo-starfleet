@@ -1083,4 +1083,240 @@ router.get('/export/usage-archive', requireAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── SITE CRUD (admin only) ────────────────────────────────────────────────────
+
+// POST /api/sites — create a new site
+router.post('/sites', requireAdmin, async (req, res, next) => {
+  try {
+    const { name, starlink_sn, location, district, lat, lng, kit_id, starlink_uuid } = req.body || {};
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+    if (!starlink_sn || typeof starlink_sn !== 'string' || !starlink_sn.trim()) {
+      return res.status(400).json({ error: 'starlink_sn is required' });
+    }
+    if (lat != null && (typeof lat !== 'number' || lat < -90 || lat > 90)) {
+      return res.status(400).json({ error: 'lat must be a number between -90 and 90' });
+    }
+    if (lng != null && (typeof lng !== 'number' || lng < -180 || lng > 180)) {
+      return res.status(400).json({ error: 'lng must be a number between -180 and 180' });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO sites (name, starlink_sn, location, district, lat, lng, kit_id, starlink_uuid)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, name, starlink_sn, location, district, lat, lng, kit_id, starlink_uuid, created_at`,
+      [name.trim(), starlink_sn.trim(), location || null, district || null,
+       lat ?? null, lng ?? null, kit_id || null, starlink_uuid || null]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'A site with that starlink_sn already exists' });
+    next(err);
+  }
+});
+
+// PATCH /api/sites/:id — update editable metadata
+router.patch('/sites/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const allowed = ['name', 'location', 'district', 'lat', 'lng', 'starlink_sn', 'kit_id', 'starlink_uuid'];
+    const updates = {};
+    for (const key of allowed) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        updates[key] = req.body[key];
+      }
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    if (updates.name != null && (!updates.name || !String(updates.name).trim())) {
+      return res.status(400).json({ error: 'name cannot be empty' });
+    }
+    if (updates.lat != null && (typeof updates.lat !== 'number' || updates.lat < -90 || updates.lat > 90)) {
+      return res.status(400).json({ error: 'lat must be a number between -90 and 90' });
+    }
+    if (updates.lng != null && (typeof updates.lng !== 'number' || updates.lng < -180 || updates.lng > 180)) {
+      return res.status(400).json({ error: 'lng must be a number between -180 and 180' });
+    }
+
+    const setClauses = Object.keys(updates).map((k, i) => `${k} = $${i + 2}`);
+    const values     = Object.values(updates);
+
+    const { rows } = await pool.query(
+      `UPDATE sites SET ${setClauses.join(', ')} WHERE id = $1
+       RETURNING id, name, starlink_sn, location, district, lat, lng, kit_id, starlink_uuid, created_at`,
+      [id, ...values]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Site not found' });
+    res.json({ ok: true, site: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'A site with that starlink_sn already exists' });
+    next(err);
+  }
+});
+
+// ── SITE NOTES ────────────────────────────────────────────────────────────────
+
+// GET /api/sites/:id/notes
+router.get('/sites/:id/notes', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const limit  = Math.min(parseInt(req.query.limit) || 50, 200);
+    const before = req.query.before;
+
+    let query = `SELECT id, site_id, author, body, created_at, updated_at
+                 FROM site_notes
+                 WHERE site_id = $1`;
+    const params = [id];
+
+    if (before) {
+      query += ` AND created_at < $${params.length + 1}`;
+      params.push(before);
+    }
+    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
+    params.push(limit);
+
+    const { rows } = await pool.query(query, params);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// POST /api/sites/:id/notes
+router.post('/sites/:id/notes', requireAdmin, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { body } = req.body || {};
+    if (!body || typeof body !== 'string' || !body.trim()) {
+      return res.status(400).json({ error: 'body is required' });
+    }
+    if (body.length > 10000) {
+      return res.status(400).json({ error: 'body must be 10000 characters or fewer' });
+    }
+
+    const siteCheck = await pool.query('SELECT id FROM sites WHERE id = $1', [id]);
+    if (!siteCheck.rows.length) return res.status(404).json({ error: 'Site not found' });
+
+    const { rows } = await pool.query(
+      `INSERT INTO site_notes (site_id, author, body)
+       VALUES ($1, $2, $3)
+       RETURNING id, site_id, author, body, created_at, updated_at`,
+      [id, req.user.email, body.trim()]
+    );
+    res.status(201).json({ ok: true, note: rows[0] });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/sites/:id/notes/:noteId
+router.delete('/sites/:id/notes/:noteId', requireAdmin, async (req, res, next) => {
+  try {
+    const { id, noteId } = req.params;
+    const { rowCount } = await pool.query(
+      'DELETE FROM site_notes WHERE id = $1 AND site_id = $2',
+      [noteId, id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Note not found' });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ── BIWEEKLY USAGE ────────────────────────────────────────────────────────────
+
+// GET /api/sites/:id/biweekly-usage
+router.get('/sites/:id/biweekly-usage', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const limit  = Math.min(parseInt(req.query.limit) || 12, 52);
+
+    const { rows } = await pool.query(
+      `SELECT id, site_id, period_start::text, period_end::text,
+              bytes_down, bytes_up, notes, entered_by, entered_at
+       FROM site_biweekly_usage
+       WHERE site_id = $1
+       ORDER BY period_start DESC
+       LIMIT $2`,
+      [id, limit]
+    );
+    res.json(rows.map(r => ({
+      ...r,
+      bytes_down: Number(r.bytes_down),
+      bytes_up:   Number(r.bytes_up),
+    })));
+  } catch (err) { next(err); }
+});
+
+// POST /api/sites/:id/biweekly-usage
+router.post('/sites/:id/biweekly-usage', requireAdmin, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { period_start, period_end, bytes_down, bytes_up, gb_down, gb_up, gb_total, notes } = req.body || {};
+
+    if (!period_start || !period_end) {
+      return res.status(400).json({ error: 'period_start and period_end are required (YYYY-MM-DD)' });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(period_start) || !/^\d{4}-\d{2}-\d{2}$/.test(period_end)) {
+      return res.status(400).json({ error: 'period_start and period_end must be YYYY-MM-DD' });
+    }
+    if (period_end <= period_start) {
+      return res.status(400).json({ error: 'period_end must be after period_start' });
+    }
+
+    const GB = 1024 * 1024 * 1024;
+    let down = 0;
+    let up   = 0;
+
+    if (bytes_down != null) down = Number(bytes_down);
+    else if (gb_down != null) down = Math.round(Number(gb_down) * GB);
+
+    if (bytes_up != null) up = Number(bytes_up);
+    else if (gb_up != null) up = Math.round(Number(gb_up) * GB);
+
+    if (down === 0 && up === 0 && gb_total != null) {
+      const total = Math.round(Number(gb_total) * GB);
+      down = Math.round(total / 2);
+      up   = total - down;
+    }
+
+    if (!Number.isFinite(down) || down < 0 || !Number.isFinite(up) || up < 0) {
+      return res.status(400).json({ error: 'Provide at least one of: bytes_down, bytes_up, gb_down, gb_up, gb_total' });
+    }
+
+    const siteCheck = await pool.query('SELECT id FROM sites WHERE id = $1', [id]);
+    if (!siteCheck.rows.length) return res.status(404).json({ error: 'Site not found' });
+
+    const { rows } = await pool.query(
+      `INSERT INTO site_biweekly_usage (site_id, period_start, period_end, bytes_down, bytes_up, notes, entered_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (site_id, period_start) DO UPDATE SET
+         period_end  = EXCLUDED.period_end,
+         bytes_down  = EXCLUDED.bytes_down,
+         bytes_up    = EXCLUDED.bytes_up,
+         notes       = EXCLUDED.notes,
+         entered_by  = EXCLUDED.entered_by,
+         entered_at  = NOW()
+       RETURNING id, site_id, period_start::text, period_end::text,
+                 bytes_down, bytes_up, notes, entered_by, entered_at`,
+      [id, period_start, period_end, down, up, notes || null, req.user.email]
+    );
+    const row = rows[0];
+    res.status(201).json({
+      ok: true,
+      entry: { ...row, bytes_down: Number(row.bytes_down), bytes_up: Number(row.bytes_up) },
+    });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/sites/:id/biweekly-usage/:entryId
+router.delete('/sites/:id/biweekly-usage/:entryId', requireAdmin, async (req, res, next) => {
+  try {
+    const { id, entryId } = req.params;
+    const { rowCount } = await pool.query(
+      'DELETE FROM site_biweekly_usage WHERE id = $1 AND site_id = $2',
+      [entryId, id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Entry not found' });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

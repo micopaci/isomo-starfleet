@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type {
   Site, SiteDetail, DailyScore, LatencyReading, FleetSummary, Device,
-  UsageHistoryPoint,
+  UsageHistoryPoint, SiteNote, SiteBiweeklyUsage,
   WsStaleDevicesEvent,
 } from './types';
 import type { StarfleetApi } from './api';
@@ -238,6 +238,64 @@ export function useUsageHistory(siteId: number | null, months = 6): {
   }, [api, siteId, months]);
 
   return { usage, loading };
+}
+
+// ─── useSiteNotes ─────────────────────────────────────────────────────────────
+
+export function useSiteNotes(siteId: number | null): {
+  notes: SiteNote[];
+  loading: boolean;
+  refresh: () => void;
+} {
+  const api = useApi();
+  const [notes, setNotes] = useState<SiteNote[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (siteId == null) { setNotes([]); return; }
+    setLoading(true);
+    try {
+      const data = await api.getSiteNotes(siteId);
+      setNotes(data);
+    } catch {
+      setNotes([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [api, siteId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return { notes, loading, refresh: load };
+}
+
+// ─── useBiweeklyUsage ─────────────────────────────────────────────────────────
+
+export function useBiweeklyUsage(siteId: number | null): {
+  entries: SiteBiweeklyUsage[];
+  loading: boolean;
+  refresh: () => void;
+} {
+  const api = useApi();
+  const [entries, setEntries] = useState<SiteBiweeklyUsage[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (siteId == null) { setEntries([]); return; }
+    setLoading(true);
+    try {
+      const data = await api.getBiweeklyUsage(siteId);
+      setEntries(data);
+    } catch {
+      setEntries([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [api, siteId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return { entries, loading, refresh: load };
 }
 
 // ─── useStaleDevices ──────────────────────────────────────────────────────────

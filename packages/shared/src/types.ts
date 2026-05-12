@@ -235,3 +235,48 @@ export interface WsStaleDevicesEvent {
 }
 
 export type WsEvent = WsDeviceOnlineEvent | WsSignalUpdateEvent | WsStaleDevicesEvent;
+
+// ─── Manual data entry types ──────────────────────────────────────────────────
+
+export interface SiteNote {
+  id: number;
+  site_id: number;
+  author: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SiteBiweeklyUsage {
+  id: number;
+  site_id: number;
+  period_start: string;
+  period_end: string;
+  bytes_down: number;
+  bytes_up: number;
+  notes: string | null;
+  entered_by: string;
+  entered_at: string;
+}
+
+export interface CreateSiteInput {
+  name: string;
+  starlink_sn: string;
+  location?: string | null;
+  district?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  kit_id?: string | null;
+  starlink_uuid?: string | null;
+}
+
+export interface UpdateSiteInput {
+  name?: string;
+  location?: string | null;
+  district?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  starlink_sn?: string;
+  kit_id?: string | null;
+  starlink_uuid?: string | null;
+}

@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
-import { Site, TriggerType, computeSignalScore, downloadCsv, siteStatus } from '@starfleet/shared';
+import { Site, TriggerType, CreateSiteInput, computeSignalScore, downloadCsv, siteStatus } from '@starfleet/shared';
 import { StatusChip } from './StatusChip';
 import { DishDrawer } from './DishDrawer';
+import { SiteCreateModal } from './SiteCreateModal';
 
 interface Props {
   sites: Site[];
@@ -12,15 +13,17 @@ interface Props {
     month: string,
     entries: Array<{ site_id: number; gb_total?: number; mb_total?: number; bytes_total?: number }>,
   ) => Promise<void>;
+  onCreateSite: (input: CreateSiteInput) => Promise<void>;
 }
 
 type StatusFilter = 'all' | 'online' | 'degraded' | 'dark';
 
-export function StarlinksView({ sites, isAdmin, onSelectSite, onTriggerSite, onImportMonthlyUsage }: Props) {
+export function StarlinksView({ sites, isAdmin, onSelectSite, onTriggerSite, onImportMonthlyUsage, onCreateSite }: Props) {
   const [q, setQ]                       = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [drawerSiteId, setDrawerSiteId] = useState<number | null>(null);
   const [uploading, setUploading]       = useState(false);
+  const [createOpen, setCreateOpen]     = useState(false);
 
   const counts = useMemo(() => ({
     all:      sites.length,
@@ -94,6 +97,11 @@ export function StarlinksView({ sites, isAdmin, onSelectSite, onTriggerSite, onI
                 aria-label="Search dishes"
               />
             </div>
+            {isAdmin && (
+              <button className="btn btn--primary" onClick={() => setCreateOpen(true)}>
+                + New dish
+              </button>
+            )}
             {isAdmin && (
               <label className={`btn${uploading ? ' is-disabled' : ''}`}>
                 {uploading ? 'Uploading…' : 'Upload monthly data'}
@@ -276,6 +284,13 @@ export function StarlinksView({ sites, isAdmin, onSelectSite, onTriggerSite, onI
         isAdmin={isAdmin}
         onTriggerSite={onTriggerSite}
       />
+
+      {createOpen && (
+        <SiteCreateModal
+          onSave={onCreateSite}
+          onClose={() => setCreateOpen(false)}
+        />
+      )}
     </>
   );
 }
