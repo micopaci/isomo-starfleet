@@ -1,4 +1,7 @@
-import type { Site, SiteDetail, DailyScore, LatencyReading, Device, UsageHistoryPoint, TriggerType } from './types';
+import type {
+  Site, SiteDetail, DailyScore, LatencyReading, Device, UsageHistoryPoint, TriggerType,
+  SiteNote, SiteBiweeklyUsage, CreateSiteInput, UpdateSiteInput,
+} from './types';
 
 export class PermissionError extends Error {
   constructor(message = 'Forbidden') {
@@ -174,6 +177,80 @@ export class StarfleetApi {
   /** GET /api/export/site-usage-monthly — admin only, raw monthly portal totals */
   exportSiteUsageMonthlyCsv(from: string, to: string): Promise<string> {
     return this.requestText(`/api/export/site-usage-monthly?from=${from}&to=${to}`);
+  }
+
+  // ── Site mutations (admin only) ────────────────────────────────────────────
+
+  /** POST /api/sites — create a new site */
+  createSite(input: CreateSiteInput): Promise<Site> {
+    return this.request<Site>('/api/sites', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /** PATCH /api/sites/:id — update editable metadata */
+  updateSite(id: number, input: UpdateSiteInput): Promise<{ ok: boolean; site: Site }> {
+    return this.request<{ ok: boolean; site: Site }>(`/api/sites/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  }
+
+  // ── Site notes ────────────────────────────────────────────────────────────
+
+  /** GET /api/sites/:id/notes */
+  getSiteNotes(siteId: number, limit = 50): Promise<SiteNote[]> {
+    return this.request<SiteNote[]>(`/api/sites/${siteId}/notes?limit=${limit}`);
+  }
+
+  /** POST /api/sites/:id/notes — admin only */
+  addSiteNote(siteId: number, body: string): Promise<{ ok: boolean; note: SiteNote }> {
+    return this.request<{ ok: boolean; note: SiteNote }>(`/api/sites/${siteId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    });
+  }
+
+  /** DELETE /api/sites/:id/notes/:noteId — admin only */
+  deleteSiteNote(siteId: number, noteId: number): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>(`/api/sites/${siteId}/notes/${noteId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // ── Biweekly usage ────────────────────────────────────────────────────────
+
+  /** GET /api/sites/:id/biweekly-usage */
+  getBiweeklyUsage(siteId: number, limit = 12): Promise<SiteBiweeklyUsage[]> {
+    return this.request<SiteBiweeklyUsage[]>(`/api/sites/${siteId}/biweekly-usage?limit=${limit}`);
+  }
+
+  /** POST /api/sites/:id/biweekly-usage — admin only, accepts GB or bytes */
+  addBiweeklyUsage(
+    siteId: number,
+    entry: {
+      period_start: string;
+      period_end: string;
+      bytes_down?: number;
+      bytes_up?: number;
+      gb_down?: number;
+      gb_up?: number;
+      gb_total?: number;
+      notes?: string;
+    },
+  ): Promise<{ ok: boolean; entry: SiteBiweeklyUsage }> {
+    return this.request<{ ok: boolean; entry: SiteBiweeklyUsage }>(
+      `/api/sites/${siteId}/biweekly-usage`,
+      { method: 'POST', body: JSON.stringify(entry) },
+    );
+  }
+
+  /** DELETE /api/sites/:id/biweekly-usage/:entryId — admin only */
+  deleteBiweeklyUsage(siteId: number, entryId: number): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>(`/api/sites/${siteId}/biweekly-usage/${entryId}`, {
+      method: 'DELETE',
+    });
   }
 
   // ── Auth ───────────────────────────────────────────────────────────────────

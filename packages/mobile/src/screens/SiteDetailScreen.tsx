@@ -207,6 +207,36 @@ export function SiteDetailScreen({ route, navigation }: SiteDetailProps) {
           })
         )}
       </View>
+
+      {/* Manual data entry navigation */}
+      <TouchableOpacity
+        style={[styles.navRow, { borderColor: C.rule, backgroundColor: C.surface }]}
+        onPress={() => navigation.navigate('SiteNotes', { siteId, siteName: displaySite.name })}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.navRowLabel, { color: C.ink }]}>Operational notes</Text>
+        <Text style={[styles.chevron, { color: C.muted }]}>›</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.navRow, { borderColor: C.rule, backgroundColor: C.surface }]}
+        onPress={() => navigation.navigate('BiweeklyUsage', { siteId, siteName: displaySite.name })}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.navRowLabel, { color: C.ink }]}>Data usage (bi-weekly)</Text>
+        <Text style={[styles.chevron, { color: C.muted }]}>›</Text>
+      </TouchableOpacity>
+
+      {isAdmin && (
+        <TouchableOpacity
+          style={[styles.navRow, { borderColor: C.rule, backgroundColor: C.surface }]}
+          onPress={() => navigation.navigate('SiteEdit', { siteId })}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.navRowLabel, { color: C.accent }]}>Edit site metadata</Text>
+          <Text style={[styles.chevron, { color: C.muted }]}>›</Text>
+        </TouchableOpacity>
+      )}
     </ScrollView>
   );
 }
@@ -242,4 +272,7 @@ const styles = StyleSheet.create({
   chevron:       { fontSize: 18, marginLeft: 4 },
   emptyText:     { fontSize: 13, textAlign: 'center', paddingVertical: 8 },
   retryBtn:      { borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 },
+  navRow:        { flexDirection: 'row', alignItems: 'center', borderRadius: 10, borderWidth: 1,
+                   paddingHorizontal: 14, paddingVertical: 14, marginBottom: 8 },
+  navRowLabel:   { flex: 1, fontSize: 14, fontWeight: '500' },
 });

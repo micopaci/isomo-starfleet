@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { StarfleetApi, TriggerType, useFleetSummary, siteStatus } from '@starfleet/shared';
+import { StarfleetApi, TriggerType, CreateSiteInput, UpdateSiteInput, useFleetSummary, siteStatus } from '@starfleet/shared';
 import { LoginScreen } from './components/LoginScreen';
 import { Sidebar } from './components/Sidebar';
 import { MetricCards } from './components/MetricCards';
@@ -146,6 +146,33 @@ function AuthedApp({
     alert(`Imported ${result.imported} monthly usage row${result.imported === 1 ? '' : 's'} for ${result.month}.`);
   }, [makeApi]);
 
+  const handleCreateSite = useCallback(async (input: CreateSiteInput) => {
+    await makeApi().createSite(input);
+  }, [makeApi]);
+
+  const handleUpdateSite = useCallback(async (id: number, input: UpdateSiteInput) => {
+    await makeApi().updateSite(id, input);
+  }, [makeApi]);
+
+  const handleAddNote = useCallback(async (siteId: number, body: string) => {
+    await makeApi().addSiteNote(siteId, body);
+  }, [makeApi]);
+
+  const handleDeleteNote = useCallback(async (siteId: number, noteId: number) => {
+    await makeApi().deleteSiteNote(siteId, noteId);
+  }, [makeApi]);
+
+  const handleAddBiweeklyUsage = useCallback(async (
+    siteId: number,
+    entry: { period_start: string; period_end: string; gb_down?: number; gb_up?: number; notes?: string },
+  ) => {
+    await makeApi().addBiweeklyUsage(siteId, entry);
+  }, [makeApi]);
+
+  const handleDeleteBiweeklyUsage = useCallback(async (siteId: number, entryId: number) => {
+    await makeApi().deleteBiweeklyUsage(siteId, entryId);
+  }, [makeApi]);
+
   // Fleet stats for sidebar
   const onlineDishes = sites.filter(s => siteStatus(s) === 'online').length;
   const openAlerts   = sites.filter(s => siteStatus(s) !== 'online').length;
@@ -219,6 +246,11 @@ function AuthedApp({
               const result = await makeApi().triggerScript(deviceId, type);
               alert(`${actionLabel(type)} queued. Trigger #${result.trigger_id}.`);
             }}
+            onUpdateSite={handleUpdateSite}
+            onAddNote={handleAddNote}
+            onDeleteNote={handleDeleteNote}
+            onAddBiweeklyUsage={handleAddBiweeklyUsage}
+            onDeleteBiweeklyUsage={handleDeleteBiweeklyUsage}
           />
         )}
 
@@ -230,6 +262,7 @@ function AuthedApp({
             onSelectSite={handleSelectSite}
             onTriggerSite={handleTriggerSite}
             onImportMonthlyUsage={handleImportMonthlyUsage}
+            onCreateSite={handleCreateSite}
           />
         )}
 
