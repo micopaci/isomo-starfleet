@@ -1,0 +1,65 @@
+name: Deploy Backend to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/backend/**'
+      - '.github/workflows/deploy-backend.yml'
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE: starfleet-backend
+  REGION: us-central1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Google Auth
+        id: auth
+        uses: 'google-github-actions/auth@v2'
+        with:
+          workload_identity_provider: '${{ secrets.WIF_PROVIDER }}'
+          service_account: '${{ secrets.WIF_SERVICE_ACCOUNT }}'
+
+      - name: Set up Cloud SDK
+        uses: 'google-github-actions/setup-gcloud@v2'
+
+      - name: Authorize Docker push
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+      - name: Build and Push Container
+        run: |
+          DOCKER_TAG="us-central1-docker.pkg.dev/${PROJECT_ID}/starfleet-repo/backend:${GITHUB_SHA}"
+          docker build -t "${DOCKER_TAG}" -f packages/backend/Dockerfile .
+          docker push "${DOCKER_TAG}"
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: 'google-github-actions/deploy-cloudrun@v2'
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
+          image: us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/starfleet-repo/backend:${{ github.sha }}
+          flags: '--cpu-boost --no-cpu-throttling'
+          env_vars: |
+            NODE_ENV=production
+          secrets: |
+            DATABASE_URL=DATABASE_URL:latest
+            GRAPH_TENANT_ID=GRAPH_TENANT_ID:latest
+            GRAPH_CLIENT_ID=GRAPH_CLIENT_ID:latest
+            GRAPH_CLIENT_SECRET=GRAPH_CLIENT_SECRET:latest
+            JWT_SECRET=JWT_SECRET:latest
+            ALLOWED_ORIGINS=ALLOWED_ORIGINS:latest
+
+      - name: Show Output
+        run: echo ${{ steps.deploy.outputs.url }}

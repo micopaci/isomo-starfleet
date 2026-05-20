@@ -4,7 +4,7 @@ param(
     [string]$ApiToken,
 
     [int]$SiteId = 0,
-    [string]$ApiBase = "https://api.starfleet.icircles.rw",
+    [string]$ApiBase = "https://starfleet-backend-245671603764.us-central1.run.app",
     [string]$InstallDir = "C:\ProgramData\Starfleet",
     [int]$IntervalMinutes = 5,
     [string]$PingHost = "1.1.1.1",
