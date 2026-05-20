@@ -914,7 +914,7 @@ body {
 // hostname === '' means the file was opened directly (file://) — treat as local.
 const _h = window.location.hostname;
 const _isLocal = _h === '' || _h === 'localhost' || _h === '127.0.0.1';
-const PROD_API  = 'https://starfleet-backend-245671603764.us-central1.run.app';
+const PROD_API  = 'https://api.starfleet.icircles.rw';
 const LOCAL_API = 'http://localhost:3000';
 const DEFAULT_API = _isLocal ? LOCAL_API : PROD_API;
 
