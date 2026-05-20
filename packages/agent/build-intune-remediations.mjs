@@ -24,7 +24,7 @@ for (let i = 2; i < process.argv.length; i += 1) {
   i += 1;
 }
 
-const apiBase = String(args.get('api-base') || 'https://starfleet-backend-245671603764.us-central1.run.app').replace(/\/+$/, '');
+const apiBase = String(args.get('api-base') || 'https://api.starfleet.icircles.rw').replace(/\/+$/, '');
 const adminToken = args.get('admin-token') || process.env.STARFLEET_ADMIN_TOKEN;
 const ttl = args.get('expires-in') || process.env.AGENT_TOKEN_TTL || '365d';
 const siteFilter = String(args.get('site-ids') || '')
