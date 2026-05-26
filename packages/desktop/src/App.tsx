@@ -90,6 +90,19 @@ function AuthedApp({
   const { sites, summary, loading } = useFleetSummary();
   const [activeTab, setActiveTab] = useState<NavTab>('overview');
 
+  const [kpData, setKpData] = useState<{ k_index: number; condition_label?: string } | null>(null);
+
+  useEffect(() => {
+    const token = getStoredToken();
+    if (!token) return;
+    fetch(`${getBaseUrl()}/api/intel/space-weather`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: any[]) => { if (rows.length > 0) setKpData(rows[0]); })
+      .catch(() => {});
+  }, []);
+
   const [role] = useState<'admin' | 'viewer'>(() => {
     try {
       const token = getStoredToken();
@@ -98,6 +111,24 @@ function AuthedApp({
       return payload.role === 'admin' ? 'admin' : 'viewer';
     } catch { return 'viewer'; }
   });
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      const shortcuts: Record<string, NavTab> = {
+        o: 'overview', s: 'starlinks', c: 'computers', u: 'students',
+        a: 'alerts', p: 'campuses', m: 'map',
+      };
+      if (shortcuts[k]) { e.preventDefault(); setActiveTab(shortcuts[k]); return; }
+      if (k === 'escape') { setSelectedId(null); return; }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [setSelectedId]);
 
   // Watch for sites going dark
   useEffect(() => {
@@ -216,6 +247,16 @@ function AuthedApp({
             )}
           </div>
           <div className="topbar__spacer" />
+          {kpData && (
+            <div className="topbar__status">
+              <span>Kp</span>
+              <span className="val" style={{
+                color: kpData.k_index >= 5 ? 'var(--bad)' : kpData.k_index >= 4 ? 'var(--warn)' : 'var(--ok)',
+              }}>
+                {kpData.k_index}{kpData.k_index >= 5 ? ' ⚡' : ''}
+              </span>
+            </div>
+          )}
           <div className="topbar__status">
             <span>Status</span>
             <span className="val">

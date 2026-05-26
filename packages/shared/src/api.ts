@@ -141,6 +141,14 @@ export class StarfleetApi {
     });
   }
 
+  /** POST /ingest/refresh-token — agent only, rotate site-scoped token */
+  refreshAgentToken(deviceSn?: string): Promise<{ token: string; site_id: number; site_name: string | null; expires_in: string }> {
+    return this.request<{ token: string; site_id: number; site_name: string | null; expires_in: string }>('/ingest/refresh-token', {
+      method: 'POST',
+      body: JSON.stringify({ device_sn: deviceSn }),
+    });
+  }
+
   /** POST /api/usage/monthly-import — admin only, import Starlink portal totals */
   importMonthlyUsage(
     month: string,

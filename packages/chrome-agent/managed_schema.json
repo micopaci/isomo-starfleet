@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "apiBase": {
+      "title": "API Base URL",
+      "description": "Starfleet backend URL (e.g. https://starfleet-backend-xxxx.run.app)",
+      "type": "string"
+    },
+    "apiToken": {
+      "title": "Agent Token",
+      "description": "Site-scoped or discovery JWT token for agent authentication",
+      "type": "string"
+    },
+    "siteId": {
+      "title": "Site ID",
+      "description": "Pre-assigned site ID (0 = auto-discover via GPS/identity)",
+      "type": "integer"
+    }
+  }
+}

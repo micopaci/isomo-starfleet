@@ -3,3 +3,4 @@ export * from './api';
 export * from './ws-client';
 export * from './hooks';
 export * from './utils';
+export * from './theme';

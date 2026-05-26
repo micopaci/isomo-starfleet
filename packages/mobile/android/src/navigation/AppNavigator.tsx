@@ -35,7 +35,7 @@ export function AppNavigator({ colors, onLogout, role, email }: Props) {
       } catch { /* silent */ }
     }
     poll();
-    const id = setInterval(poll, 60_000);
+    const id = setInterval(poll, 120_000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 

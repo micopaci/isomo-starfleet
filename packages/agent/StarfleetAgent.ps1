@@ -1718,6 +1718,34 @@ function Request-BootstrapToken {
     }
 }
 
+function Request-TokenRefresh {
+    param(
+        [object]$Config,
+        [string]$DeviceSN
+    )
+
+    try {
+        $headers = Get-AuthHeaders -Config $Config
+        $body = @{ device_sn = $DeviceSN } | ConvertTo-Json -Depth 4 -Compress
+        $res = Invoke-RestMethod -Uri "$($Config.ApiBase)/ingest/refresh-token" -Method POST -Headers $headers -Body $body -TimeoutSec 30
+
+        if ([string]::IsNullOrWhiteSpace([string]$res.token)) {
+            Write-Log "WARN" "Token refresh did not return a new token."
+            return $null
+        }
+
+        Write-Log "INFO" "Token refreshed for site $($res.site_id); expires_in=$($res.expires_in)."
+        return [pscustomobject]@{
+            Token = [string]$res.token
+            SiteId = [int]$res.site_id
+        }
+    } catch {
+        $details = Get-HttpErrorDetails -ErrorRecord $_
+        Write-Log "WARN" "Token refresh failed: $($details.Message)"
+        return $null
+    }
+}
+
 function Queue-Payload {
     param(
         [string]$Endpoint,
@@ -2056,6 +2084,32 @@ try {
         Write-Log "WARN" "Unable to determine site_id yet; reporting laptop under discovery site 0."
         $siteId = 0
     }
+
+    # Token rotation: refresh once per day if we have a site-scoped token
+    if ($config.SiteId -gt 0) {
+        $refreshMarker = Join-Path $DataDir "last_token_refresh.txt"
+        $shouldRefresh = $true
+        if (Test-Path $refreshMarker) {
+            $lastRefresh = Get-Content $refreshMarker -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($lastRefresh) {
+                try {
+                    $lastDt = [datetime]::Parse($lastRefresh)
+                    if (((Get-Date).ToUniversalTime() - $lastDt).TotalHours -lt 24) {
+                        $shouldRefresh = $false
+                    }
+                } catch { }
+            }
+        }
+        if ($shouldRefresh) {
+            $refreshed = Request-TokenRefresh -Config $config -DeviceSN $identity.DeviceSN
+            if ($null -ne $refreshed) {
+                $config.ApiToken = $refreshed.Token
+                Save-AgentConfig -Config $config
+                (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ") | Set-Content $refreshMarker -Force
+            }
+        }
+    }
+
     Save-DeviceIdentity -DeviceSN $identity.DeviceSN -SiteId $siteId
 
     $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")

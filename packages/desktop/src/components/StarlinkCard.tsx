@@ -116,10 +116,47 @@ export function StarlinkCard({ site, isAdmin, onTrigger }: Props) {
             className="btn-secondary"
             onClick={() => {
               const firstDevice = site.devices[0];
+              if (firstDevice) void onTrigger(firstDevice.id, 'diagnostics');
+            }}
+          >
+            ⚙ Diagnostics
+          </button>
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              const firstDevice = site.devices[0];
+              if (firstDevice) void onTrigger(firstDevice.id, 'ping_dish');
+            }}
+          >
+            ⟳ Ping dish
+          </button>
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              const firstDevice = site.devices[0];
               if (firstDevice) void onTrigger(firstDevice.id, 'location_refresh');
             }}
           >
             ↻ Refresh location
+          </button>
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              const firstDevice = site.devices[0];
+              if (firstDevice) void onTrigger(firstDevice.id, 'data_pull');
+            }}
+          >
+            ↓ Pull data
+          </button>
+          <button
+            className="btn-secondary btn-secondary--danger"
+            onClick={() => {
+              if (!window.confirm(`Reboot the Starlink dish at ${site.name}? This will interrupt connectivity for ~2 minutes.`)) return;
+              const firstDevice = site.devices[0];
+              if (firstDevice) void onTrigger(firstDevice.id, 'reboot_starlink');
+            }}
+          >
+            ⏻ Reboot dish
           </button>
         </div>
       )}

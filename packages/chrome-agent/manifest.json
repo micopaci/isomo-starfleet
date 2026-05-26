@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Starfleet Agent",
+  "version": "1.0.0",
+  "description": "Isomo EdTech fleet telemetry agent for managed Chromebooks.",
+  "permissions": [
+    "alarms",
+    "storage",
+    "system.cpu",
+    "system.memory",
+    "system.storage",
+    "system.display",
+    "identity",
+    "idle"
+  ],
+  "host_permissions": [],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "storage": {
+    "managed_schema": "managed_schema.json"
+  },
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

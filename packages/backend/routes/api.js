@@ -14,7 +14,7 @@ const pool    = require('../db');
 const { requireAdmin }   = require('../middleware/auth');
 const { currentSignal }  = require('../services/cache');
 const graphClient        = require('../services/graph');
-const { checkCoverageGap } = require('../services/orbitalSync');
+const { checkCoverageGap, getVisibleSatellites } = require('../services/orbitalSync');
 const {
   DEVICE_ONLINE_HOURS,
   DEVICE_STALE_HOURS,
@@ -571,6 +571,45 @@ router.post('/intune/sync', requireAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── GET /api/intune/sync-health (admin only) ─────────────────────────────────
+// Validates that the Graph sync is populating key device fields.
+router.get('/intune/sync-health', requireAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        COUNT(*)::INT AS total_intune_devices,
+        COUNT(*) FILTER (WHERE model IS NOT NULL)::INT AS has_model,
+        COUNT(*) FILTER (WHERE os IS NOT NULL)::INT AS has_os,
+        COUNT(*) FILTER (WHERE os_version IS NOT NULL)::INT AS has_os_version,
+        COUNT(*) FILTER (WHERE compliance_state IS NOT NULL)::INT AS has_compliance_state,
+        COUNT(*) FILTER (WHERE total_storage_bytes IS NOT NULL)::INT AS has_storage,
+        COUNT(*) FILTER (WHERE device_category IS NOT NULL)::INT AS has_device_category,
+        COUNT(*) FILTER (WHERE intune_synced_at > NOW() - INTERVAL '24 hours')::INT AS synced_last_24h,
+        MAX(intune_synced_at) AS last_sync_at
+      FROM devices
+      WHERE intune_device_id IS NOT NULL
+    `);
+    const stats = rows[0];
+    const total = stats.total_intune_devices;
+    const fields = [
+      { field: 'model', populated: stats.has_model, pct: total ? Math.round(stats.has_model / total * 100) : 0 },
+      { field: 'os', populated: stats.has_os, pct: total ? Math.round(stats.has_os / total * 100) : 0 },
+      { field: 'os_version', populated: stats.has_os_version, pct: total ? Math.round(stats.has_os_version / total * 100) : 0 },
+      { field: 'compliance_state', populated: stats.has_compliance_state, pct: total ? Math.round(stats.has_compliance_state / total * 100) : 0 },
+      { field: 'storage', populated: stats.has_storage, pct: total ? Math.round(stats.has_storage / total * 100) : 0 },
+      { field: 'device_category', populated: stats.has_device_category, pct: total ? Math.round(stats.has_device_category / total * 100) : 0 },
+    ];
+    const healthy = fields.every(f => f.pct >= 80);
+    res.json({
+      healthy,
+      total_intune_devices: total,
+      synced_last_24h: stats.synced_last_24h,
+      last_sync_at: stats.last_sync_at,
+      fields,
+    });
+  } catch (err) { next(err); }
+});
+
 // ── POST /api/agent-tokens (admin only) ──────────────────────────────────────
 // Generates a site-scoped JWT using the same production signing key as login.
 router.post('/agent-tokens', requireAdmin, async (req, res, next) => {
@@ -862,6 +901,30 @@ router.get('/intel/coverage/:site_id', async (req, res, next) => {
       visible_satellites: visible,
       coverage_gap:       visible === 0,
       computed_at:        new Date().toISOString(),
+    });
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/intel/satellites ─────────────────────────────────────────────────
+// Returns current positions of Starlink satellites visible over a bounding box.
+// Defaults to the Rwanda region. Used by the map satellite overlay.
+router.get('/intel/satellites', async (req, res, next) => {
+  try {
+    const minLat = parseFloat(req.query.min_lat ?? '-3.5');
+    const maxLat = parseFloat(req.query.max_lat ?? '0.5');
+    const minLng = parseFloat(req.query.min_lng ?? '28.0');
+    const maxLng = parseFloat(req.query.max_lng ?? '31.5');
+    const limit  = Math.min(Math.max(parseInt(req.query.limit || '200', 10), 1), 500);
+
+    const satellites = await getVisibleSatellites(
+      { minLat, maxLat, minLng, maxLng },
+      limit,
+    );
+
+    res.json({
+      count: satellites.length,
+      computed_at: new Date().toISOString(),
+      satellites,
     });
   } catch (err) { next(err); }
 });

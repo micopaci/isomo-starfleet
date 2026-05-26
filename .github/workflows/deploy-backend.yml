@@ -8,10 +8,15 @@ on:
       - 'packages/backend/**'
       - '.github/workflows/deploy-backend.yml'
 
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   SERVICE: starfleet-backend
   REGION: us-central1
+  IMAGE_REPO: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/starfleet-repo/backend
 
 jobs:
   deploy:
@@ -37,11 +42,23 @@ jobs:
       - name: Authorize Docker push
         run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
+      - name: Capture previous revision
+        id: previous
+        run: |
+          REV=$(gcloud run revisions list \
+            --service="${SERVICE}" \
+            --region="${REGION}" \
+            --format='value(REVISION)' \
+            --sort-by='~CREATED' \
+            --limit=1 2>/dev/null || echo "")
+          echo "revision=${REV}" >> "$GITHUB_OUTPUT"
+
       - name: Build and Push Container
         run: |
-          DOCKER_TAG="us-central1-docker.pkg.dev/${PROJECT_ID}/starfleet-repo/backend:${GITHUB_SHA}"
-          docker build -t "${DOCKER_TAG}" -f packages/backend/Dockerfile .
+          DOCKER_TAG="${IMAGE_REPO}:${GITHUB_SHA}"
+          docker build -t "${DOCKER_TAG}" -t "${IMAGE_REPO}:latest" -f packages/backend/Dockerfile .
           docker push "${DOCKER_TAG}"
+          docker push "${IMAGE_REPO}:latest"
 
       - name: Deploy to Cloud Run
         id: deploy
@@ -49,8 +66,8 @@ jobs:
         with:
           service: ${{ env.SERVICE }}
           region: ${{ env.REGION }}
-          image: us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/starfleet-repo/backend:${{ github.sha }}
-          flags: '--cpu-boost --no-cpu-throttling'
+          image: ${{ env.IMAGE_REPO }}:${{ github.sha }}
+          flags: '--cpu-boost --no-cpu-throttling --max-instances=4 --min-instances=0'
           env_vars: |
             NODE_ENV=production
           secrets: |
@@ -61,5 +78,41 @@ jobs:
             JWT_SECRET=JWT_SECRET:latest
             ALLOWED_ORIGINS=ALLOWED_ORIGINS:latest
 
-      - name: Show Output
-        run: echo ${{ steps.deploy.outputs.url }}
+      - name: Health check
+        id: healthcheck
+        run: |
+          SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          echo "Checking ${SERVICE_URL}/health ..."
+          ATTEMPTS=0
+          MAX_ATTEMPTS=6
+          until [ $ATTEMPTS -ge $MAX_ATTEMPTS ]; do
+            HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' "${SERVICE_URL}/health" --max-time 10 || echo "000")
+            echo "  attempt $((ATTEMPTS+1)): HTTP ${HTTP_CODE}"
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Health check passed."
+              echo "healthy=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            ATTEMPTS=$((ATTEMPTS+1))
+            sleep 10
+          done
+          echo "healthy=false" >> "$GITHUB_OUTPUT"
+          echo "::error::Health check failed after ${MAX_ATTEMPTS} attempts"
+          exit 1
+
+      - name: Rollback on failure
+        if: failure() && steps.previous.outputs.revision != ''
+        run: |
+          echo "::warning::Rolling back to ${{ steps.previous.outputs.revision }}"
+          gcloud run services update-traffic "${SERVICE}" \
+            --region="${REGION}" \
+            --to-revisions="${{ steps.previous.outputs.revision }}=100"
+
+      - name: Deploy summary
+        if: success()
+        run: |
+          echo "### Deployed to Cloud Run" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Service:** ${SERVICE}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Region:** ${REGION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image:** \`${IMAGE_REPO}:${GITHUB_SHA::8}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **URL:** ${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
