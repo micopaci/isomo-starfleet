@@ -123,6 +123,67 @@ async function checkCoverageGap(lat, lng) {
   return visibleSats;
 }
 
+// ── Visible Satellite Positions ──────────────────────────────────────────────
+
+/**
+ * Return positions of Starlink satellites currently above the elevation mask
+ * within a bounding box. Used by the map satellite overlay.
+ *
+ * @param {{minLat:number,maxLat:number,minLng:number,maxLng:number}} bounds
+ * @param {number} [limit=200] Max satellites to return
+ * @returns {Promise<Array<{name:string,lat:number,lng:number,alt_km:number,elevation_deg:number}>>}
+ */
+async function getVisibleSatellites(bounds, limit = 200) {
+  const { rows: tles } = await pool.query('SELECT satellite_name, line1, line2 FROM satellite_tles');
+  if (!tles.length) return [];
+
+  const centerLat = (bounds.minLat + bounds.maxLat) / 2;
+  const centerLng = (bounds.minLng + bounds.maxLng) / 2;
+
+  const observerGd = {
+    latitude:  satellite.degreesToRadians(centerLat),
+    longitude: satellite.degreesToRadians(centerLng),
+    height:    1.5,
+  };
+
+  const now  = new Date();
+  const gmst = satellite.gstime(now);
+  const results = [];
+
+  for (const tle of tles) {
+    if (results.length >= limit) break;
+    try {
+      const satrec = satellite.twoline2satrec(tle.line1, tle.line2);
+      const pv     = satellite.propagate(satrec, now);
+      if (!pv.position || pv.position === false) continue;
+
+      const posEcf     = satellite.eciToEcf(pv.position, gmst);
+      const lookAngles = satellite.ecfToLookAngles(observerGd, posEcf);
+
+      if (lookAngles.elevation < MIN_ELEVATION_RAD) continue;
+
+      const geodetic = satellite.eciToGeodetic(pv.position, gmst);
+      const lat = satellite.degreesLat(geodetic.latitude);
+      const lng = satellite.degreesLong(geodetic.longitude);
+
+      if (lat < bounds.minLat || lat > bounds.maxLat ||
+          lng < bounds.minLng || lng > bounds.maxLng) continue;
+
+      results.push({
+        name: tle.satellite_name,
+        lat,
+        lng,
+        alt_km: Math.round(geodetic.height * 10) / 10,
+        elevation_deg: Math.round(satellite.radiansToDegrees(lookAngles.elevation) * 10) / 10,
+      });
+    } catch {
+      // Bad TLE — skip
+    }
+  }
+
+  return results;
+}
+
 // ── Scheduler ────────────────────────────────────────────────────────────────
 
 /**
@@ -141,4 +202,4 @@ async function scheduleOrbitalCron() {
   }
 }
 
-module.exports = { scheduleOrbitalCron, updateStarlinkTLEs, checkCoverageGap };
+module.exports = { scheduleOrbitalCron, updateStarlinkTLEs, checkCoverageGap, getVisibleSatellites };

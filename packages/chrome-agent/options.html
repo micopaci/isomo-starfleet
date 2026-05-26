@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Starfleet Agent Settings</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; margin: 0; padding: 32px; max-width: 480px; color: #141414; }
+    h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+    p.sub { font-size: 12px; color: #8a867b; margin: 0 0 24px; }
+    label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+    input { display: block; width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #d9d4c5; border-radius: 4px; font-size: 13px; margin-bottom: 16px; }
+    button { padding: 8px 18px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+    .btn-primary { background: #c8553d; color: white; }
+    .status { margin-top: 16px; padding: 10px 12px; font-size: 12px; border-radius: 4px; display: none; }
+    .status.ok { display: block; background: #d9e8d8; color: #3e7d4a; }
+    .status.err { display: block; background: #f2d6d3; color: #b13c3c; }
+  </style>
+</head>
+<body>
+  <h1>Starfleet Agent</h1>
+  <p class="sub">Chromebook fleet telemetry. Managed config overrides these values.</p>
+
+  <label for="apiBase">API Base URL</label>
+  <input id="apiBase" type="url" placeholder="https://starfleet-backend-xxxx.run.app" />
+
+  <label for="apiToken">Agent Token</label>
+  <input id="apiToken" type="password" placeholder="Bearer token from admin" />
+
+  <label for="siteId">Site ID (0 = auto-discover)</label>
+  <input id="siteId" type="number" value="0" min="0" />
+
+  <button class="btn-primary" id="save">Save</button>
+  <div class="status" id="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>

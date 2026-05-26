@@ -569,4 +569,34 @@ router.post('/agent-health', agentHealthLimiter, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── POST /ingest/refresh-token ────────────────────────────────────────────────
+// Exchanges a valid site-scoped agent token for a fresh one with the same claims.
+// The agent calls this periodically to rotate credentials before expiry.
+router.post('/refresh-token', agentHealthLimiter, async (req, res, next) => {
+  try {
+    if (req.user?.role !== 'agent') {
+      return res.status(403).json({ error: 'Forbidden — agent token required' });
+    }
+    const siteId = Number(req.user.site_id ?? 0);
+    if (!siteId) {
+      return res.status(403).json({ error: 'Forbidden — site-scoped token required (discovery tokens cannot be refreshed)' });
+    }
+
+    const deviceSn = req.user.device_sn || req.body.device_sn || null;
+    const expiresIn = normalizeAgentTokenTtl(req.body.expires_in || process.env.AGENT_TOKEN_TTL || '365d');
+    const token = signAgentToken({ siteId, deviceSn, expiresIn });
+
+    const siteRes = await pool.query(`SELECT name FROM sites WHERE id = $1`, [siteId]);
+
+    res.json({
+      token,
+      token_type: 'Bearer',
+      role: 'agent',
+      site_id: siteId,
+      site_name: siteRes.rows[0]?.name || null,
+      expires_in: expiresIn,
+    });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

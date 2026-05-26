@@ -1,0 +1,191 @@
+# Starfleet 4.0 — GCP Cloud Monitoring Alert Policies
+#
+# Apply with:
+#   gcloud alpha monitoring policies create --policy-from-file=alerts.yaml
+#
+# Or import into Terraform via google_monitoring_alert_policy resources.
+# Each document below is a standalone policy definition.
+#
+# Notification channel placeholder: replace NOTIFICATION_CHANNEL_ID with your
+# actual channel (email / PagerDuty / Slack webhook) created via:
+#   gcloud alpha monitoring channels create --type=email --display-name="Starfleet Ops" \
+#     --channel-labels=email_address=ops@isomo.tech
+
+---
+# 1. Backend error-rate spike (5xx > 5% of traffic over 5 min)
+displayName: "Starfleet Backend — High 5xx Error Rate"
+combiner: OR
+conditions:
+  - displayName: "5xx rate > 5%"
+    conditionMonitoringQueryLanguage:
+      query: |
+        fetch cloud_run_revision
+        | metric 'run.googleapis.com/request_count'
+        | filter resource.service_name == 'starfleet-backend'
+        | align rate(5m)
+        | group_by [metric.response_code_class],
+            [request_rate: aggregate(val())]
+        | {
+            5xx: filter metric.response_code_class == '5xx';
+            total: ident
+          }
+        | ratio
+        | every 1m
+        | condition val() > 0.05
+      duration: 300s
+      trigger:
+        count: 1
+documentation:
+  content: |
+    **5xx error rate exceeded 5% of total requests.**
+    Check Cloud Run logs: `severity>=ERROR resource.type="cloud_run_revision" resource.labels.service_name="starfleet-backend"`
+    Dashboard: /health/metrics for fleet stats, /health/db for pool utilization.
+  mimeType: text/markdown
+notificationChannels:
+  - projects/PROJECT_ID/notificationChannels/NOTIFICATION_CHANNEL_ID
+alertStrategy:
+  autoClose: 1800s
+
+---
+# 2. Database connection pool exhaustion (utilization > 85%)
+displayName: "Starfleet Backend — DB Pool Near Exhaustion"
+combiner: OR
+conditions:
+  - displayName: "Pool utilization > 85%"
+    conditionMonitoringQueryLanguage:
+      query: |
+        fetch cloud_run_revision
+        | metric 'logging.googleapis.com/user/starfleet_db_pool_utilization'
+        | filter resource.service_name == 'starfleet-backend'
+        | align mean(5m)
+        | every 1m
+        | condition val() > 85
+      duration: 300s
+      trigger:
+        count: 1
+documentation:
+  content: |
+    **Database connection pool utilization exceeded 85%.**
+    Current pool max is capped per CLAUDE.md to respect Cloud SQL 100-connection limit.
+    Check /health/db endpoint for live pool stats.
+    Consider: reduce Cloud Run max-instances, increase pool idle timeout, or scale Cloud SQL.
+  mimeType: text/markdown
+notificationChannels:
+  - projects/PROJECT_ID/notificationChannels/NOTIFICATION_CHANNEL_ID
+alertStrategy:
+  autoClose: 1800s
+
+---
+# 3. Cold-start latency > 10 seconds
+displayName: "Starfleet Backend — Slow Cold Start"
+combiner: OR
+conditions:
+  - displayName: "Startup latency > 10s"
+    conditionMonitoringQueryLanguage:
+      query: |
+        fetch cloud_run_revision
+        | metric 'run.googleapis.com/container/startup_latencies'
+        | filter resource.service_name == 'starfleet-backend'
+        | align percentile(99, 5m)
+        | every 1m
+        | condition val() > 10000
+      duration: 300s
+      trigger:
+        count: 1
+documentation:
+  content: |
+    **Cloud Run cold-start p99 exceeded 10 seconds.**
+    Mitigations already applied: --cpu-boost --no-cpu-throttling flags.
+    If persistent, consider --min-instances=1 to keep one instance warm (adds cost).
+    Check if new dependencies or migration count increased startup time.
+  mimeType: text/markdown
+notificationChannels:
+  - projects/PROJECT_ID/notificationChannels/NOTIFICATION_CHANNEL_ID
+alertStrategy:
+  autoClose: 3600s
+
+---
+# 4. Stale device count spike (> 20% of fleet offline)
+displayName: "Starfleet Fleet — High Stale Device Count"
+combiner: OR
+conditions:
+  - displayName: "Stale devices > 20% of fleet"
+    conditionMonitoringQueryLanguage:
+      query: |
+        fetch cloud_run_revision
+        | metric 'logging.googleapis.com/user/starfleet_stale_device_ratio'
+        | filter resource.service_name == 'starfleet-backend'
+        | align mean(10m)
+        | every 5m
+        | condition val() > 0.20
+      duration: 600s
+      trigger:
+        count: 1
+documentation:
+  content: |
+    **More than 20% of managed devices are stale (no heartbeat within threshold).**
+    This may indicate: widespread network outage, agent deployment failure, or Starlink service disruption.
+    Check /health/metrics → fleet.stale_devices for current count.
+    Cross-reference with NOAA Kp index for geomagnetic storm correlation.
+  mimeType: text/markdown
+notificationChannels:
+  - projects/PROJECT_ID/notificationChannels/NOTIFICATION_CHANNEL_ID
+alertStrategy:
+  autoClose: 3600s
+
+---
+# 5. Ingest gap — no telemetry received for > 30 minutes
+displayName: "Starfleet Fleet — Ingest Gap"
+combiner: OR
+conditions:
+  - displayName: "No ingest data for 30 min"
+    conditionMonitoringQueryLanguage:
+      query: |
+        fetch cloud_run_revision
+        | metric 'logging.googleapis.com/user/starfleet_newest_ingest_age_sec'
+        | filter resource.service_name == 'starfleet-backend'
+        | align mean(5m)
+        | every 5m
+        | condition val() > 1800
+      duration: 300s
+      trigger:
+        count: 1
+documentation:
+  content: |
+    **No device has ingested telemetry for over 30 minutes.**
+    Possible causes: backend ingest endpoint down, all agents offline, JWT secret rotation broke auth.
+    Check: Cloud Run logs for ingest errors, /health endpoint, agent-side logs.
+  mimeType: text/markdown
+notificationChannels:
+  - projects/PROJECT_ID/notificationChannels/NOTIFICATION_CHANNEL_ID
+alertStrategy:
+  autoClose: 1800s
+
+---
+# 6. Cloud Run instance memory usage > 512 MiB (approaching 1 GiB limit)
+displayName: "Starfleet Backend — High Memory Usage"
+combiner: OR
+conditions:
+  - displayName: "Memory > 512 MiB"
+    conditionMonitoringQueryLanguage:
+      query: |
+        fetch cloud_run_revision
+        | metric 'run.googleapis.com/container/memory/utilizations'
+        | filter resource.service_name == 'starfleet-backend'
+        | align percentile(99, 5m)
+        | every 1m
+        | condition val() > 0.5
+      duration: 600s
+      trigger:
+        count: 1
+documentation:
+  content: |
+    **Container memory utilization exceeded 50% of allocated limit.**
+    Check /health/metrics → memory_mb for current RSS.
+    Look for memory leaks in cron services or WebSocket connections.
+    Consider increasing Cloud Run memory limit if workload legitimately grew.
+  mimeType: text/markdown
+notificationChannels:
+  - projects/PROJECT_ID/notificationChannels/NOTIFICATION_CHANNEL_ID
+alertStrategy:
+  autoClose: 1800s

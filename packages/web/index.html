@@ -11,6 +11,8 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
@@ -546,14 +548,15 @@ body {
   padding: 0;
   border-right: 1px solid var(--rule);
   background: var(--surface-2);
-  /* Force SVG to fill naturally — no empty whitespace */
-  aspect-ratio: 10 / 8;
+  min-height: 520px;
   overflow: hidden;
 }
-.map-svg {
-  width: 100%; height: 100%; display: block;
-  /* Fill the container instead of letterboxing */
-  preserveAspectRatio: none;
+.map-stage .maplibregl-map { width: 100%; height: 100%; }
+.starfleet-popup .maplibregl-popup-content {
+  padding: 8px 10px;
+  border-radius: 2px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  font-family: var(--font-ui);
 }
 .map-legend {
   display: flex; gap: 14px;
@@ -561,6 +564,45 @@ body {
   color: var(--muted);
 }
 .map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+.layer-hud {
+  position: absolute; top: 12px; left: 12px; z-index: 4;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  padding: 8px 0;
+  font-size: 12px;
+  min-width: 160px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+}
+.layer-hud__title {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 2px 12px 6px;
+}
+.layer-hud__item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.layer-hud__item:hover { background: var(--bg-2); }
+.layer-hud__item .key {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  width: 14px;
+  text-align: center;
+}
+.layer-hud__item .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.layer-hud__item.is-off { opacity: 0.45; }
+.layer-hud__item.is-off .dot { background: var(--muted) !important; }
 
 .map-side {
   padding: 18px 16px;
@@ -593,7 +635,7 @@ body {
 
 @media (max-width: 960px) {
   .map-wrap { grid-template-columns: 1fr; }
-  .map-stage { border-right: 0; border-bottom: 1px solid var(--rule); aspect-ratio: 4/3; }
+  .map-stage { border-right: 0; border-bottom: 1px solid var(--rule); min-height: 380px; }
   .map-side { max-height: 340px; }
 }
 
@@ -1409,7 +1451,7 @@ function WeatherCell({ dish }) {
   );
 }
 
-function Overview({ data, ui, onOpenDish, onJump }) {
+function Overview({ data, ui, onOpenDish, onJump, onRunDiagnostics }) {
   const online = data.DISHES.filter(d=>d.status==='online').length;
   const degraded = data.DISHES.filter(d=>d.status==='degraded').length;
   const offline = data.DISHES.filter(d=>d.status==='offline').length;
@@ -1430,7 +1472,7 @@ function Overview({ data, ui, onOpenDish, onJump }) {
           <p className="view__lede">One dish in Gashora is offline. Two students on degraded links. Everything else is humming.</p>
         </div>
         <div className="view__actions">
-          <button className="btn">Run diagnostics</button>
+          {onRunDiagnostics && <button className="btn" onClick={onRunDiagnostics}>Run diagnostics</button>}
           <button className="btn btn--primary">Open runbook</button>
         </div>
       </div>
@@ -1810,10 +1852,11 @@ window._VIEWS = { Overview, Starlinks, Computers, Students, Alerts, Campuses, Mi
 
   <!-- ── Drawer ── -->
   <script type="text/babel">
-const { useEffect: dUE } = React;
+const { useEffect: dUE, useState: dUS } = React;
 const { StatusDot: SDot, StatusChip: SChip, Stat: StatC, Icon: Ic, campusName: cName, Sparkline: Spk } = window._SF;
 
 function DishDetail({ dish, data, onClose }) {
+  const [busyAction, setBusy] = dUS(null);
   dUE(() => {
     if (!dish) return;
     const onKey = e => { if (e.key==='Escape') onClose(); };
@@ -1821,7 +1864,23 @@ function DishDetail({ dish, data, onClose }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [dish, onClose]);
   if (!dish) return null;
+  const siteId = dish._siteId || dish.campus;
   const related = data.STUDENTS.filter(s=>s.campus===dish.campus).slice(0,5);
+
+  async function triggerSite(type) {
+    if (busyAction) return;
+    if (type === 'reboot_starlink' && !confirm(`Reboot the Starlink dish at ${dish.name}? This will interrupt connectivity for ~2 minutes.`)) return;
+    setBusy(type);
+    try {
+      const res = await window._API.apiPost('/api/trigger/site', { site_id: siteId, type });
+      alert(`${triggerLabel(type)} queued for ${dish.name} on ${res.count} device${res.count === 1 ? '' : 's'}.`);
+    } catch (err) {
+      alert(`Failed: ${err.message || err}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <>
       <div className="scrim" onClick={onClose} />
@@ -1887,21 +1946,44 @@ function DishDetail({ dish, data, onClose }) {
             ))}
           </ul>
         </section>
+        <section className="drawer__section">
+          <h4 className="panel__subtitle">Remediation actions</h4>
+          <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+            <button className="btn" onClick={()=>triggerSite('diagnostics')} disabled={!!busyAction}>
+              {busyAction==='diagnostics' ? 'Queuing…' : '⚙ Diagnostics'}
+            </button>
+            <button className="btn" onClick={()=>triggerSite('ping_dish')} disabled={!!busyAction}>
+              {busyAction==='ping_dish' ? 'Queuing…' : '⟳ Ping dish'}
+            </button>
+            <button className="btn" onClick={()=>triggerSite('data_pull')} disabled={!!busyAction}>
+              {busyAction==='data_pull' ? 'Queuing…' : '↓ Pull data'}
+            </button>
+            <button className="btn" onClick={()=>triggerSite('location_refresh')} disabled={!!busyAction}>
+              {busyAction==='location_refresh' ? 'Queuing…' : '↻ Location'}
+            </button>
+            <button className="btn" onClick={()=>triggerSite('reboot_starlink')} disabled={!!busyAction}>
+              {busyAction==='reboot_starlink' ? 'Queuing…' : '⏻ Reboot dish'}
+            </button>
+          </div>
+        </section>
         <footer className="drawer__foot">
-          <button className="btn">Ping dish</button>
-          <button className="btn">Reboot</button>
-          <button className="btn btn--primary">Open in Starlink</button>
+          <button className="btn" onClick={onClose}>Close</button>
+          <button className="btn btn--primary" onClick={()=>window.open('https://www.starlink.com/account/home','_blank','noopener')}>Open in Starlink</button>
         </footer>
       </aside>
     </>
   );
+}
+function triggerLabel(type) {
+  const labels = { diagnostics:'Diagnostics', ping_dish:'Dish ping', data_pull:'Data pull', location_refresh:'Location refresh', reboot_starlink:'Starlink reboot' };
+  return labels[type] || type;
 }
 window._DishDetail = DishDetail;
   </script>
 
   <!-- ── Map ── -->
   <script type="text/babel">
-const { useState: mUS, useMemo: mUM, useEffect: mUE } = React;
+const { useState: mUS, useMemo: mUM, useEffect: mUE, useRef: mUR, useCallback: mUC } = React;
 const { StatusDot: MSDot, StatusChip: MSChip, Stat: MStat } = window._SF;
 
 // Rwanda geographic bounds — slightly padded to keep all border sites inside
@@ -1975,9 +2057,232 @@ function PinTooltip({ p, flip }) {
   );
 }
 
+const RWANDA_CENTER = [29.87, -1.94];
+const TILE_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+const DARK_TILE_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+
+function pinColor(tone) {
+  if (tone === 'ok') return '#3e7d4a';
+  if (tone === 'warn') return '#b7791f';
+  return '#b13c3c';
+}
+
+function MapStage({ pins, selected, onSelect, flyToId, satellites }) {
+  const containerRef = mUR(null);
+  const mapRef = mUR(null);
+  const markersRef = mUR([]);
+  const satMarkersRef = mUR([]);
+  const popupRef = mUR(null);
+  const prevFlyRef = mUR(null);
+
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+  mUE(() => {
+    if (!containerRef.current || mapRef.current) return;
+
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: isDark ? DARK_TILE_STYLE : TILE_STYLE,
+      center: RWANDA_CENTER,
+      zoom: 8,
+      maxBounds: [[28.36, -3.34], [31.40, -0.55]],
+      attributionControl: false,
+    });
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
+    map.addControl(new maplibregl.ScaleControl({ maxWidth: 120 }), 'bottom-left');
+
+    mapRef.current = map;
+
+    return () => { map.remove(); mapRef.current = null; };
+  }, []);
+
+  mUE(() => {
+    const map = mapRef.current;
+    if (!map || !flyToId || flyToId === prevFlyRef.current) return;
+    prevFlyRef.current = flyToId;
+    const pin = pins.find(p => p.id === selected);
+    if (pin && pin.lat != null && pin.lng != null) {
+      map.flyTo({ center: [pin.lng, pin.lat], zoom: 11, duration: 800 });
+    }
+  }, [flyToId, selected, pins]);
+
+  mUE(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+    if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
+
+    pins.forEach(p => {
+      if (p.lat == null || p.lng == null) return;
+      const color = pinColor(p.health.tone);
+      const isSel = p.id === selected;
+      const size = isSel ? 14 : 10;
+
+      const el = document.createElement('div');
+      el.style.cssText = `
+        width: ${size + 6}px; height: ${size + 6}px; border-radius: 50%;
+        background: white; border: 2px solid ${color};
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; transition: transform 0.15s;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      `;
+      if (isSel) el.style.transform = 'scale(1.2)';
+
+      const inner = document.createElement('div');
+      inner.style.cssText = `
+        width: ${size - 4}px; height: ${size - 4}px;
+        border-radius: 50%; background: ${color};
+      `;
+      el.appendChild(inner);
+
+      el.addEventListener('click', (e) => { e.stopPropagation(); onSelect(p.id); });
+
+      el.addEventListener('mouseenter', () => {
+        const popup = new maplibregl.Popup({
+          closeButton: false, closeOnClick: false, offset: 12,
+          className: 'starfleet-popup',
+        })
+          .setLngLat([p.lng, p.lat])
+          .setHTML(`
+            <div style="font-family: var(--font-ui); font-size: 12px;">
+              <strong>${p.name}</strong><br/>
+              <span style="color: #888;">${p.health.onlineDishes}/${p.health.dishes} dishes · ${p.health.pcs} PCs</span>
+            </div>
+          `)
+          .addTo(map);
+        popupRef.current = popup;
+      });
+
+      el.addEventListener('mouseleave', () => {
+        if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
+      });
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([p.lng, p.lat])
+        .addTo(map);
+      markersRef.current.push(marker);
+    });
+  }, [pins, selected]);
+
+  // Satellite overlay
+  mUE(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    satMarkersRef.current.forEach(m => m.remove());
+    satMarkersRef.current = [];
+
+    if (!satellites || !satellites.length) return;
+
+    satellites.forEach(sat => {
+      const el = document.createElement('div');
+      el.style.cssText = `
+        width: 6px; height: 6px; border-radius: 50%;
+        background: #e8856f; opacity: 0.7;
+        box-shadow: 0 0 4px rgba(232,133,111,0.6);
+        pointer-events: auto; cursor: default;
+      `;
+
+      el.addEventListener('mouseenter', () => {
+        const popup = new maplibregl.Popup({
+          closeButton: false, closeOnClick: false, offset: 8,
+          className: 'starfleet-popup',
+        })
+          .setLngLat([sat.lng, sat.lat])
+          .setHTML(`
+            <div style="font-family: var(--font-ui); font-size: 11px;">
+              <strong>${sat.name}</strong><br/>
+              <span style="color: #888;">Alt ${sat.alt_km} km · El ${sat.elevation_deg}°</span>
+            </div>
+          `)
+          .addTo(map);
+        popupRef.current = popup;
+      });
+      el.addEventListener('mouseleave', () => {
+        if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
+      });
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([sat.lng, sat.lat])
+        .addTo(map);
+      satMarkersRef.current.push(marker);
+    });
+  }, [satellites]);
+
+  return React.createElement('div', {
+    className: 'map-stage',
+    ref: containerRef,
+  });
+}
+
+const MAP_LAYERS = [
+  { id: 'sites',    label: 'Sites',         color: 'var(--ok)',     key: '1' },
+  { id: 'kp',       label: 'Space weather',  color: '#7c5cfc',      key: '2' },
+  { id: 'weather',  label: 'Weather',        color: '#5ba3d9',      key: '3' },
+  { id: 'passes',   label: 'Sat passes',     color: '#e8856f',      key: '4' },
+  { id: 'alerts',   label: 'Alerts',         color: 'var(--bad)',    key: '5' },
+  { id: 'coverage', label: 'Coverage zones',  color: 'var(--warn)',  key: '6' },
+  { id: 'labels',   label: 'Labels',         color: 'var(--muted)', key: '7' },
+];
+
+function LayerHUD({ layers, onToggle }) {
+  return (
+    <div className="layer-hud">
+      <div className="layer-hud__title">Layers</div>
+      {MAP_LAYERS.map(l => (
+        <div
+          key={l.id}
+          className={`layer-hud__item ${layers[l.id] ? '' : 'is-off'}`}
+          onClick={() => onToggle(l.id)}
+        >
+          <span className="key">{l.key}</span>
+          <span className="dot" style={{ background: l.color }} />
+          <span>{l.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function MapView({ data, onOpenDish, onJump }) {
   const [hovered,  setHovered]  = mUS(null);
   const [selected, setSelected] = mUS(null);
+  const [flyToId,  setFlyToId]  = mUS(0);
+  const [layers, setLayers] = mUS({ sites: true, kp: false, weather: false, passes: false, alerts: true, coverage: false, labels: true });
+  const [satellites, setSatellites] = mUS([]);
+
+  // Fetch satellite positions when passes layer is on; refresh every 30s
+  mUE(() => {
+    if (!layers.passes) { setSatellites([]); return; }
+    let cancelled = false;
+    const fetchSats = () => {
+      window._API.apiFetch('/api/intel/satellites')
+        .then(res => { if (!cancelled) setSatellites(res.satellites || []); })
+        .catch(() => {});
+    };
+    fetchSats();
+    const timer = setInterval(fetchSats, 60_000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [layers.passes]);
+
+  const toggleLayer = mUC((id) => setLayers(prev => ({ ...prev, [id]: !prev[id] })), []);
+
+  mUE(() => {
+    const handler = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const n = parseInt(e.key, 10);
+      if (n >= 1 && n <= 7) {
+        e.preventDefault();
+        toggleLayer(MAP_LAYERS[n - 1].id);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [toggleLayer]);
 
   // Auto-select first campus once data loads
   mUE(() => {
@@ -2023,125 +2328,11 @@ function MapView({ data, onOpenDish, onJump }) {
       </div>
 
       {/* ── Map + side panel ── */}
-      <section className="panel map-wrap">
+      <section className="panel map-wrap" style={{ position: 'relative' }}>
 
-        {/* ── SVG map ── */}
-        <div className="map-stage">
-          <svg viewBox="0 0 1000 800" className="map-svg" preserveAspectRatio="xMidYMid slice">
-            <defs>
-              <filter id="pinShadow" x="-50%" y="-50%" width="200%" height="200%">
-                <feDropShadow dx="0" dy="1" stdDeviation="2" floodOpacity="0.2" />
-              </filter>
-              {/* Clip lakes to Rwanda's border so they don't bleed outside */}
-              <clipPath id="rwandaClip">
-                <g transform={RW_TRANSFORM}>
-                  {RW_PROVINCES.map(p => <path key={p.id} d={p.d} />)}
-                </g>
-              </clipPath>
-            </defs>
-
-            {/* background */}
-            <rect width="1000" height="800" fill="var(--surface-2)" />
-
-            {/* Rwanda provinces — fill with province dividers */}
-            <g transform={RW_TRANSFORM}>
-              {RW_PROVINCES.map(p => (
-                <path key={p.id} d={p.d} fill="var(--bg)" stroke="var(--rule)" strokeWidth="0.7" strokeLinejoin="round" />
-              ))}
-            </g>
-            {/* Outer glow accent over province outlines */}
-            <g transform={RW_TRANSFORM} opacity="0.35">
-              {RW_PROVINCES.map(p => (
-                <path key={'a' + p.id} d={p.d} fill="none" stroke="var(--accent-soft)" strokeWidth="3.5" strokeLinejoin="round" />
-              ))}
-            </g>
-
-            {/* Lakes — clipped to Rwanda boundary */}
-            <g clipPath="url(#rwandaClip)">
-              {LAKES.map(l => (
-                <ellipse key={l.label} cx={l.cx} cy={l.cy} rx={l.rx} ry={l.ry}
-                  fill="#b8d4e8" stroke="#9cbdd4" strokeWidth="1" opacity="0.7" />
-              ))}
-            </g>
-            {/* Lake labels outside clip so text is always readable */}
-            {LAKES.map(l => (
-              <text key={l.label + '-lbl'} x={l.lx} y={l.ly} fontSize="10" fill="#7899aa"
-                fontFamily="var(--font-mono)" letterSpacing="0.1em" textAnchor="middle">
-                {l.label}
-              </text>
-            ))}
-
-            {/* City reference dots */}
-            {cityPts.map(c => (
-              <g key={c.name}>
-                <circle cx={c.x} cy={c.y} r="3" fill="var(--ink-3)" />
-                <text x={c.x + 7} y={c.y + 4} fontSize="11" fill="var(--ink-3)"
-                  fontFamily="var(--font-mono)" letterSpacing="0.04em">{c.name}</text>
-              </g>
-            ))}
-
-            {/* Connector line to selected */}
-            {sel && (
-              <line x1={sel.x} y1={sel.y} x2={sel.x} y2={sel.y - 36}
-                stroke="var(--accent)" strokeWidth="1.5" strokeDasharray="3 4" opacity="0.7" />
-            )}
-
-            {/* Pins — render selected/hovered last so they sit on top */}
-            {[...pins].sort((a,b) => {
-              const rank = id => id === selected ? 2 : id === hovered ? 1 : 0;
-              return rank(a.id) - rank(b.id);
-            }).map(p => {
-              const isSel = p.id === selected, isHov = p.id === hovered;
-              const tc = p.health.tone === 'ok' ? 'var(--ok)' : p.health.tone === 'warn' ? 'var(--warn)' : 'var(--bad)';
-              // All pins share the same outer ring size — only stroke + inner dot change
-              const OUTER = 12, INNER = isSel ? 7 : 5;
-              const sw    = isSel ? 2.5 : isHov ? 2 : 1.5;
-              const showLabel = isSel || isHov;
-              const flipLabel = p.x > 800;
-              return (
-                <g key={p.id}
-                  onMouseEnter={() => setHovered(p.id)}
-                  onMouseLeave={() => setHovered(null)}
-                  onClick={() => setSelected(p.id)}
-                  style={{ cursor: 'pointer' }}>
-
-                  {/* Pulse ring for critical sites — same base size */}
-                  {p.health.tone === 'bad' && (
-                    <circle cx={p.x} cy={p.y} r={OUTER + 4} fill={tc} opacity="0.12">
-                      <animate attributeName="r" values={`${OUTER+4};${OUTER+14};${OUTER+4}`} dur="2.4s" repeatCount="indefinite" />
-                      <animate attributeName="opacity" values="0.2;0;0.2" dur="2.4s" repeatCount="indefinite" />
-                    </circle>
-                  )}
-
-                  {/* Outer ring — always r=OUTER */}
-                  <circle cx={p.x} cy={p.y} r={OUTER} fill="var(--surface)"
-                    stroke={tc} strokeWidth={sw} filter="url(#pinShadow)" />
-                  {/* Inner dot — slightly larger when selected */}
-                  <circle cx={p.x} cy={p.y} r={INNER} fill={tc} opacity={isHov || isSel ? 1 : 0.9} />
-
-                  {/* Tooltip — only on hover or selection */}
-                  {showLabel && <PinTooltip p={p} flip={flipLabel} />}
-                </g>
-              );
-            })}
-
-            {/* Scale bar */}
-            <g transform="translate(40 755)" fontFamily="var(--font-mono)">
-              <line x1="0" y1="0" x2="70" y2="0" stroke="var(--ink-3)" strokeWidth="1.5" />
-              <line x1="0" y1="-4" x2="0" y2="4" stroke="var(--ink-3)" strokeWidth="1.5" />
-              <line x1="70" y1="-4" x2="70" y2="4" stroke="var(--ink-3)" strokeWidth="1.5" />
-              <text x="35" y="16" fontSize="10" fill="var(--muted)" textAnchor="middle" letterSpacing="0.08em">50 KM</text>
-            </g>
-
-            {/* Compass */}
-            <g transform="translate(950 55)">
-              <circle r="14" fill="var(--surface)" stroke="var(--rule)" strokeWidth="1" opacity="0.85"/>
-              <path d="M 0 -10 L 3.5 0 L 0 10 L -3.5 0 Z" fill="var(--accent)" />
-              <text y="-18" fontSize="10" fill="var(--muted)" textAnchor="middle"
-                letterSpacing="0.1em" fontFamily="var(--font-mono)">N</text>
-            </g>
-          </svg>
-        </div>
+        {/* ── MapLibre GL map ── */}
+        <MapStage pins={layers.sites ? pins : []} selected={selected} onSelect={setSelected} flyToId={flyToId} satellites={layers.passes ? satellites : []} />
+        <LayerHUD layers={layers} onToggle={toggleLayer} />
 
         {/* ── Side panel ── */}
         <aside className="map-side">
@@ -2222,7 +2413,7 @@ function MapView({ data, onOpenDish, onJump }) {
             </thead>
             <tbody>
               {pins.map(p => (
-                <tr key={p.id} onClick={() => setSelected(p.id)}
+                <tr key={p.id} onClick={() => { setSelected(p.id); setFlyToId(f => f + 1); }}
                   className={`tbl__row--click ${p.id === selected ? 'is-selected' : ''}`}>
                   <td><div className="cell-primary">{p.name}</div></td>
                   <td>
@@ -2378,6 +2569,15 @@ function App() {
   const [campus, setCampus] = aUS('all');
   const [dish, setDish] = aUS(null);
   const [ackedAlerts, setAckedAlerts] = aUS({});
+  const [kpData, setKpData] = aUS(null);
+  const [isAdmin] = aUS(() => {
+    try {
+      const tok = localStorage.getItem('sf_tok');
+      if (!tok) return false;
+      const payload = JSON.parse(atob(tok.split('.')[1]));
+      return payload.role === 'admin';
+    } catch { return false; }
+  });
 
   // Expose logout handler — must be set before loadAll fires
   window._SF_LOGOUT = () => { setAuthed(false); setSites([]); setDevices([]); setLoadErr(null); };
@@ -2390,12 +2590,14 @@ function App() {
     setLoading(true);
     setLoadErr(null);
     try {
-      const [s, d] = await Promise.all([
+      const [s, d, kp] = await Promise.all([
         window._API.apiFetch('/api/sites'),
         window._API.apiFetch('/api/devices').catch(() => []),
+        window._API.apiFetch('/api/intel/space-weather').catch(() => []),
       ]);
       setSites(s);
       setDevices(d);
+      if (kp && kp.length > 0) setKpData(kp[0]);
     } catch (e) {
       console.error('[Starfleet]', e.message);
       // Don't overwrite error on session expiry (logout already triggered)
@@ -2429,17 +2631,36 @@ function App() {
     }
   };
 
-  // Boot: load + poll + WebSocket
+  const runFleetDiagnostics = async () => {
+    if (!confirm('Run diagnostics on all Intune-managed devices across the fleet?')) return;
+    try {
+      const res = await window._API.apiPost('/api/trigger/devices', { type: 'diagnostics' });
+      alert(`Diagnostics queued for ${res.count} device${res.count === 1 ? '' : 's'}.`);
+    } catch (e) {
+      alert(`Diagnostics failed: ${e.message || e}`);
+    }
+  };
+
+  // Boot: load + WebSocket (fallback poll only when WS is down)
   aUE(() => {
     if (!authed) return;
     loadAll();
-    const pollTimer = setInterval(loadAll, 30_000);
+    let wsAlive = false;
+    let pollTimer = null;
 
-    // WebSocket
+    const startFallbackPoll = () => {
+      if (!pollTimer) pollTimer = setInterval(loadAll, 120_000);
+    };
+    const stopFallbackPoll = () => {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    };
+
     try {
       const wsUrl = window._API.getBase().replace(/^http/, 'ws') + '?token=' + encodeURIComponent(localStorage.getItem('sf_tok') || '');
       const ws = new WebSocket(wsUrl);
       ws.onopen = () => {
+        wsAlive = true;
+        stopFallbackPoll();
         ws.send(JSON.stringify({ type: 'auth', token: localStorage.getItem('sf_tok') || '' }));
       };
       ws.onmessage = e => {
@@ -2460,11 +2681,11 @@ function App() {
           }
         } catch { /* ignore malformed frames */ }
       };
-      ws.onclose = () => {};
+      ws.onclose = () => { wsAlive = false; startFallbackPoll(); };
       ws.onerror = () => {};
-    } catch { /* WS unavailable — polling keeps data fresh */ }
+    } catch { startFallbackPoll(); }
 
-    return () => clearInterval(pollTimer);
+    return () => stopFallbackPoll();
   }, [authed]);
 
   // Theme / accent / type
@@ -2482,6 +2703,23 @@ function App() {
   }, [tweaks.theme, tweaks.accent, tweaks.typePairing]);
 
   const patch = upd => setTweaks(prev => ({...prev,...upd}));
+
+  // Keyboard shortcuts
+  aUE(() => {
+    const handler = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      const shortcuts = {
+        o: 'overview', s: 'starlinks', c: 'computers', u: 'students',
+        a: 'alerts', p: 'campuses', m: 'map',
+      };
+      if (shortcuts[k]) { e.preventDefault(); setTab(shortcuts[k]); return; }
+      if (k === 'escape') { setDish(null); setTweaksOpen(false); return; }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   if (!authed) return <LoginScreen onLogin={() => { setAuthed(true); }} />;
 
@@ -2557,6 +2795,14 @@ function App() {
                 <span className="lbl">Status</span>
                 <span className="val">{criticalCount?'⚠ '+criticalCount+' critical':'All systems normal'}</span>
               </div>
+              {kpData && (
+                <div className="top__pulse__item">
+                  <span className="lbl">Kp</span>
+                  <span className="val" style={{ color: kpData.k_index >= 5 ? 'var(--bad)' : kpData.k_index >= 4 ? 'var(--warn)' : 'var(--ok)' }}>
+                    {kpData.k_index}{kpData.k_index >= 5 ? ' ⚡' : ''}
+                  </span>
+                </div>
+              )}
               <div className="top__pulse__item"><span className="lbl">Now</span><span className="val">Kigali CAT</span></div>
             </div>
           )}
@@ -2593,7 +2839,22 @@ function App() {
           </div>
         )}
 
-        {tab==='overview'  && <Overview  data={liveData} ui={tweaks} onOpenDish={setDish} onJump={setTab} />}
+        {kpData && kpData.k_index >= 5 && (
+          <div style={{
+            margin:'24px 28px 0',padding:'12px 18px',borderRadius:0,
+            background:'var(--warn-soft)',border:'1px solid var(--warn)',
+            fontFamily:'var(--font-mono)',fontSize:12,color:'var(--warn)',
+            display:'flex',alignItems:'center',gap:10,
+          }}>
+            <span style={{fontSize:16}}>⚡</span>
+            <span>
+              <strong>Geomagnetic storm active</strong> — NOAA Kp index is {kpData.k_index} ({kpData.condition_label || 'G'+(kpData.k_index-4)+' storm'}).
+              Starlink latency and signal quality may be degraded.
+            </span>
+          </div>
+        )}
+
+        {tab==='overview'  && <Overview  data={liveData} ui={tweaks} onOpenDish={setDish} onJump={setTab} onRunDiagnostics={isAdmin ? runFleetDiagnostics : null} />}
         {tab==='starlinks' && <Starlinks data={liveData} filter={{campus}} onOpenDish={setDish} />}
         {tab==='computers' && (
           <Computers

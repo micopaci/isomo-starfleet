@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(pip3:*)",
+      "Bash(pwsh:*)",
+      "Bash(psql:*)",
+      "Bash(crontab -l)",
+      "Bash(crontab -e)",
+      "Bash(curl:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(Invoke-Pester:*)",
+      "Read(**)",
+      "Write(osint/**)",
+      "Write(db/migrations/**)",
+      "Write(provisioning/validate.ps1)",
+      "Write(provisioning/validate_report_schema.json)",
+      "Write(provisioning/tests/**)",
+      "Write(provisioning/reports/**)",
+      "Write(agents/**)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
+      "Bash(DROP DATABASE:*)",
+      "Write(db/schema.sql)",
+      "Write(provisioning/autounattend.xml)",
+      "Write(provisioning/enrollment.ppkg)",
+      "Write(desktop/**)",
+      "Write(mobile/**)"
+    ]
+  },
+  "env": {
+    "PYTHONPATH": "${workspaceRoot}",
+    "PSMODULEPATH": "${workspaceRoot}/agent/modules"
+  }
+}

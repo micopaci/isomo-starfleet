@@ -1,0 +1,88 @@
+# Starfleet 4.0 — Log-based Metrics for GCP Cloud Monitoring
+#
+# These metrics are extracted from structured JSON logs emitted by requestLog.js
+# and the /health/metrics endpoint. Create via:
+#
+#   gcloud logging metrics create METRIC_NAME --config-from-file=<file>
+#
+# Or define in Terraform via google_logging_metric resources.
+
+---
+# 1. Count of 5xx responses (from request logger)
+name: starfleet_5xx_count
+description: "Count of HTTP 5xx responses from Starfleet backend"
+filter: |
+  resource.type="cloud_run_revision"
+  resource.labels.service_name="starfleet-backend"
+  jsonPayload.httpRequest.status >= 500
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  unit: "1"
+  labels:
+    - key: route
+      description: "Normalized route label"
+      valueType: STRING
+labelExtractors:
+  route: EXTRACT(jsonPayload."logging.googleapis.com/labels".route)
+
+---
+# 2. Request latency distribution (from request logger)
+name: starfleet_request_latency_ms
+description: "HTTP request latency in milliseconds from Starfleet backend"
+filter: |
+  resource.type="cloud_run_revision"
+  resource.labels.service_name="starfleet-backend"
+  jsonPayload.httpRequest.status > 0
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: ms
+  labels:
+    - key: route
+      description: "Normalized route label"
+      valueType: STRING
+bucketOptions:
+  exponentialBuckets:
+    numFiniteBuckets: 20
+    growthFactor: 2
+    scale: 1
+valueExtractor: EXTRACT(jsonPayload.httpRequest.latency)
+
+---
+# 3. Ingest request count by endpoint (from request logger)
+name: starfleet_ingest_requests
+description: "Count of ingest endpoint hits, grouped by route"
+filter: |
+  resource.type="cloud_run_revision"
+  resource.labels.service_name="starfleet-backend"
+  jsonPayload."logging.googleapis.com/labels".route = "/ingest/*"
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  unit: "1"
+  labels:
+    - key: status
+      description: "HTTP status code"
+      valueType: STRING
+labelExtractors:
+  status: EXTRACT(jsonPayload.httpRequest.status)
+
+---
+# 4. Error log count by severity (WARNING + ERROR)
+name: starfleet_log_errors
+description: "Count of WARNING and ERROR severity log entries"
+filter: |
+  resource.type="cloud_run_revision"
+  resource.labels.service_name="starfleet-backend"
+  jsonPayload.severity = ("WARNING" OR "ERROR")
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  unit: "1"
+  labels:
+    - key: severity
+      description: "Log severity level"
+      valueType: STRING
+labelExtractors:
+  severity: EXTRACT(jsonPayload.severity)

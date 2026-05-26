@@ -10,6 +10,7 @@ const http    = require('http');
 const fs      = require('fs');
 const path    = require('path');
 const pool    = require('./db');
+const { getPoolStats } = require('./db');
 
 const { authMiddleware }  = require('./middleware/auth');
 const authRoutes          = require('./routes/auth');
@@ -25,6 +26,8 @@ const { scheduleWatchdog }          = require('./services/watchdog');
 const { scheduleWeeklyDigest }      = require('./services/weeklyDigest');
 const { scheduleIngestDedupPrune }  = require('./services/ingestDedup');
 const { scheduleUsageArchive }      = require('./services/usageArchive');
+const { scheduleOsintCorrelator, runCorrelationCycle } = require('./services/osintCorrelator');
+const { scheduleMetricsEmitter }    = require('./services/metricsEmitter');
 const { DEVICE_ONLINE_HOURS, deviceSeenExpr } = require('./services/deviceStatus');
 
 const app    = express();
@@ -282,6 +285,12 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── Structured request logging (GCP Cloud Logging compatible) ────────────────
+const { requestLog } = require('./middleware/requestLog');
+if (process.env.NODE_ENV === 'production') {
+  app.use(requestLog);
+}
+
 // ── Web dashboard (static) ────────────────────────────────────────────────────
 // Serve packages/web/index.html at GET / so the dashboard runs at the same
 // origin as the API — eliminates CORS friction when running locally.
@@ -297,6 +306,59 @@ app.get('/health', async (req, res) => {
     res.json({ status: 'ok', db: 'ok' });
   } catch {
     res.status(500).json({ status: 'ok', db: 'error' });
+  }
+});
+
+app.get('/health/db', async (req, res) => {
+  try {
+    const start = Date.now();
+    await pool.query('SELECT 1');
+    const latencyMs = Date.now() - start;
+    const stats = getPoolStats();
+    const utilizationPct = stats.totalCount > 0
+      ? Math.round(((stats.totalCount - stats.idleCount) / stats.maxConnections) * 100)
+      : 0;
+    res.json({
+      status: 'ok',
+      latency_ms: latencyMs,
+      pool: stats,
+      utilization_pct: utilizationPct,
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: err.message, pool: getPoolStats() });
+  }
+});
+
+// ── Operational metrics ──────────────────────────────────────────────────────
+app.get('/health/metrics', async (req, res) => {
+  try {
+    const dbStart = Date.now();
+    const [siteCount, deviceCount, staleCount, triggerCount, ingestAge] = await Promise.all([
+      pool.query('SELECT COUNT(*)::INT AS cnt FROM sites'),
+      pool.query('SELECT COUNT(*)::INT AS cnt FROM devices'),
+      pool.query(`SELECT COUNT(*)::INT AS cnt FROM devices WHERE ${deviceSeenExpr('devices')} = 'stale'`),
+      pool.query(`SELECT COUNT(*)::INT AS cnt FROM script_triggers WHERE status IN ('pending', 'running')`),
+      pool.query(`SELECT EXTRACT(EPOCH FROM NOW() - MAX(last_ingest_ok_at))::INT AS age_sec FROM devices WHERE last_ingest_ok_at IS NOT NULL`),
+    ]);
+    const dbLatencyMs = Date.now() - dbStart;
+    const poolStats = getPoolStats();
+
+    res.json({
+      status: 'ok',
+      uptime_sec: Math.floor(process.uptime()),
+      memory_mb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
+      db_latency_ms: dbLatencyMs,
+      pool: poolStats,
+      fleet: {
+        sites: siteCount.rows[0].cnt,
+        devices: deviceCount.rows[0].cnt,
+        stale_devices: staleCount.rows[0].cnt,
+        pending_triggers: triggerCount.rows[0].cnt,
+        newest_ingest_age_sec: ingestAge.rows[0].age_sec,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: err.message });
   }
 });
 
@@ -336,6 +398,14 @@ app.post('/internal/run-weather', authMiddleware, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Internal — force-run OSINT correlation cycle ──────────────────────────────
+app.post('/internal/run-osint-correlator', authMiddleware, async (req, res, next) => {
+  try {
+    const events = await runCorrelationCycle();
+    res.json({ ok: true, events_written: events.length, events });
+  } catch (err) { next(err); }
+});
+
 // ── Error handler ─────────────────────────────────────────────────────────────
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
@@ -360,6 +430,8 @@ async function startServer() {
     scheduleWeeklyDigest();                  // Email digest Mondays @ 08:00 Kigali
     scheduleIngestDedupPrune();              // Cleanup dedupe keys (default 7d retention)
     scheduleUsageArchive();                  // Move data_usage older than 30d to archive
+    scheduleOsintCorrelator();               // OSINT anomaly correlation every 15 min
+    scheduleMetricsEmitter();                // Fleet metrics → stdout every 5 min
     graphClient.startTriggerPoller();
     graphClient.scheduleIntuneDeviceSync();
 

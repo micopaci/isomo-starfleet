@@ -1,0 +1,30 @@
+# Starfleet 4.0 — GCP Uptime Check
+#
+# Creates a global uptime check hitting /health every 60s from multiple regions.
+# Apply with:
+#   gcloud monitoring uptime create --config-from-file=uptime-check.yaml
+#
+# The associated alert policy fires when the check fails from >= 2 regions.
+
+displayName: "Starfleet Backend — Health Check"
+monitoredResource:
+  type: cloud_run_revision
+  labels:
+    project_id: PROJECT_ID
+    service_name: starfleet-backend
+    location: us-central1
+httpCheck:
+  path: /health
+  port: 443
+  useSsl: true
+  validateSsl: true
+  requestMethod: GET
+  acceptedResponseStatusCodes:
+    - statusClass: STATUS_CLASS_2XX
+period: 60s
+timeout: 10s
+checkerType: STATIC_IP_CHECKERS
+selectedRegions:
+  - USA
+  - EUROPE
+  - ASIA_PACIFIC

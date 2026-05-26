@@ -1,6 +1,6 @@
 # Isomo Pulse Starfleet Monitor - System Requirements
 
-Document date: April 30, 2026
+Document date: May 26, 2026
 
 ## 1. Purpose
 
@@ -125,8 +125,8 @@ Out of scope for this document:
 
 | Service | Requirement |
 |---|---|
-| Neon PostgreSQL | PostgreSQL database reachable through `DATABASE_URL` with SSL |
-| Railway | Node.js 20 or newer backend runtime with environment variables configured |
+| GCP Cloud SQL (PostgreSQL) | PostgreSQL database reachable through `DATABASE_URL` with Cloud SQL Auth Proxy or `@google-cloud/cloud-sql-connector` |
+| GCP Cloud Run | Node.js 20 or newer backend runtime with environment variables via GCP Secret Manager |
 | Vercel | Dashboard deployment with API base URL and allowed CORS origin configured |
 | Desktop runtime | Local Electron app package can reach the configured backend API |
 | Android runtime | React Native Android app can reach the configured backend API |
@@ -180,10 +180,12 @@ Out of scope for this document:
 
 ### 8.1 Backend
 
-1. Merge backend changes to the Railway-tracked branch.
-2. Railway runs migrations and starts the API.
-3. Verify `GET https://api.starfleet.icircles.rw/health`.
-4. Verify `/api/agent-tokens` returns `401 Unauthorized` without auth and works with admin auth.
+1. Push backend changes to `main`.
+2. GitHub Actions deploys to Cloud Run staging service.
+3. Cloud Run migration Job runs pending SQL migrations before the new revision receives traffic.
+4. Verify `GET https://api.starfleet.icircles.rw/health`.
+5. Promote staging to production on manual approval or tag.
+6. Verify `/api/agent-tokens` returns `401 Unauthorized` without auth and works with admin auth.
 
 ### 8.2 Web Dashboard
 
@@ -225,7 +227,7 @@ Out of scope for this document:
 | Dashboard | Operators can see current sites, laptops, status, usage, weather/space-weather intelligence, and alerts |
 | Desktop | Operators can use overview, Starlinks, computers, alerts, map, and site detail views against the configured backend |
 | Mobile | Field users can log in, review overview/map/campuses/Starlinks/alerts, change API base, and sign out |
-| Production health | Railway health endpoint reports API and DB healthy |
+| Production health | Cloud Run health endpoint reports API and DB healthy |
 
 ## 10. Key Risks
 

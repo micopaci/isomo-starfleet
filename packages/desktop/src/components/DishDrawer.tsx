@@ -219,11 +219,20 @@ export function DishDrawer({ site, onClose, onOpenFull, isAdmin, onTriggerSite }
         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--rule-2)' }}>
           <div className="eyebrow" style={{ marginBottom: 12 }}>Dish actions</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <button className="btn" onClick={() => void trigger('diagnostics')} disabled={!isAdmin || busyAction !== null}>
+              {busyAction === 'diagnostics' ? 'Queuing…' : 'Run diagnostics'}
+            </button>
             <button className="btn" onClick={() => void trigger('ping_dish')} disabled={!isAdmin || busyAction !== null}>
               {busyAction === 'ping_dish' ? 'Queuing…' : 'Ping dish'}
             </button>
+            <button className="btn" onClick={() => void trigger('data_pull')} disabled={!isAdmin || busyAction !== null}>
+              {busyAction === 'data_pull' ? 'Queuing…' : 'Pull data'}
+            </button>
+            <button className="btn" onClick={() => void trigger('location_refresh')} disabled={!isAdmin || busyAction !== null}>
+              {busyAction === 'location_refresh' ? 'Queuing…' : 'Refresh location'}
+            </button>
             <button className="btn" onClick={() => void trigger('reboot_starlink')} disabled={!isAdmin || busyAction !== null}>
-              {busyAction === 'reboot_starlink' ? 'Queuing…' : 'Reboot'}
+              {busyAction === 'reboot_starlink' ? 'Queuing…' : 'Reboot dish'}
             </button>
             <button className="btn" onClick={openStarlinkPortal}>Open in Starlink</button>
           </div>
