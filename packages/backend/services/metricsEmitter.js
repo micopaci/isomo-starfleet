@@ -1,6 +1,6 @@
 const pool = require('../db');
 const { getPoolStats } = require('../db');
-const { DEVICE_ONLINE_HOURS, deviceSeenExpr } = require('./deviceStatus');
+const { deviceStatusCase } = require('./deviceStatus');
 
 let timer = null;
 
@@ -8,7 +8,7 @@ async function emitMetrics() {
   try {
     const [deviceCount, staleCount, ingestAge] = await Promise.all([
       pool.query('SELECT COUNT(*)::INT AS cnt FROM devices'),
-      pool.query(`SELECT COUNT(*)::INT AS cnt FROM devices WHERE ${deviceSeenExpr('devices')} = 'stale'`),
+      pool.query(`SELECT COUNT(*)::INT AS cnt FROM devices WHERE ${deviceStatusCase('devices')} = 'stale'`),
       pool.query(`SELECT EXTRACT(EPOCH FROM NOW() - MAX(last_ingest_ok_at))::INT AS age_sec FROM devices WHERE last_ingest_ok_at IS NOT NULL`),
     ]);
 

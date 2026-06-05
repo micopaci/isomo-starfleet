@@ -10,6 +10,7 @@ const pool = require('../db');
 const { broadcast } = require('../services/websocket');
 const { currentSignal } = require('../services/cache');
 const { nearestSite, resolveAndMaybeNotify } = require('../services/siteResolver');
+const { normalizeSerial } = require('../services/deviceIdentity');
 const {
   heartbeatLimiter,
   signalLimiter,
@@ -68,10 +69,47 @@ function require400(res, body, fields) {
  */
 async function autoRegisterDevice(client, device_sn, site_id, hostname, metadata = {}) {
   const { os, model, manufacturer } = metadata;
+  const serialNormalized = normalizeSerial(device_sn);
+
+  const existing = await client.query(
+    `SELECT id
+     FROM devices
+     WHERE windows_sn = $1
+        OR ($2::TEXT IS NOT NULL AND serial_normalized = $2)
+     ORDER BY CASE
+       WHEN $2::TEXT IS NOT NULL AND serial_normalized = $2 THEN 0
+       ELSE 1
+     END
+     LIMIT 1`,
+    [device_sn, serialNormalized]
+  );
+
+  if (existing.rows.length) {
+    const result = await client.query(
+      `UPDATE devices
+       SET site_id = CASE
+             WHEN devices.site_id IS NULL OR devices.site_id = 0 THEN $2
+             ELSE devices.site_id
+           END,
+           windows_sn = CASE
+             WHEN NOT EXISTS (SELECT 1 FROM devices WHERE windows_sn = $1 AND id <> $7) THEN $1
+             ELSE windows_sn
+           END,
+           serial_normalized = COALESCE($6, serial_normalized),
+           hostname = COALESCE($3, hostname),
+           os = COALESCE($4, os),
+           model = COALESCE($5, model),
+           manufacturer = COALESCE($8, manufacturer)
+       WHERE id = $7
+       RETURNING id`,
+      [device_sn, site_id, hostname || null, os || null, model || null, serialNormalized, existing.rows[0].id, manufacturer || null]
+    );
+    return result.rows[0].id;
+  }
 
   const result = await client.query(
-    `INSERT INTO devices (windows_sn, site_id, hostname, os, model, manufacturer)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO devices (windows_sn, site_id, hostname, os, model, manufacturer, serial_normalized)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (windows_sn)
      DO UPDATE SET 
        site_id = CASE
@@ -81,9 +119,10 @@ async function autoRegisterDevice(client, device_sn, site_id, hostname, metadata
        hostname = COALESCE(EXCLUDED.hostname, devices.hostname),
        os = COALESCE(EXCLUDED.os, devices.os),
        model = COALESCE(EXCLUDED.model, devices.model),
-       manufacturer = COALESCE(EXCLUDED.manufacturer, devices.manufacturer)
+       manufacturer = COALESCE(EXCLUDED.manufacturer, devices.manufacturer),
+       serial_normalized = COALESCE(EXCLUDED.serial_normalized, devices.serial_normalized)
      RETURNING id`,
-    [device_sn, site_id, hostname || null, os || null, model || null, manufacturer || null]
+    [device_sn, site_id, hostname || null, os || null, model || null, manufacturer || null, serialNormalized]
   );
   return result.rows[0].id;
 }
@@ -341,12 +380,14 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
            (site_id, device_id, recorded_at,
             pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
             download_mbps, upload_mbps,
-            reporter_count, confidence)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            reporter_count, confidence,
+            starlink_id, starlink_uuid, starlink_sn, kit_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
         [site_id, device_id, timestamp_utc || new Date().toISOString(),
           pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
           download_mbps ?? null, upload_mbps ?? null,
-          reporterCount, confidence]
+          reporterCount, confidence,
+          starlink_id || null, starlink_uuid || null, starlink_sn || null, kit_id || null]
       );
 
       const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();

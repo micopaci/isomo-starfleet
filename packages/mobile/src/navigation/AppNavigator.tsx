@@ -30,8 +30,8 @@ export function AppNavigator({ colors, onLogout, role, email }: Props) {
       try {
         const api = getApi();
         if (!api) return;
-        const changes: any[] = await api.get('/site-changes');
-        if (!cancelled) setAlertCount(changes.filter((c: any) => !c.acknowledged_at).length);
+        const alerts = await api.getAlerts('open', 200);
+        if (!cancelled) setAlertCount(alerts.length);
       } catch { /* silent */ }
     }
     poll();

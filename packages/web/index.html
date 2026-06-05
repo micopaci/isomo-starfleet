@@ -506,6 +506,15 @@ body {
 .alert__msg { font-size: 13.5px; }
 .alert__meta { font-size: 11.5px; margin-top: 3px; }
 .alert__actions { display: flex; gap: 6px; }
+.alert-chart { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin-bottom: 14px; }
+.alert-chart__bar { min-height: 112px; padding: 10px; background: var(--surface); display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; }
+.alert-chart__stack { height: 64px; display: flex; align-items: flex-end; gap: 3px; }
+.alert-chart__seg { flex: 1; min-height: 2px; background: var(--mute-soft); }
+.alert-chart__seg--critical { background: var(--bad); }
+.alert-chart__seg--warning { background: var(--warn); }
+.alert-chart__seg--info { background: var(--mute); }
+.alert-chart__label { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+.alert-chart__count { font-family: var(--font-mono); font-size: 11px; color: var(--ink-2); }
 .empty { padding: 30px; text-align: center; color: var(--muted); }
 
 /* ——— Drawer ——— */
@@ -1146,7 +1155,7 @@ function mapSites(sites) {
     id:       s.id,
     name:     s.name,
     region:   s.location || 'Rwanda',
-    students: 0,
+
     lat:      s.lat,
     lng:      s.lng,
   }));
@@ -1250,11 +1259,30 @@ function buildAlerts(dishes) {
   return alerts;
 }
 
+function mapBackendAlerts(alerts) {
+  return (alerts || []).map(a => ({
+    id: `B-${a.id}`,
+    backendId: a.id,
+    severity: a.severity || 'info',
+    category: a.category || 'general',
+    source: a.source_type || a.category || 'alert',
+    campus: a.site_id,
+    siteName: a.site_name,
+    title: a.title,
+    message: a.message || a.title || 'Alert',
+    ts: timeAgoStr(a.last_seen_at || a.detected_at),
+    ack: a.status !== 'open',
+    status: a.status,
+    assignee: a.assignee || (a.metadata && a.metadata.assignee) || null,
+    metadata: a.metadata || {},
+  }));
+}
+
 window._API = { apiFetch, apiPost, doLogin, doLogout, isAuthed, DEFAULT_API, getBase: () => _apiBase };
-window._MAPPERS = { mapSites, mapDevices, buildAlerts };
+window._MAPPERS = { mapSites, mapDevices, buildAlerts, mapBackendAlerts };
 
 // Placeholder so later scripts don't crash during initial render
-window.STARFLEET_DATA = { CAMPUSES: [], DISHES: [], COMPUTERS: [], STUDENTS: [], ALERTS: [] };
+window.STARFLEET_DATA = { CAMPUSES: [], DISHES: [], COMPUTERS: [], ALERTS: [] };
 
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -1457,8 +1485,6 @@ function Overview({ data, ui, onOpenDish, onJump, onRunDiagnostics }) {
   const offline = data.DISHES.filter(d=>d.status==='offline').length;
   const maintenance = data.DISHES.filter(d=>d.status==='maintenance'||d.status==='standby').length;
   const healthyPCs = data.COMPUTERS.filter(c=>c.status==='healthy').length;
-  const connIssue = data.STUDENTS.filter(s=>s.issues.includes('connectivity')).length;
-  const laptopIssue = data.STUDENTS.filter(s=>s.issues.includes('laptop')).length;
   const openAlerts = data.ALERTS.filter(a=>!a.ack).length;
   const fleetUptime = (data.DISHES.reduce((s,d)=>s+d.uptime,0)/data.DISHES.length).toFixed(2);
   const avgLatency = Math.round(data.DISHES.filter(d=>d.latency>0).reduce((s,d)=>s+d.latency,0)/data.DISHES.filter(d=>d.latency>0).length);
@@ -1469,7 +1495,7 @@ function Overview({ data, ui, onOpenDish, onJump, onRunDiagnostics }) {
         <div>
           <div className="eyebrow">Today · Kigali CAT</div>
           <h1 className="view__title">Good morning. {openAlerts} thing{openAlerts!==1?'s':''} need a look.</h1>
-          <p className="view__lede">One dish in Gashora is offline. Two students on degraded links. Everything else is humming.</p>
+          <p className="view__lede">Monitor connectivity, devices and alerts across all {data.DISHES.length} Starlink sites.</p>
         </div>
         <div className="view__actions">
           {onRunDiagnostics && <button className="btn" onClick={onRunDiagnostics}>Run diagnostics</button>}
@@ -1480,7 +1506,7 @@ function Overview({ data, ui, onOpenDish, onJump, onRunDiagnostics }) {
         <Stat label="Fleet uptime · 30d" value={fleetUptime+'%'} sub={`${online}/${data.DISHES.length} online now`} trend={[98.8,99.1,99.0,99.3,99.2,99.4,99.5,99.6,99.7,99.8,99.7,99.8]} />
         <Stat label="Avg latency" value={avgLatency+'ms'} sub="p95 across online dishes" trend={[42,38,44,41,39,37,36,38,35,34,36,35]} />
         <Stat label="Open alerts" value={openAlerts} sub={openAlerts?'requires triage':'all clear'} tone={openAlerts?'warn':'ok'} />
-        <Stat label="Students impacted" value={connIssue+laptopIssue} sub={`${connIssue} conn · ${laptopIssue} laptop`} />
+        <Stat label="Managed laptops" value={data.COMPUTERS.length} sub={`${healthyPCs} healthy`} />
       </div>
       <div className="split">
         <section className="panel">
@@ -1540,17 +1566,16 @@ function Overview({ data, ui, onOpenDish, onJump, onRunDiagnostics }) {
           {data.CAMPUSES.map(c => {
             const dishes = data.DISHES.filter(d=>d.campus===c.id);
             const dOnline = dishes.filter(d=>d.status==='online').length;
-            const studs = data.STUDENTS.filter(s=>s.campus===c.id);
-            const impacted = studs.filter(s=>s.issues.length>0).length;
+            const laptops = data.COMPUTERS.filter(pc=>pc.campus===c.id);
             return (
               <div key={c.id} className="campus-card">
                 <div className="campus-card__head">
                   <div><div className="campus-card__name">{c.name}</div><div className="muted">{c.region}</div></div>
-                  <div className="campus-card__count">{studs.length}<span>students</span></div>
+                  <div className="campus-card__count">{laptops.length}<span>laptops</span></div>
                 </div>
                 <dl className="campus-card__stats">
                   <div><dt>Dishes</dt><dd>{dOnline}/{dishes.length}</dd></div>
-                  <div><dt>Impacted</dt><dd className={impacted?'warn':''}>{impacted}</dd></div>
+                  <div><dt>Laptops online</dt><dd>{laptops.filter(pc=>pc.status==='healthy').length}</dd></div>
                   <div><dt>Avg latency</dt><dd>{Math.round(dishes.filter(d=>d.latency>0).reduce((s,d)=>s+d.latency,0)/Math.max(1,dishes.filter(d=>d.latency>0).length))}ms</dd></div>
                 </dl>
               </div>
@@ -1665,7 +1690,7 @@ function Computers({ data, filter, onPushUpdate, pushBusy, pushMessage, pushErro
       <div className="view__header">
         <div><div className="eyebrow">Endpoints</div><h1 className="view__title">Computers</h1></div>
         <div className="view__actions">
-          <Search value={q} onChange={setQ} placeholder="Tag, model, student…" />
+          <Search value={q} onChange={setQ} placeholder="Tag, model, hostname…" />
           <SortSelect value={sort} onChange={setSort} options={[
             {id:'lastSeen:desc',label:'Last seen newest'},
             {id:'lastSeen:asc',label:'Last seen oldest'},
@@ -1719,65 +1744,41 @@ function Computers({ data, filter, onPushUpdate, pushBusy, pushMessage, pushErro
   );
 }
 
-function Students({ data, filter }) {
-  const [q, setQ] = uS('');
-  const [sf, setSf] = uS('all');
-  const rows = data.STUDENTS.filter(s => {
-    if (filter.campus!=='all' && s.campus!==filter.campus) return false;
-    if (sf==='any' && s.issues.length===0) return false;
-    if (sf==='connectivity' && !s.issues.includes('connectivity')) return false;
-    if (sf==='laptop' && !s.issues.includes('laptop')) return false;
-    if (sf==='missed' && !s.issues.includes('missed-sessions')) return false;
-    if (q && !s.name.toLowerCase().includes(q.toLowerCase()) && !s.id.toLowerCase().includes(q.toLowerCase())) return false;
-    return true;
-  });
-  return (
-    <div className="view">
-      <div className="view__header">
-        <div><div className="eyebrow">Learners</div><h1 className="view__title">Students</h1><p className="view__lede">Cohort 2026 · {data.STUDENTS.length} scholars across {data.CAMPUSES.length} campuses</p></div>
-        <div className="view__actions"><Search value={q} onChange={setQ} placeholder="Name or ID…" /><button className="btn">Message selected</button></div>
-      </div>
-      <div className="tbl-toolbar">
-        <Segmented value={sf} onChange={setSf} options={[
-          {id:'all',label:'All'},{id:'any',label:'Any issue'},{id:'connectivity',label:'Connectivity'},
-          {id:'laptop',label:'Laptop'},{id:'missed',label:'Missed sessions'},
-        ]} />
-        <span className="muted mono">{rows.length} of {data.STUDENTS.length}</span>
-      </div>
-      <section className="panel panel--flush">
-        <div className="table-scroll">
-          <table className="tbl tbl--data">
-            <thead><tr><th>Student</th><th>Campus</th><th>Track</th><th>Issues</th><th className="num">Weekly hrs</th><th className="num">Attendance</th><th>Last active</th></tr></thead>
-            <tbody>
-              {rows.slice(0,80).map(s => (
-                <tr key={s.id}>
-                  <td><div className="cell-primary">{s.name}</div><div className="cell-mono">{s.id}</div></td>
-                  <td>{campusName(data,s.campus)}</td>
-                  <td className="muted">{s.track}</td>
-                  <td>
-                    {s.issues.length===0 && <span className="chip chip--ok"><StatusDot status="healthy"/>OK</span>}
-                    {s.issues.map(i=><span key={i} className={`chip chip--${i==='missed-sessions'?'bad':'warn'}`}><StatusDot status={i==='missed-sessions'?'critical':'degraded'}/>{i.replace('-',' ')}</span>)}
-                  </td>
-                  <td className="num mono">{s.weeklyHours}h</td>
-                  <td className="num mono">{s.attendance}%</td>
-                  <td className="muted mono">{s.lastActive}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function Alerts({ data, setAlerts }) {
+function Alerts({ data, onAckAlert, ackBusy, onAssignAlert, assignBusy }) {
   const [only, setOnly] = uS('open');
   const rows = data.ALERTS.filter(a => only==='open'?!a.ack : only==='all'?true : a.severity===only);
-  const ackOne = id => setAlerts(prev => prev.map(a => a.id===id?{...a,ack:true}:a));
+  const buckets = data.ALERT_SUMMARY || [];
+  const byDay = buckets.reduce((acc, b) => {
+    const day = String(b.day || '').slice(5, 10) || 'now';
+    acc[day] ||= { critical: 0, warning: 0, info: 0, total: 0 };
+    const sev = b.severity === 'critical' || b.severity === 'warning' ? b.severity : 'info';
+    acc[day][sev] += Number(b.count || 0);
+    acc[day].total += Number(b.count || 0);
+    return acc;
+  }, {});
+  const chart = Object.entries(byDay).slice(-14);
+  const max = Math.max(1, ...chart.map(([, v]) => v.total));
   return (
     <div className="view">
       <div className="view__header"><div><div className="eyebrow">Triage</div><h1 className="view__title">Alerts</h1></div></div>
+      {chart.length > 0 && (
+        <div className="alert-chart" aria-label="Alert trend">
+          {chart.map(([day, v]) => (
+            <div className="alert-chart__bar" key={day}>
+              <div className="alert-chart__stack">
+                {['critical','warning','info'].map(sev => (
+                  <span
+                    key={sev}
+                    className={`alert-chart__seg alert-chart__seg--${sev}`}
+                    style={{height: `${Math.max(2, (v[sev] / max) * 64)}px`, opacity: v[sev] ? 1 : .18}}
+                  />
+                ))}
+              </div>
+              <div><div className="alert-chart__label">{day}</div><div className="alert-chart__count">{v.total} total</div></div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="tbl-toolbar">
         <Segmented value={only} onChange={setOnly} options={[
           {id:'open',label:'Open',count:data.ALERTS.filter(a=>!a.ack).length},
@@ -1799,7 +1800,7 @@ function Alerts({ data, setAlerts }) {
               <div className="alert__actions">
                 {a.ack
                   ? <span className="chip chip--mute"><StatusDot status="standby"/>Acknowledged</span>
-                  : <><button className="btn btn--sm">Assign</button><button className="btn btn--sm btn--primary" onClick={()=>ackOne(a.id)}>Acknowledge</button></>
+                  : <><button className="btn btn--sm" disabled={assignBusy === a.id} onClick={()=>onAssignAlert(a)}>{assignBusy === a.id ? 'Saving...' : (a.assignee ? 'Reassign' : 'Assign')}</button><button className="btn btn--sm btn--primary" disabled={ackBusy === a.id} onClick={()=>onAckAlert(a)}>{ackBusy === a.id ? 'Saving...' : 'Acknowledge'}</button></>
                 }
               </div>
             </li>
@@ -1819,18 +1820,18 @@ function Campuses({ data }) {
         {data.CAMPUSES.map(c => {
           const dishes = data.DISHES.filter(d=>d.campus===c.id);
           const pcs = data.COMPUTERS.filter(p=>p.campus===c.id);
-          const studs = data.STUDENTS.filter(s=>s.campus===c.id);
           const online = dishes.filter(d=>d.status==='online').length;
+          const offlinePcs = pcs.filter(p=>p.status==='offline'||p.status==='needs-update').length;
           return (
             <div key={c.id} className="panel panel--pad">
               <div className="campus-card__head">
                 <div><h3 className="panel__title">{c.name}</h3><div className="muted">{c.region}</div></div>
-                <div className="campus-card__count">{studs.length}<span>students</span></div>
+                <div className="campus-card__count">{pcs.length}<span>laptops</span></div>
               </div>
               <div className="campus-stats">
                 <Stat label="Dishes online" value={`${online}/${dishes.length}`} />
                 <Stat label="Computers" value={pcs.length} sub={`${pcs.filter(p=>p.status==='healthy').length} healthy`} />
-                <Stat label="Active issues" value={studs.filter(s=>s.issues.length).length} tone={studs.filter(s=>s.issues.length).length?'warn':'ok'} />
+                <Stat label="Needs attention" value={offlinePcs} tone={offlinePcs?'warn':'ok'} />
               </div>
               <div className="dish-mini">
                 {dishes.map(d => (
@@ -1847,7 +1848,7 @@ function Campuses({ data }) {
   );
 }
 
-window._VIEWS = { Overview, Starlinks, Computers, Students, Alerts, Campuses, MiniBar, StorageBar, BatteryCell };
+window._VIEWS = { Overview, Starlinks, Computers, Alerts, Campuses, MiniBar, StorageBar, BatteryCell };
   </script>
 
   <!-- ── Drawer ── -->
@@ -1865,7 +1866,6 @@ function DishDetail({ dish, data, onClose }) {
   }, [dish, onClose]);
   if (!dish) return null;
   const siteId = dish._siteId || dish.campus;
-  const related = data.STUDENTS.filter(s=>s.campus===dish.campus).slice(0,5);
 
   async function triggerSite(type) {
     if (busyAction) return;
@@ -1931,20 +1931,6 @@ function DishDetail({ dish, data, onClose }) {
             <Spk points={dish.latencyTrend} height={64} width={480} dim={dish.status!=='online'} />
             <div className="chart__axis mono muted"><span>−24h</span><span>−12h</span><span>now</span></div>
           </div>
-        </section>
-        <section className="drawer__section">
-          <h4 className="panel__subtitle">Students on this dish</h4>
-          <ul className="drawer-list">
-            {related.map(s => (
-              <li key={s.id}>
-                <span>{s.name}</span>
-                <span className="muted mono">{s.id}</span>
-                {s.issues.includes('connectivity')
-                  ? <span className="chip chip--warn"><SDot status="degraded"/>connectivity</span>
-                  : <span className="chip chip--ok"><SDot status="healthy"/>OK</span>}
-              </li>
-            ))}
-          </ul>
         </section>
         <section className="drawer__section">
           <h4 className="panel__subtitle">Remediation actions</h4>
@@ -2035,7 +2021,7 @@ function campusHealth(data, campusId) {
   return {
     tone, offline, degraded,
     dishes: dishes.length, onlineDishes: dishes.length - offline - degraded,
-    pcs: pcs.length, studs: 0, impacted: 0,
+    pcs: pcs.length,
   };
 }
 
@@ -2448,7 +2434,7 @@ window._MapView = MapView;
   <script type="text/babel">
 const { useState: aUS, useEffect: aUE } = React;
 const { Icon: AppIcon, usePersisted } = window._SF;
-const { Overview, Starlinks, Computers, Students, Alerts, Campuses } = window._VIEWS;
+const { Overview, Starlinks, Computers, Alerts, Campuses } = window._VIEWS;
 const DishDetail = window._DishDetail;
 const MapView = window._MapView;
 
@@ -2568,7 +2554,11 @@ function App() {
   const [tab, setTab] = usePersisted('starfleet.tab', tweaks.landingTab || 'overview');
   const [campus, setCampus] = aUS('all');
   const [dish, setDish] = aUS(null);
-  const [ackedAlerts, setAckedAlerts] = aUS({});
+  const [alertRows, setAlertRows] = aUS([]);
+  const [alertSummary, setAlertSummary] = aUS([]);
+  const [alertAckBusy, setAlertAckBusy] = aUS(null);
+  const [alertAssignBusy, setAlertAssignBusy] = aUS(null);
+
   const [kpData, setKpData] = aUS(null);
   const [isAdmin] = aUS(() => {
     try {
@@ -2590,13 +2580,17 @@ function App() {
     setLoading(true);
     setLoadErr(null);
     try {
-      const [s, d, kp] = await Promise.all([
+      const [s, d, kp, alerts, summary] = await Promise.all([
         window._API.apiFetch('/api/sites'),
         window._API.apiFetch('/api/devices').catch(() => []),
         window._API.apiFetch('/api/intel/space-weather').catch(() => []),
+        window._API.apiFetch('/api/alerts?status=all&limit=200').catch(() => []),
+        window._API.apiFetch('/api/alerts/summary?days=14').catch(() => []),
       ]);
       setSites(s);
       setDevices(d);
+      setAlertRows(window._MAPPERS.mapBackendAlerts(alerts));
+      setAlertSummary(summary || []);
       if (kp && kp.length > 0) setKpData(kp[0]);
     } catch (e) {
       console.error('[Starfleet]', e.message);
@@ -2638,6 +2632,38 @@ function App() {
       alert(`Diagnostics queued for ${res.count} device${res.count === 1 ? '' : 's'}.`);
     } catch (e) {
       alert(`Diagnostics failed: ${e.message || e}`);
+    }
+  };
+
+  const acknowledgeAlert = async (alertRow) => {
+    if (!alertRow.backendId || alertAckBusy) return;
+    setAlertAckBusy(alertRow.id);
+    try {
+      await window._API.apiPost(`/api/alerts/${alertRow.backendId}/ack`, {});
+      setAlertRows(prev => prev.map(a => a.id === alertRow.id ? {...a, ack: true, status: 'acknowledged'} : a));
+      window._API.apiFetch('/api/alerts/summary?days=14').then(setAlertSummary).catch(() => {});
+    } catch (e) {
+      alert(`Acknowledge failed: ${e.message || e}`);
+    } finally {
+      setAlertAckBusy(null);
+    }
+  };
+
+  const assignAlert = async (alertRow) => {
+    if (!alertRow.backendId || alertAssignBusy) return;
+    const input = window.prompt('Assign this alert to (clear to unassign):', alertRow.assignee || '');
+    if (input === null) return; // cancelled
+    const assignee = input.trim() || null;
+    setAlertAssignBusy(alertRow.id);
+    try {
+      await window._API.apiPost(`/api/alerts/${alertRow.backendId}/assign`, { assignee });
+      setAlertRows(prev => prev.map(a => a.id === alertRow.id
+        ? { ...a, assignee, metadata: { ...(a.metadata || {}), assignee: assignee || undefined } }
+        : a));
+    } catch (e) {
+      alert(`Assign failed: ${e.message || e}`);
+    } finally {
+      setAlertAssignBusy(null);
     }
   };
 
@@ -2711,7 +2737,7 @@ function App() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       const shortcuts = {
-        o: 'overview', s: 'starlinks', c: 'computers', u: 'students',
+        o: 'overview', s: 'starlinks', c: 'computers',
         a: 'alerts', p: 'campuses', m: 'map',
       };
       if (shortcuts[k]) { e.preventDefault(); setTab(shortcuts[k]); return; }
@@ -2726,11 +2752,10 @@ function App() {
   // Map real API data to view-compatible shape
   const { CAMPUSES, DISHES } = window._MAPPERS.mapSites(sites);
   const COMPUTERS = window._MAPPERS.mapDevices(devices);
-  const STUDENTS  = [];
-  const baseAlerts = window._MAPPERS.buildAlerts(DISHES);
-  const ALERTS = baseAlerts.map(a => ({ ...a, ack: ackedAlerts[a.id] ?? false }));
 
-  const liveData = { CAMPUSES, DISHES, COMPUTERS, STUDENTS, ALERTS };
+  const ALERTS = alertRows.length ? alertRows : window._MAPPERS.buildAlerts(DISHES);
+
+  const liveData = { CAMPUSES, DISHES, COMPUTERS, ALERTS, ALERT_SUMMARY: alertSummary };
 
   const onlineDishes = DISHES.filter(d=>d.status==='online').length;
   const fleetUptime = DISHES.length
@@ -2738,14 +2763,6 @@ function App() {
     : '—';
   const openAlertCount = ALERTS.filter(a=>!a.ack).length;
   const criticalCount  = ALERTS.filter(a=>!a.ack&&a.severity==='critical').length;
-
-  function handleSetAlerts(updater) {
-    // Only ack state is local; propagate ack changes
-    const updated = typeof updater === 'function' ? updater(ALERTS) : updater;
-    const newAcked = {...ackedAlerts};
-    updated.forEach(a => { if (a.ack) newAcked[a.id] = true; });
-    setAckedAlerts(newAcked);
-  }
 
   const appClass = [
     'app',
@@ -2767,7 +2784,6 @@ function App() {
             <NavItem icon={AppIcon.overview} label="Overview"  active={tab==='overview'}  onClick={()=>setTab('overview')} />
             <NavItem icon={AppIcon.dish}     label="Starlinks" active={tab==='starlinks'} onClick={()=>setTab('starlinks')} count={`${onlineDishes}/${liveData.DISHES.length}`} />
             <NavItem icon={AppIcon.laptop}   label="Computers" active={tab==='computers'} onClick={()=>setTab('computers')} count={liveData.COMPUTERS.length} />
-            <NavItem icon={AppIcon.user}     label="Students"  active={tab==='students'}  onClick={()=>setTab('students')}  count={liveData.STUDENTS.length} />
             <NavItem icon={AppIcon.bell}     label="Alerts"    active={tab==='alerts'}    onClick={()=>setTab('alerts')}    count={openAlertCount||'—'} />
             <NavItem icon={AppIcon.campus}   label="Campuses"  active={tab==='campuses'}  onClick={()=>setTab('campuses')} />
             <NavItem icon={AppIcon.map}      label="Map"       active={tab==='map'}       onClick={()=>setTab('map')} />
@@ -2866,8 +2882,7 @@ function App() {
             pushError={pushError}
           />
         )}
-        {tab==='students'  && <Students  data={liveData} filter={{campus}} />}
-        {tab==='alerts'    && <Alerts    data={liveData} setAlerts={handleSetAlerts} />}
+        {tab==='alerts'    && <Alerts    data={liveData} onAckAlert={acknowledgeAlert} ackBusy={alertAckBusy} onAssignAlert={assignAlert} assignBusy={alertAssignBusy} />}
         {tab==='campuses'  && <Campuses  data={liveData} />}
         {tab==='map'       && <MapView   data={liveData} onOpenDish={setDish} onJump={setTab} />}
       </main>
@@ -2876,7 +2891,6 @@ function App() {
         <BottomNavItem icon={AppIcon.overview} label="Overview" active={tab==='overview'} onClick={()=>setTab('overview')} />
         <BottomNavItem icon={AppIcon.dish} label="Starlinks" active={tab==='starlinks'} onClick={()=>setTab('starlinks')} />
         <BottomNavItem icon={AppIcon.laptop} label="Computers" active={tab==='computers'} onClick={()=>setTab('computers')} />
-        <BottomNavItem icon={AppIcon.user} label="Students" active={tab==='students'} onClick={()=>setTab('students')} />
         <BottomNavItem icon={AppIcon.bell} label="Alerts" active={tab==='alerts'} onClick={()=>setTab('alerts')} count={openAlertCount || null} />
         <BottomNavItem icon={AppIcon.campus} label="Campuses" active={tab==='campuses'} onClick={()=>setTab('campuses')} />
         <BottomNavItem icon={AppIcon.map} label="Map" active={tab==='map'} onClick={()=>setTab('map')} />

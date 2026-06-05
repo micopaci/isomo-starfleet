@@ -39,11 +39,12 @@ export function OverviewScreen() {
     }
   }, [sites, loading]);
 
-  // Space weather
+  // Space weather — endpoint returns newest-first readings; use the latest.
   useEffect(() => {
-    getApi()?.get('/intel/space-weather').then((d: any) => {
-      setSpaceKp(d?.kp_index ?? null);
-      setSpaceCondition(d?.condition ?? '');
+    getApi()?.getSpaceWeather().then((rows) => {
+      const latest = rows?.[0];
+      setSpaceKp(latest?.k_index ?? null);
+      setSpaceCondition(latest?.condition_label ?? '');
     }).catch(() => {});
   }, []);
 

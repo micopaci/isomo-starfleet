@@ -28,7 +28,7 @@ const { scheduleIngestDedupPrune }  = require('./services/ingestDedup');
 const { scheduleUsageArchive }      = require('./services/usageArchive');
 const { scheduleOsintCorrelator, runCorrelationCycle } = require('./services/osintCorrelator');
 const { scheduleMetricsEmitter }    = require('./services/metricsEmitter');
-const { DEVICE_ONLINE_HOURS, deviceSeenExpr } = require('./services/deviceStatus');
+const { DEVICE_ONLINE_HOURS, deviceSeenExpr, deviceStatusCase } = require('./services/deviceStatus');
 
 const app    = express();
 const server = http.createServer(app);
@@ -100,7 +100,13 @@ async function ensureRuntimeSchema() {
       ADD COLUMN IF NOT EXISTS device_category TEXT,
       ADD COLUMN IF NOT EXISTS free_storage_bytes BIGINT,
       ADD COLUMN IF NOT EXISTS total_storage_bytes BIGINT,
-      ADD COLUMN IF NOT EXISTS intune_synced_at TIMESTAMPTZ
+      ADD COLUMN IF NOT EXISTS intune_synced_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS serial_normalized TEXT
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_devices_serial_normalized
+      ON devices(serial_normalized)
+      WHERE serial_normalized IS NOT NULL
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_devices_intune_last_sync_at
@@ -204,6 +210,23 @@ async function ensureRuntimeSchema() {
       ADD COLUMN IF NOT EXISTS disk_smart_status TEXT,
       ADD COLUMN IF NOT EXISTS disk_smart_predict_failure BOOLEAN,
       ADD COLUMN IF NOT EXISTS disk_media_type TEXT
+    `);
+    await client.query(`
+      ALTER TABLE signal_readings
+      ADD COLUMN IF NOT EXISTS starlink_id TEXT,
+      ADD COLUMN IF NOT EXISTS starlink_uuid TEXT,
+      ADD COLUMN IF NOT EXISTS starlink_sn TEXT,
+      ADD COLUMN IF NOT EXISTS kit_id TEXT
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_signal_readings_starlink_uuid
+      ON signal_readings(LOWER(starlink_uuid))
+      WHERE starlink_uuid IS NOT NULL
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_signal_readings_kit_id
+      ON signal_readings(LOWER(kit_id))
+      WHERE kit_id IS NOT NULL
     `);
 
     await client.query(`
@@ -336,7 +359,7 @@ app.get('/health/metrics', async (req, res) => {
     const [siteCount, deviceCount, staleCount, triggerCount, ingestAge] = await Promise.all([
       pool.query('SELECT COUNT(*)::INT AS cnt FROM sites'),
       pool.query('SELECT COUNT(*)::INT AS cnt FROM devices'),
-      pool.query(`SELECT COUNT(*)::INT AS cnt FROM devices WHERE ${deviceSeenExpr('devices')} = 'stale'`),
+      pool.query(`SELECT COUNT(*)::INT AS cnt FROM devices WHERE ${deviceStatusCase('devices')} = 'stale'`),
       pool.query(`SELECT COUNT(*)::INT AS cnt FROM script_triggers WHERE status IN ('pending', 'running')`),
       pool.query(`SELECT EXTRACT(EPOCH FROM NOW() - MAX(last_ingest_ok_at))::INT AS age_sec FROM devices WHERE last_ingest_ok_at IS NOT NULL`),
     ]);
