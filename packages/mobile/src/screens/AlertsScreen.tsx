@@ -1,11 +1,12 @@
 /**
- * AlertsScreen — site-change events and stale-device alerts.
+ * AlertsScreen — durable fleet alerts and stale-device list.
  *
  * Features:
- *  • Two tabs: "Changes" (site location events) and "Stale" (devices unseen)
- *  • Admins can acknowledge change alerts
+ *  • Two tabs: "Alerts" (alert_events feed, matches the web dashboard) and
+ *    "Stale" (devices unseen)
+ *  • Admins can acknowledge alerts
  *  • Pull-to-refresh, empty states, loading skeletons
- *  • Color-coded by alert type
+ *  • Color-coded by severity
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -13,21 +14,12 @@ import {
   StyleSheet, TouchableOpacity, useColorScheme,
 } from 'react-native';
 import { getApi, getToken, decodeJwtPayload } from '../store/auth';
+import type { Alert } from '@starfleet/shared';
 import { light, dark, Colors } from '../theme/colors';
 import { AlertRow } from '../components/AlertRow';
 import { Skeleton } from '../components/Skeleton';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface SiteChange {
-  id:              number;
-  site_id:         number;
-  site_name:       string;
-  change_type:     'location' | 'stale';
-  description:     string;
-  detected_at:     string;
-  acknowledged_at: string | null;
-}
 
 interface StaleDevice {
   device_id:  number;
@@ -58,8 +50,8 @@ export function AlertsScreen({ colors, role, onAlertCountChange }: Props) {
 
   const [tab, setTab] = useState<TabKey>('changes');
 
-  // Changes tab
-  const [changes,      setChanges]      = useState<SiteChange[]>([]);
+  // Alerts tab
+  const [changes,      setChanges]      = useState<Alert[]>([]);
   const [changesLoad,  setChangesLoad]  = useState(true);
   const [changesError, setChangesError] = useState('');
   const [ackingId,     setAckingId]     = useState<number | null>(null);
@@ -74,7 +66,7 @@ export function AlertsScreen({ colors, role, onAlertCountChange }: Props) {
     try {
       const api = getApi();
       if (!api) throw new Error('Not connected');
-      const data = await (api as any).get('/site-changes').catch(() => []);
+      const data = await api.getAlerts('all', 200).catch(() => []);
       setChanges(Array.isArray(data) ? data : []);
     } catch (e: any) {
       setChangesError(e?.message ?? 'Failed to load alerts');
@@ -88,7 +80,9 @@ export function AlertsScreen({ colors, role, onAlertCountChange }: Props) {
     try {
       const api = getApi();
       if (!api) throw new Error('Not connected');
-      const data = await (api as any).getDevices('stale').catch(() => []);
+      // getDevices('stale') returns the stale-filtered device shape (adds stale_min),
+      // which doesn't overlap the base Device type — cast through unknown to the view model.
+      const data = await (api.getDevices('stale') as unknown as Promise<StaleDevice[]>).catch(() => []);
       setStale(Array.isArray(data) ? data : []);
     } catch (e: any) {
       setStaleError(e?.message ?? 'Failed to load stale devices');
@@ -104,7 +98,7 @@ export function AlertsScreen({ colors, role, onAlertCountChange }: Props) {
 
   // Notify parent of unack count for badge
   useEffect(() => {
-    const unack = changes.filter(c => !c.acknowledged_at).length;
+    const unack = changes.filter(c => c.status === 'open').length;
     onAlertCountChange?.(unack);
   }, [changes]);
 
@@ -113,9 +107,11 @@ export function AlertsScreen({ colors, role, onAlertCountChange }: Props) {
     if (!api) return;
     setAckingId(id);
     try {
-      await (api as any).post(`/site-changes/${id}/acknowledge`).catch(() => null);
+      await api.ackAlert(id).catch(() => null);
       setChanges(prev =>
-        prev.map(c => c.id === id ? { ...c, acknowledged_at: new Date().toISOString() } : c),
+        prev.map(c => c.id === id
+          ? { ...c, status: 'acknowledged', acknowledged_at: new Date().toISOString() }
+          : c),
       );
     } finally {
       setAckingId(null);
@@ -131,23 +127,28 @@ export function AlertsScreen({ colors, role, onAlertCountChange }: Props) {
   }
 
   const unackCount = useMemo(
-    () => changes.filter(c => !c.acknowledged_at).length,
+    () => changes.filter(c => c.status === 'open').length,
     [changes],
   );
 
-  const renderChange = useCallback(({ item: c }: { item: SiteChange }) => (
-    <AlertRow
-      type={c.change_type}
-      siteName={c.site_name}
-      description={c.description}
-      timeAgo={timeAgo(c.detected_at)}
-      acknowledged={!!c.acknowledged_at}
-      canAck={isAdmin}
-      acking={ackingId === c.id}
-      onAck={() => handleAck(c.id)}
-      colors={C}
-    />
-  ), [C, isAdmin, ackingId]);
+  const renderChange = useCallback(({ item: c }: { item: Alert }) => {
+    // AlertRow's icon only knows 'location' | 'stale'; pick the closest match.
+    const rowType = /stale|device|laptop|offline/i.test(c.category || c.source_type || '')
+      ? 'stale' : 'location';
+    return (
+      <AlertRow
+        type={rowType}
+        siteName={c.site_name ?? (c.site_id != null ? `Site ${c.site_id}` : 'Fleet')}
+        description={c.assignee ? `${c.message ?? c.title} · ${c.assignee}` : (c.message ?? c.title)}
+        timeAgo={timeAgo(c.last_seen_at ?? c.detected_at)}
+        acknowledged={c.status !== 'open'}
+        canAck={isAdmin}
+        acking={ackingId === c.id}
+        onAck={() => handleAck(c.id)}
+        colors={C}
+      />
+    );
+  }, [C, isAdmin, ackingId]);
 
   return (
     <View style={[styles.screen, { backgroundColor: C.bg }]}>
@@ -155,7 +156,7 @@ export function AlertsScreen({ colors, role, onAlertCountChange }: Props) {
       {/* Tab bar */}
       <View style={[styles.tabBar, { backgroundColor: C.surface, borderBottomColor: C.rule }]}>
         {([
-          { key: 'changes', label: 'Site Changes', badge: unackCount },
+          { key: 'changes', label: 'Alerts', badge: unackCount },
           { key: 'stale',   label: 'Stale Devices', badge: stale.length },
         ] as Array<{ key: TabKey; label: string; badge: number }>).map(t => {
           const active = tab === t.key;
@@ -219,7 +220,7 @@ export function AlertsScreen({ colors, role, onAlertCountChange }: Props) {
             ListEmptyComponent={
               <View style={styles.empty}>
                 <Text style={styles.emptyIcon}>🎉</Text>
-                <Text style={[styles.emptyText, { color: C.ink3 }]}>No site change alerts</Text>
+                <Text style={[styles.emptyText, { color: C.ink3 }]}>No active alerts</Text>
                 <Text style={[styles.emptySub, { color: C.muted }]}>
                   {changesError || 'Pull down to refresh'}
                 </Text>

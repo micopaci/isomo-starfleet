@@ -47,11 +47,16 @@ Thumbs.db
 packages/desktop/.vite/
 
 # Android
-packages/android/.gradle/
-packages/android/build/
-packages/android/app/build/
-packages/android/*.keystore
+packages/mobile/android/.gradle/
+packages/mobile/android/build/
+packages/mobile/android/app/build/
+packages/mobile/android/*.keystore
 *.jks
 
 # Test scripts with credentials
 ingest.sh
+
+# Local agent / editor config and scratch planning docs
+.claude/
+/Starfleet*.pdf
+/package-lock.json

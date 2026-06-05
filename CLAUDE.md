@@ -140,7 +140,7 @@ Agent `POST /ingest/*` endpoints. All require `Authorization: Bearer <agent-toke
 
 ## Coding Conventions
 
-- **Commits:** `[scope] verb: description` — e.g., `[backend] feat: add Kp index threshold alerting`
+- **Commits:** `[scope] verb: description` — e.g., `[backend] feat: add Kp index threshold alerting`. Do **NOT** append `Co-Authored-By:` trailers to any commit message.
 - **Branches:** `agent/<task-name>` for Claude Code sessions
 - **Types:** Keep `packages/shared/src/types.ts` in sync with API response shapes
 - **No `print()` in Python** — use `logging`
