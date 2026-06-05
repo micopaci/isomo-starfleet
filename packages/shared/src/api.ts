@@ -1,6 +1,7 @@
 import type {
   Site, SiteDetail, DailyScore, LatencyReading, Device, UsageHistoryPoint, TriggerType,
-  SiteNote, SiteBiweeklyUsage, CreateSiteInput, UpdateSiteInput,
+  SiteNote, SiteBiweeklyUsage, CreateSiteInput, UpdateSiteInput, Alert, AlertStatus, Student,
+  SpaceWeatherReading,
 } from './types';
 
 export class PermissionError extends Error {
@@ -106,6 +107,41 @@ export class StarfleetApi {
   getDevices(filter?: 'stale'): Promise<Device[]> {
     const qs = filter ? `?filter=${filter}` : '';
     return this.request<Device[]>(`/api/devices${qs}`);
+  }
+
+  // ── Alerts ───────────────────────────────────────────────────────────────────
+
+  /** GET /api/alerts — durable alert_events feed (status: open|acknowledged|resolved|all) */
+  getAlerts(status: AlertStatus | 'all' = 'all', limit = 200): Promise<Alert[]> {
+    return this.request<Alert[]>(`/api/alerts?status=${status}&limit=${limit}`);
+  }
+
+  /** POST /api/alerts/:id/ack — admin only, acknowledge an open alert */
+  ackAlert(id: number): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>(`/api/alerts/${id}/ack`, { method: 'POST' });
+  }
+
+  /** POST /api/alerts/:id/assign — admin only, set/clear the assignee (pass null to clear) */
+  assignAlert(id: number, assignee: string | null): Promise<{ ok: boolean; assignee: string | null }> {
+    return this.request<{ ok: boolean; assignee: string | null }>(`/api/alerts/${id}/assign`, {
+      method: 'POST',
+      body: JSON.stringify({ assignee }),
+    });
+  }
+
+  // ── Intel ──────────────────────────────────────────────────────────────────
+
+  /** GET /api/intel/space-weather — last 24 NOAA K-index readings (newest first) */
+  getSpaceWeather(): Promise<SpaceWeatherReading[]> {
+    return this.request<SpaceWeatherReading[]>('/api/intel/space-weather');
+  }
+
+  // ── Students ───────────────────────────────────────────────────────────────
+
+  /** GET /api/students — Circles roster, optionally scoped to one campus (site_id) */
+  getStudents(siteId?: number, limit = 2000): Promise<Student[]> {
+    const qs = siteId != null ? `?site_id=${siteId}&limit=${limit}` : `?limit=${limit}`;
+    return this.request<Student[]>(`/api/students${qs}`);
   }
 
   /** POST /api/intune/sync — admin only, force a Microsoft Graph managedDevices sync */

@@ -280,3 +280,46 @@ export interface UpdateSiteInput {
   kit_id?: string | null;
   starlink_uuid?: string | null;
 }
+
+// ── Alerts (alert_events table; mirrors GET /api/alerts) ─────────────────────
+export type AlertSeverity = 'critical' | 'warning' | 'info';
+export type AlertStatus = 'open' | 'acknowledged' | 'resolved';
+
+export interface Alert {
+  id: number;
+  severity: AlertSeverity;
+  category: string;
+  source_type: string | null;
+  source_id: number | null;
+  site_id: number | null;
+  device_id: number | null;
+  title: string;
+  message: string | null;
+  status: AlertStatus;
+  detected_at: string;
+  last_seen_at: string | null;
+  acknowledged_at: string | null;
+  resolved_at: string | null;
+  site_name: string | null;
+  metadata: Record<string, unknown>;
+  /** Convenience mirror of metadata.assignee */
+  assignee: string | null;
+}
+
+// ── Space weather (mirrors GET /api/intel/space-weather) ─────────────────────
+export interface SpaceWeatherReading {
+  recorded_at: string;
+  k_index: number | null;
+  solar_flux_10cm: number | null;
+  condition_label: string | null;
+}
+
+// ── Students (students table; mirrors GET /api/students) ─────────────────────
+export interface Student {
+  id: number;
+  full_name: string;
+  email: string;
+  school: string;
+  site_id: number | null;
+  site_name: string | null;
+}
