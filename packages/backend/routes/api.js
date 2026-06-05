@@ -144,6 +144,291 @@ function buildWeatherPredictor(weather) {
   };
 }
 
+function computeSignalScore(sig) {
+  if (!sig) return null;
+  const pingDrop = Number(sig.ping_drop_pct ?? 0);
+  const obstruction = Number(sig.obstruction_pct ?? 0);
+  const snr = Number(sig.snr ?? 9.5);
+  const latency = Number(sig.pop_latency_ms ?? 35);
+  let score = 100;
+  score -= Math.min(30, pingDrop * 6);
+  score -= Math.min(30, obstruction * 2);
+  score -= Math.max(0, (9.5 - snr) * 8);
+  score -= Math.max(0, (latency - 35) * 0.3);
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+async function upsertAlert(client, alert) {
+  await client.query(
+    `INSERT INTO alert_events
+       (active_key, source_type, source_id, site_id, device_id, severity, category, title, message, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+     ON CONFLICT (active_key) DO UPDATE SET
+       source_type = EXCLUDED.source_type,
+       source_id = EXCLUDED.source_id,
+       site_id = EXCLUDED.site_id,
+       device_id = EXCLUDED.device_id,
+       severity = EXCLUDED.severity,
+       category = EXCLUDED.category,
+       title = EXCLUDED.title,
+       message = EXCLUDED.message,
+       last_seen_at = NOW(),
+       status = CASE WHEN alert_events.status = 'resolved' THEN 'open' ELSE alert_events.status END,
+       resolved_at = CASE WHEN alert_events.status = 'resolved' THEN NULL ELSE alert_events.resolved_at END,
+       metadata = EXCLUDED.metadata`,
+    [
+      alert.active_key,
+      alert.source_type,
+      alert.source_id ?? null,
+      alert.site_id ?? null,
+      alert.device_id ?? null,
+      alert.severity,
+      alert.category,
+      alert.title,
+      alert.message,
+      JSON.stringify(alert.metadata || {}),
+    ]
+  );
+}
+
+async function syncDerivedAlerts() {
+  const client = await pool.connect();
+  const activeKeys = [];
+  try {
+    await client.query('BEGIN');
+
+    const { rows } = await client.query(`
+      SELECT
+        s.id,
+        s.name,
+        s.starlink_sn,
+        COALESCE(laptops.online_laptops, 0)::INT AS online_laptops,
+        sig.pop_latency_ms,
+        sig.snr,
+        sig.obstruction_pct,
+        sig.ping_drop_pct,
+        sig.confidence,
+        score.date::TEXT AS score_date,
+        score.score,
+        score.cause,
+        score.data_quality,
+        score.anomaly,
+        score.anomaly_delta,
+        weather.date::TEXT AS weather_date,
+        weather.rainfall_mm,
+        weather.cloud_cover_pct
+      FROM sites s
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) FILTER (WHERE ${deviceOnlineWhere('d')}) AS online_laptops
+        FROM devices d
+        WHERE d.site_id = s.id
+      ) laptops ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT pop_latency_ms, snr, obstruction_pct, ping_drop_pct, confidence
+        FROM signal_readings
+        WHERE site_id = s.id
+        ORDER BY recorded_at DESC
+        LIMIT 1
+      ) sig ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT date, score, cause, data_quality, anomaly, anomaly_delta
+        FROM daily_scores
+        WHERE site_id = s.id
+        ORDER BY date DESC
+        LIMIT 1
+      ) score ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT date, rainfall_mm, cloud_cover_pct
+        FROM weather_log
+        WHERE site_id = s.id
+        ORDER BY date DESC
+        LIMIT 1
+      ) weather ON TRUE
+      ORDER BY s.id
+    `);
+
+    for (const row of rows) {
+      const sig = row.confidence
+        ? {
+            pop_latency_ms: row.pop_latency_ms == null ? null : Number(row.pop_latency_ms),
+            snr: row.snr == null ? null : Number(row.snr),
+            obstruction_pct: row.obstruction_pct == null ? null : Number(row.obstruction_pct),
+            ping_drop_pct: row.ping_drop_pct == null ? null : Number(row.ping_drop_pct),
+            confidence: row.confidence,
+          }
+        : null;
+      const score = computeSignalScore(sig);
+      const siteLabel = row.name || row.starlink_sn || `Site ${row.id}`;
+
+      if (row.online_laptops === 0 || !sig) {
+        const active_key = `site:${row.id}:offline`;
+        activeKeys.push(active_key);
+        await upsertAlert(client, {
+          active_key,
+          source_type: 'derived',
+          source_id: String(row.id),
+          site_id: row.id,
+          severity: 'critical',
+          category: 'connectivity',
+          title: 'Site unreachable',
+          message: `${siteLabel} is offline or has no current signal reporters.`,
+          metadata: { online_laptops: row.online_laptops, starlink_sn: row.starlink_sn },
+        });
+      } else if (row.confidence === 'low' || (score != null && score < 60)) {
+        const active_key = `site:${row.id}:degraded`;
+        activeKeys.push(active_key);
+        await upsertAlert(client, {
+          active_key,
+          source_type: 'derived',
+          source_id: String(row.id),
+          site_id: row.id,
+          severity: 'warning',
+          category: 'signal',
+          title: 'Degraded signal',
+          message: `${siteLabel} has degraded signal quality.`,
+          metadata: { score, confidence: row.confidence, latency_ms: sig.pop_latency_ms, obstruction_pct: sig.obstruction_pct },
+        });
+      }
+
+      if (row.anomaly) {
+        const active_key = `site:${row.id}:score-anomaly:${row.score_date || 'latest'}`;
+        activeKeys.push(active_key);
+        await upsertAlert(client, {
+          active_key,
+          source_type: 'derived',
+          source_id: row.score_date || String(row.id),
+          site_id: row.id,
+          severity: 'warning',
+          category: 'anomaly',
+          title: 'Signal anomaly',
+          message: `${siteLabel} dropped ${Math.abs(Number(row.anomaly_delta ?? 0))} points versus its 7-day average.`,
+          metadata: { score: row.score, cause: row.cause, anomaly_delta: row.anomaly_delta, score_date: row.score_date },
+        });
+      }
+
+      if (row.data_quality === 'low_data') {
+        const active_key = `site:${row.id}:low-data:${row.score_date || 'latest'}`;
+        activeKeys.push(active_key);
+        await upsertAlert(client, {
+          active_key,
+          source_type: 'derived',
+          source_id: row.score_date || String(row.id),
+          site_id: row.id,
+          severity: 'info',
+          category: 'data_quality',
+          title: 'Low data quality',
+          message: `${siteLabel} has low data quality for the latest score.`,
+          metadata: { score_date: row.score_date, cause: row.cause },
+        });
+      }
+
+      const weather = row.weather_date
+        ? {
+            date: row.weather_date,
+            rainfall_mm: row.rainfall_mm == null ? null : Number(row.rainfall_mm),
+            cloud_cover_pct: row.cloud_cover_pct == null ? null : Number(row.cloud_cover_pct),
+          }
+        : null;
+      const predictor = buildWeatherPredictor(weather);
+      if (predictor.level === 'high' || predictor.level === 'medium') {
+        const active_key = `site:${row.id}:weather:${predictor.based_on_date || 'latest'}:${predictor.level}`;
+        activeKeys.push(active_key);
+        await upsertAlert(client, {
+          active_key,
+          source_type: 'derived',
+          source_id: predictor.based_on_date || String(row.id),
+          site_id: row.id,
+          severity: predictor.level === 'high' ? 'warning' : 'info',
+          category: 'weather',
+          title: predictor.label,
+          message: `${predictor.label} at ${siteLabel}: ${predictor.explanation}`,
+          metadata: predictor,
+        });
+      }
+    }
+
+    const siteChanges = await client.query(`
+      SELECT e.id, e.device_id, e.to_site_id, e.detected_at, e.acknowledged_at, e.acknowledged_by,
+             d.hostname, d.windows_sn, ts.name AS to_site_name
+      FROM site_change_events e
+      JOIN devices d ON d.id = e.device_id
+      LEFT JOIN sites ts ON ts.id = e.to_site_id
+      WHERE e.detected_at >= NOW() - INTERVAL '30 days'
+    `);
+    for (const row of siteChanges.rows) {
+      const active_key = `site-change:${row.id}`;
+      activeKeys.push(active_key);
+      await upsertAlert(client, {
+        active_key,
+        source_type: 'site_change',
+        source_id: String(row.id),
+        site_id: row.to_site_id,
+        device_id: row.device_id,
+        severity: 'warning',
+        category: 'site_move',
+        title: 'Device site changed',
+        message: `${row.hostname || row.windows_sn || `Device ${row.device_id}`} moved to ${row.to_site_name || 'another site'}.`,
+        metadata: { detected_at: row.detected_at, acknowledged_at: row.acknowledged_at },
+      });
+      if (row.acknowledged_at) {
+        await client.query(
+          `UPDATE alert_events
+           SET status = 'acknowledged', acknowledged_at = COALESCE(acknowledged_at, $2), acknowledged_by = COALESCE(acknowledged_by, $3)
+           WHERE active_key = $1 AND status = 'open'`,
+          [active_key, row.acknowledged_at, row.acknowledged_by]
+        );
+      }
+    }
+
+    const derivedKeys = activeKeys.filter(key => key.startsWith('site:'));
+    if (derivedKeys.length) {
+      await client.query(
+        `UPDATE alert_events
+         SET status = 'resolved', resolved_at = NOW()
+         WHERE source_type = 'derived'
+           AND status = 'open'
+           AND active_key <> ALL($1::TEXT[])`,
+        [derivedKeys]
+      );
+    } else {
+      await client.query(
+        `UPDATE alert_events
+         SET status = 'resolved', resolved_at = NOW()
+         WHERE source_type = 'derived' AND status = 'open'`
+      );
+    }
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+function mapAlertRow(row) {
+  return {
+    id: row.id,
+    severity: row.severity,
+    category: row.category,
+    source_type: row.source_type,
+    source_id: row.source_id,
+    site_id: row.site_id,
+    device_id: row.device_id,
+    title: row.title,
+    message: row.message,
+    status: row.status,
+    detected_at: row.detected_at,
+    last_seen_at: row.last_seen_at,
+    acknowledged_at: row.acknowledged_at,
+    resolved_at: row.resolved_at,
+    site_name: row.site_name,
+    metadata: row.metadata || {},
+    assignee: (row.metadata || {}).assignee || null,
+  };
+}
+
 // ── GET /api/sites ────────────────────────────────────────────────────────────
 // Enriched with throughput (download/upload Mbps), today's data usage, and
 // uptime % so the Ranking screen can sort on any metric without more round-trips.
@@ -367,6 +652,34 @@ router.get('/devices', async (req, res, next) => {
        ) dh ON TRUE
        WHERE 1=1 ${whereClause}
        ORDER BY ${DEVICE_SEEN_EXPR} ASC NULLS LAST`
+    );
+    res.json(result.rows);
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/students ─────────────────────────────────────────────────────────
+// Circles roster joined to each student's school site. Optional ?site_id=N to
+// scope to one campus, ?limit=N (default 1000, max 2000).
+router.get('/students', async (req, res, next) => {
+  try {
+    const params = [];
+    let where = '';
+    if (req.query.site_id != null && req.query.site_id !== '') {
+      params.push(parseInt(req.query.site_id, 10));
+      where = `WHERE st.site_id = $${params.length}`;
+    }
+    const limit = Math.min(parseInt(req.query.limit || '1000', 10), 2000);
+    params.push(limit);
+
+    const result = await pool.query(
+      `SELECT st.id, st.full_name, st.email, st.school, st.site_id,
+              s.name AS site_name
+       FROM students st
+       LEFT JOIN sites s ON s.id = st.site_id
+       ${where}
+       ORDER BY st.full_name ASC
+       LIMIT $${params.length}`,
+      params
     );
     res.json(result.rows);
   } catch (err) { next(err); }
@@ -792,52 +1105,120 @@ router.post('/trigger/devices', requireAdmin, async (req, res, next) => {
 });
 
 
-// ── GET /api/site-changes ─────────────────────────────────────────────────────
-// List recent site-change events for the admin UI.
-// Query:  ?unack=1   → only unacknowledged events
-//         ?limit=N   → default 50, max 200
-router.get('/site-changes', async (req, res, next) => {
+// ── GET /api/alerts ───────────────────────────────────────────────────────────
+// Durable web-facing alerts. Synchronizes current derived conditions before read.
+router.get('/alerts', async (req, res, next) => {
   try {
-    const unack = req.query.unack === '1';
-    const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
-    const where = unack ? 'WHERE e.acknowledged_at IS NULL' : '';
-    const result = await pool.query(
-      `SELECT e.id, e.device_id, e.from_site_id, e.to_site_id,
-              e.reported_lat, e.reported_lon, e.distance_km,
-              e.detected_at, e.notified_at, e.acknowledged_at, e.acknowledged_by,
-              d.hostname, d.windows_sn,
-              fs.name AS from_site_name,
-              ts.name AS to_site_name
-       FROM site_change_events e
-       JOIN devices d      ON d.id = e.device_id
-       LEFT JOIN sites fs  ON fs.id = e.from_site_id
-       LEFT JOIN sites ts  ON ts.id = e.to_site_id
+    await syncDerivedAlerts();
+    const status = String(req.query.status || 'open');
+    const limit = Math.min(parseInt(req.query.limit || '100', 10), 300);
+    const params = [];
+    let where = '';
+    if (status !== 'all') {
+      params.push(status);
+      where = `WHERE a.status = $${params.length}`;
+    }
+    params.push(limit);
+
+    const { rows } = await pool.query(
+      `SELECT a.*, s.name AS site_name
+       FROM alert_events a
+       LEFT JOIN sites s ON s.id = a.site_id
        ${where}
-       ORDER BY e.detected_at DESC
-       LIMIT $1`,
-      [limit]
+       ORDER BY
+         CASE a.severity WHEN 'critical' THEN 3 WHEN 'warning' THEN 2 ELSE 1 END DESC,
+         a.last_seen_at DESC
+       LIMIT $${params.length}`,
+      params
     );
-    res.json(result.rows);
+    res.json(rows.map(mapAlertRow));
   } catch (err) { next(err); }
 });
 
-// ── POST /api/site-changes/:id/ack (admin only) ───────────────────────────────
-router.post('/site-changes/:id/ack', requireAdmin, async (req, res, next) => {
+// ── GET /api/alerts/summary ───────────────────────────────────────────────────
+// Chart-friendly buckets by day, severity, category, and status.
+router.get('/alerts/summary', async (req, res, next) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days || '14', 10), 1), 90);
+    const { rows } = await pool.query(
+      `SELECT
+         date_trunc('day', detected_at)::DATE AS day,
+         severity,
+         category,
+         status,
+         COUNT(*)::INT AS count
+       FROM alert_events
+       WHERE detected_at >= NOW() - ($1::INT * INTERVAL '1 day')
+       GROUP BY 1, 2, 3, 4
+       ORDER BY 1 ASC, 2 ASC, 3 ASC, 4 ASC`,
+      [days]
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/alerts/:id/ack (admin only) ─────────────────────────────────────
+router.post('/alerts/:id/ack', requireAdmin, async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
-      `UPDATE site_change_events
-       SET acknowledged_at = NOW(), acknowledged_by = $1
-       WHERE id = $2 AND acknowledged_at IS NULL
-       RETURNING id`,
+      `UPDATE alert_events
+       SET status = 'acknowledged', acknowledged_at = NOW(), acknowledged_by = $1
+       WHERE id = $2 AND status = 'open'
+       RETURNING id, source_type, source_id`,
       [req.user.id, id]
     );
     if (!result.rows.length) {
-      return res.status(404).json({ error: 'Event not found or already acknowledged' });
+      return res.status(404).json({ error: 'Alert not found or already handled' });
     }
+
+    const row = result.rows[0];
+    if (row.source_type === 'site_change' && row.source_id) {
+      await pool.query(
+        `UPDATE site_change_events
+         SET acknowledged_at = COALESCE(acknowledged_at, NOW()), acknowledged_by = COALESCE(acknowledged_by, $1)
+         WHERE id = $2`,
+        [req.user.id, row.source_id]
+      );
+    }
+
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
+
+// ── POST /api/alerts/:id/assign (admin only) ──────────────────────────────────
+// Stores the assignee name in alert_events.metadata->>'assignee'. No schema
+// change needed — metadata is already JSONB. Pass { assignee: null } to clear.
+router.post('/alerts/:id/assign', requireAdmin, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const raw = req.body && req.body.assignee;
+    const assignee = raw == null ? null : String(raw).trim();
+    if (assignee !== null && !assignee) {
+      return res.status(400).json({ error: 'assignee must be a non-empty string or null' });
+    }
+
+    const result = await pool.query(
+      assignee === null
+        ? `UPDATE alert_events SET metadata = metadata - 'assignee'
+           WHERE id = $1 RETURNING id, metadata`
+        : `UPDATE alert_events
+           SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('assignee', $1::text)
+           WHERE id = $2 RETURNING id, metadata`,
+      assignee === null ? [id] : [assignee, id]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+    res.json({ ok: true, assignee });
+  } catch (err) { next(err); }
+});
+
+// Site-change events are now surfaced through the durable alerts API
+// (GET /api/alerts, POST /api/alerts/:id/ack). The legacy /site-changes read +
+// ack routes were retired once web, mobile, and desktop all moved to /api/alerts.
+// The site_change_events table and the alert-engine sync that feeds alert_events
+// from it remain unchanged.
 
 // ── GET /api/intel/space-weather ──────────────────────────────────────────────
 // Returns the last 24 NOAA K-index readings (≈ 3 days at 3-hour cadence).

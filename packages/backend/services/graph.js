@@ -6,6 +6,11 @@
  */
 const https = require('https');
 const pool  = require('../db');
+const {
+  normalizeText,
+  normalizeSerial,
+  syntheticWindowsSerial,
+} = require('./deviceIdentity');
 
 let tokenCache = null; // { accessToken, expiresAt }
 
@@ -103,12 +108,6 @@ function normalizeDate(raw) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function normalizeText(raw) {
-  if (raw == null) return null;
-  const value = String(raw).trim();
-  return value || null;
-}
-
 function normalizeBytes(raw) {
   if (raw == null || raw === '') return null;
   const value = Number(raw);
@@ -116,8 +115,39 @@ function normalizeBytes(raw) {
   return Math.round(value);
 }
 
-function syntheticWindowsSerial(intuneId) {
-  return `INTUNE-${String(intuneId).replace(/-/g, '').slice(0, 8)}`;
+function dateTimeValue(raw) {
+  const normalized = normalizeDate(raw);
+  return normalized ? new Date(normalized).getTime() : 0;
+}
+
+function dedupeManagedDevicesBySerial(devices) {
+  const bySerial = new Map();
+  const withoutSerial = [];
+
+  for (const device of devices) {
+    const serial = normalizeSerial(device.serialNumber);
+    if (!serial) {
+      withoutSerial.push(device);
+      continue;
+    }
+
+    const existing = bySerial.get(serial);
+    if (!existing) {
+      bySerial.set(serial, device);
+      continue;
+    }
+
+    const existingSeen = dateTimeValue(existing.lastSyncDateTime);
+    const candidateSeen = dateTimeValue(device.lastSyncDateTime);
+    if (candidateSeen >= existingSeen) {
+      bySerial.set(serial, device);
+    }
+  }
+
+  return {
+    devices: [...bySerial.values(), ...withoutSerial],
+    skipped: devices.length - bySerial.size - withoutSerial.length,
+  };
 }
 
 async function listManagedDevices() {
@@ -162,14 +192,21 @@ async function upsertManagedDevice(client, device) {
   if (!intuneId) return false;
 
   const serial = normalizeText(device.serialNumber);
+  const serialNormalized = normalizeSerial(serial);
   const windowsSn = serial || syntheticWindowsSerial(intuneId);
   const existing = await client.query(
-    `SELECT id
+    `SELECT id, intune_device_id, windows_sn, serial_normalized
      FROM devices
-     WHERE intune_device_id = $1 OR windows_sn = $2
-     ORDER BY CASE WHEN intune_device_id = $1 THEN 0 ELSE 1 END
-     LIMIT 1`,
-    [intuneId, windowsSn]
+     WHERE intune_device_id = $1
+        OR windows_sn = $2
+        OR ($3::TEXT IS NOT NULL AND serial_normalized = $3)
+     ORDER BY CASE
+       WHEN $3::TEXT IS NOT NULL AND serial_normalized = $3 THEN 0
+       WHEN windows_sn = $2 THEN 1
+       WHEN intune_device_id = $1 THEN 2
+       ELSE 2
+     END`,
+    [intuneId, windowsSn, serialNormalized]
   );
 
   const values = [
@@ -188,16 +225,33 @@ async function upsertManagedDevice(client, device) {
     normalizeText(device.deviceCategoryDisplayName),
     normalizeBytes(device.freeStorageSpaceInBytes),
     normalizeBytes(device.totalStorageSpaceInBytes),
+    serialNormalized,
   ];
 
   if (existing.rows.length) {
+    const canonical = existing.rows[0];
+    const intuneMatch = existing.rows.find(row => row.intune_device_id === intuneId);
+    if (intuneMatch && intuneMatch.id !== canonical.id) {
+      await client.query(
+        `UPDATE devices
+         SET intune_device_id = NULL,
+             serial_normalized = CASE
+               WHEN windows_sn LIKE 'INTUNE-%' THEN NULL
+               ELSE serial_normalized
+             END
+         WHERE id = $1`,
+        [intuneMatch.id]
+      );
+    }
+
     await client.query(
       `UPDATE devices
        SET hostname = COALESCE($1, hostname),
            windows_sn = CASE
-             WHEN NOT EXISTS (SELECT 1 FROM devices WHERE windows_sn = $2 AND id <> $16) THEN $2
+             WHEN NOT EXISTS (SELECT 1 FROM devices WHERE windows_sn = $2 AND id <> $17) THEN $2
              ELSE windows_sn
            END,
+           serial_normalized = COALESCE($16, serial_normalized),
            manufacturer = COALESCE($3, manufacturer),
            intune_device_id = $4,
            model = COALESCE($5, model),
@@ -212,8 +266,8 @@ async function upsertManagedDevice(client, device) {
            free_storage_bytes = COALESCE($14, free_storage_bytes),
            total_storage_bytes = COALESCE($15, total_storage_bytes),
            intune_synced_at = NOW()
-       WHERE id = $16`,
-      [...values, existing.rows[0].id]
+       WHERE id = $17`,
+      [...values, canonical.id]
     );
   } else {
     await client.query(
@@ -221,9 +275,9 @@ async function upsertManagedDevice(client, device) {
          (hostname, windows_sn, manufacturer, intune_device_id, model, os,
           os_version, intune_last_sync_at, intune_enrolled_at, compliance_state,
           user_principal_name, azure_ad_device_id, device_category,
-          free_storage_bytes, total_storage_bytes, intune_synced_at, role)
+          free_storage_bytes, total_storage_bytes, serial_normalized, intune_synced_at, role)
        VALUES
-         ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), 'standard')`,
+         ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), 'standard')`,
       values
     );
   }
@@ -232,7 +286,8 @@ async function upsertManagedDevice(client, device) {
 }
 
 async function syncManagedDevices(managedDevices = null) {
-  const devices = managedDevices || await listManagedDevices();
+  const rawDevices = managedDevices || await listManagedDevices();
+  const { devices, skipped } = dedupeManagedDevicesBySerial(rawDevices);
   const client = await pool.connect();
   let upserted = 0;
   let failed = 0;
@@ -254,8 +309,8 @@ async function syncManagedDevices(managedDevices = null) {
     client.release();
   }
 
-  console.log(`[Graph] Synced ${upserted} Intune managed device(s); ${failed} failed.`);
-  return { total: devices.length, upserted, failed };
+  console.log(`[Graph] Synced ${upserted} Intune managed device(s); ${failed} failed; ${skipped} duplicate serial enrollment(s) skipped.`);
+  return { total: devices.length, raw_total: rawDevices.length, upserted, failed, skipped_duplicate_serials: skipped };
 }
 
 function scheduleIntuneDeviceSync() {
