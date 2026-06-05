@@ -314,13 +314,26 @@ if (process.env.NODE_ENV === 'production') {
   app.use(requestLog);
 }
 
-// ── Web dashboard (static) ────────────────────────────────────────────────────
-// Serve packages/web/index.html at GET / so the dashboard runs at the same
-// origin as the API — eliminates CORS friction when running locally.
-app.use(express.static(path.resolve(__dirname, '../web')));
-app.get('/', (req, res) =>
-  res.sendFile(path.resolve(__dirname, '../web/index.html'))
-);
+// ── Web dashboard (static, optional) ──────────────────────────────────────────
+// In the monorepo (local dev / full build) the web bundle sits at ../web, so we
+// serve it at GET / for same-origin convenience. In the production container the
+// image contains only the backend, so the bundle is absent — in that case the
+// dashboard is served by Vercel and / returns a small pointer instead of 500ing.
+const WEB_DIR = path.resolve(__dirname, '../web');
+const WEB_INDEX = path.join(WEB_DIR, 'index.html');
+if (fs.existsSync(WEB_INDEX)) {
+  app.use(express.static(WEB_DIR));
+  app.get('/', (req, res) => res.sendFile(WEB_INDEX));
+} else {
+  app.get('/', (req, res) =>
+    res.json({
+      service: 'starfleet-backend',
+      status: 'ok',
+      dashboard: process.env.DASHBOARD_URL || 'https://starfleet.icircles.rw',
+      health: '/health',
+    })
+  );
+}
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', async (req, res) => {
