@@ -37,7 +37,12 @@ export function StatusChip({ status, colors, small }: Props) {
   return (
     <View style={[
       styles.chip,
-      { backgroundColor: bgMap[status], paddingHorizontal: small ? 6 : 8, paddingVertical: small ? 2 : 3 },
+      {
+        backgroundColor: bgMap[status],
+        borderColor: fgMap[status],
+        paddingHorizontal: small ? 6 : 8,
+        paddingVertical: small ? 2 : 3,
+      },
     ]}>
       <View style={[styles.dot, { backgroundColor: fgMap[status] }]} />
       <Text style={[styles.label, { color: fgMap[status], fontSize: small ? 10 : 11 }]}>
@@ -48,7 +53,7 @@ export function StatusChip({ status, colors, small }: Props) {
 }
 
 const styles = StyleSheet.create({
-  chip:  { flexDirection: 'row', alignItems: 'center', borderRadius: 99, gap: 4 },
-  dot:   { width: 5, height: 5, borderRadius: 99 },
+  chip:  { flexDirection: 'row', alignItems: 'center', borderRadius: 0, borderWidth: 1, gap: 4 },
+  dot:   { width: 5, height: 5, borderRadius: 0 },
   label: { fontWeight: '600', letterSpacing: 0.2 },
 });

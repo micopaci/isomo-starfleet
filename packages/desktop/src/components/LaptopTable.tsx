@@ -57,10 +57,10 @@ export function LaptopTable({ devices, siteId, isAdmin, onTrigger, onTriggerAll 
     <div className="card laptop-table-card">
       <div className="card-header">
         <h3>
-          💻 Laptops
+          Laptops
           {staleCount > 0 && (
             <span className="badge badge-warn" style={{ marginLeft: 8 }}>
-              ⚠ {staleCount} stale
+              {staleCount} stale
             </span>
           )}
         </h3>

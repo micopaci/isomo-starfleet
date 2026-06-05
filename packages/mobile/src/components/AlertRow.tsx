@@ -53,7 +53,7 @@ export function AlertRow({ type, siteName, description, timeAgo, acknowledged, c
 }
 
 const styles = StyleSheet.create({
-  row:       { flexDirection: 'row', borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 8, alignItems: 'flex-start', gap: 10 },
+  row:       { flexDirection: 'row', borderRadius: 0, borderWidth: 1, padding: 12, marginBottom: 8, alignItems: 'flex-start', gap: 10 },
   icon:      { fontSize: 20, marginTop: 1 },
   body:      { flex: 1, gap: 3 },
   site:      { fontSize: 13, fontWeight: '600' },

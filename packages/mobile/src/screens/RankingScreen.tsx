@@ -151,7 +151,7 @@ export function RankingScreen() {
                 },
               ]}
             >
-              <Text style={[styles.chipText, { color: active ? '#fff' : C.ink3 }]}>
+              <Text style={[styles.chipText, { color: active ? C.bg : C.ink3 }]}>
                 {m.shortLabel}
               </Text>
             </TouchableOpacity>
@@ -212,16 +212,16 @@ const styles = StyleSheet.create({
   header:   { fontSize: 11, textAlign: 'center', paddingVertical: 6, letterSpacing: 0.5 },
   chips:    { paddingHorizontal: 12, paddingVertical: 10, gap: 6,
               borderBottomWidth: StyleSheet.hairlineWidth },
-  chip:     { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99, borderWidth: 1 },
+  chip:     { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 0, borderWidth: 1 },
   chipText: { fontSize: 11, fontWeight: '600', letterSpacing: 0.6 },
   list:     { paddingHorizontal: 12, paddingVertical: 8, paddingBottom: 24 },
   center:   { flex: 1, justifyContent: 'center', alignItems: 'center' },
   empty:    { textAlign: 'center', marginTop: 40 },
-  row:      { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 8,
+  row:      { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 0,
               borderWidth: 1, padding: 12, marginBottom: 8 },
   rank:     { width: 30, fontSize: 12 },
   medal:    { width: 30, fontSize: 16, textAlign: 'center' },
-  dot:      { width: 8, height: 8, borderRadius: 99 },
+  dot:      { width: 8, height: 8, borderRadius: 0 },
   name:     { flex: 1, fontSize: 13 },
   value:    { fontWeight: '700', fontSize: 13 },
 });

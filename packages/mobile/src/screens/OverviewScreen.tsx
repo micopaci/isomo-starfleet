@@ -79,16 +79,16 @@ export function OverviewScreen() {
       ) : summary ? (
         <>
           <View style={s.statsRow}>
-            <StatCard label="Online" value={summary.online_sites} icon="✅" color={C.ok} colors={C} />
-            <StatCard label="Degraded" value={summary.degraded_sites} icon="⚠️" color={C.warn} colors={C} />
-            <StatCard label="Offline" value={summary.dark_sites} icon="🔴" color={C.bad} colors={C} />
+            <StatCard label="Online" value={summary.online_sites} color={C.ok} colors={C} />
+            <StatCard label="Degraded" value={summary.degraded_sites} color={C.warn} colors={C} />
+            <StatCard label="Offline" value={summary.dark_sites} color={C.bad} colors={C} />
           </View>
           <View style={[s.statsRow, { marginTop: 8 }]}>
-            <StatCard label="Computers" value={summary.online_laptops} icon="💻" color={C.accent} colors={C}
+            <StatCard label="Computers" value={summary.online_laptops} color={C.accent} colors={C}
               sub={`of ${summary.total_laptops} total`} />
-            <StatCard label="Sites" value={summary.total_sites} icon="🏫" color={C.ink2} colors={C} />
+            <StatCard label="Sites" value={summary.total_sites} color={C.ink2} colors={C} />
             {spaceKp != null && (
-              <StatCard label="Kp Index" value={spaceKp.toFixed(1)} icon="🌌"
+              <StatCard label="Kp Index" value={spaceKp.toFixed(1)}
                 color={spaceKp < 3 ? C.ok : spaceKp < 5 ? C.warn : C.bad} colors={C}
                 sub={spaceCondition || undefined} />
             )}
@@ -99,7 +99,7 @@ export function OverviewScreen() {
       {/* Error */}
       {!!error && !summary && (
         <View style={[s.errorBox, { backgroundColor: C.badSoft, borderColor: C.bad }]}>
-          <Text style={[s.errorText, { color: C.bad }]}>⚠ {error}</Text>
+          <Text style={[s.errorText, { color: C.bad }]}>{error}</Text>
         </View>
       )}
 
@@ -127,6 +127,6 @@ const s = StyleSheet.create({
   skeletonRow:  { flexDirection: 'row', gap: 8, marginBottom: 8 },
   statsRow:     { flexDirection: 'row', gap: 8 },
   sectionTitle: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 20, marginBottom: 10 },
-  errorBox:     { borderRadius: 8, borderWidth: 1, padding: 12, marginBottom: 12 },
+  errorBox:     { borderRadius: 0, borderWidth: 1, padding: 12, marginBottom: 12 },
   errorText:    { fontSize: 13 },
 });

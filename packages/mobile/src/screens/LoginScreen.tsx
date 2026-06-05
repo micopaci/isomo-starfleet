@@ -81,7 +81,7 @@ export function LoginScreen({ colors, onLogin }: Props) {
             style={[s.btn, { backgroundColor: colors.accent }]}
             onPress={handleLogin} disabled={loading}
           >
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Sign in</Text>}
+            {loading ? <ActivityIndicator color={colors.bg} /> : <Text style={[s.btnText, { color: colors.bg }]}>Sign in</Text>}
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => setShowServer(v => !v)} style={s.toggleWrap}>
@@ -107,15 +107,15 @@ export function LoginScreen({ colors, onLogin }: Props) {
 
 const s = StyleSheet.create({
   scroll:     { flexGrow: 1, justifyContent: 'center', padding: 24 },
-  card:       { borderRadius: 16, borderWidth: 1, padding: 28, gap: 14 },
+  card:       { borderRadius: 0, borderWidth: 1, padding: 28, gap: 14 },
   logoWrap:   { alignItems: 'center' },
   logo:       { fontSize: 52 },
   title:      { textAlign: 'center', fontSize: 20, fontWeight: '700' },
   sub:        { textAlign: 'center', fontSize: 13, marginBottom: 4 },
-  input:      { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+  input:      { borderWidth: 1, borderRadius: 0, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
   error:      { color: '#dc2626', fontSize: 13, textAlign: 'center' },
-  btn:        { borderRadius: 10, padding: 14, alignItems: 'center' },
-  btnText:    { color: '#fff', fontWeight: '700', fontSize: 15 },
+  btn:        { borderRadius: 0, padding: 14, alignItems: 'center' },
+  btnText:    { fontWeight: '700', fontSize: 15 },
   toggleWrap: { alignItems: 'center' },
   toggleText: { fontSize: 12 },
 });

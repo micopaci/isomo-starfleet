@@ -2,7 +2,7 @@
  * Starfleet design tokens — single source of truth for all platforms.
  *
  * Light: warm parchment backgrounds, deep ink text, terracotta accent.
- * Dark:  deep warm ink backgrounds, warm off-white text, softened terracotta.
+ * Dark:  deep navy instrument backgrounds, warm off-white text, softened terracotta.
  */
 
 export interface ColorTokens {
@@ -34,59 +34,59 @@ export interface ColorTokens {
 }
 
 export const lightColors: ColorTokens = {
-  bg:       '#f6f3ec',
-  bg2:      '#efeadd',
-  surface:  '#ffffff',
-  surface2: '#f9f6ef',
+  bg:       '#f6f1e7',
+  bg2:      '#eee7d9',
+  surface:  '#fbf8f1',
+  surface2: '#f2ecdf',
 
-  ink:      '#141414',
-  ink2:     '#3a3a3a',
-  ink3:     '#6b6b6b',
-  muted:    '#8a867b',
+  ink:      '#171512',
+  ink2:     '#4a4339',
+  ink3:     '#766e5f',
+  muted:    '#9a907f',
 
-  rule:     '#d9d4c5',
-  rule2:    '#e6e1d3',
+  rule:     '#d8cfbd',
+  rule2:    '#e7ddcb',
 
   accent:      '#c8553d',
   accentInk:   '#8c3422',
-  accentSoft:  '#f4d9cf',
+  accentSoft:  '#efd1c7',
 
-  ok:       '#3e7d4a',
-  okSoft:   '#d9e8d8',
-  warn:     '#b7791f',
-  warnSoft: '#f2e3c4',
-  bad:      '#b13c3c',
-  badSoft:  '#f2d6d3',
-  mute:     '#9e9a8b',
-  muteSoft: '#e7e3d6',
+  ok:       '#3d7a4b',
+  okSoft:   '#dbe8d8',
+  warn:     '#a87118',
+  warnSoft: '#eeddb8',
+  bad:      '#b33d3d',
+  badSoft:  '#efd4d0',
+  mute:     '#9a907f',
+  muteSoft: '#e8dfd0',
 };
 
 export const darkColors: ColorTokens = {
-  bg:       '#0b1220',
-  bg2:      '#0e1727',
-  surface:  '#111c2e',
-  surface2: '#142339',
+  bg:       '#080f1b',
+  bg2:      '#0b1321',
+  surface:  '#0d1726',
+  surface2: '#111d30',
 
-  ink:      '#f2ede0',
-  ink2:     '#c9c3b4',
-  ink3:     '#97917f',
-  muted:    '#7a7665',
+  ink:      '#efe8d7',
+  ink2:     '#c7bdab',
+  ink3:     '#918a7d',
+  muted:    '#6f7888',
 
-  rule:     '#1e2d46',
-  rule2:    '#18253a',
+  rule:     '#223047',
+  rule2:    '#17253a',
 
-  accent:      '#e8856f',
-  accentInk:   '#f7b9a8',
+  accent:      '#e47659',
+  accentInk:   '#f1ac98',
   accentSoft:  '#3b2019',
 
-  ok:       '#7ab389',
-  okSoft:   '#1d3626',
-  warn:     '#e6b86b',
+  ok:       '#66b47e',
+  okSoft:   '#1a3024',
+  warn:     '#d8a64a',
   warnSoft: '#3a2c13',
-  bad:      '#e28482',
+  bad:      '#ef6f6a',
   badSoft:  '#3a1b1b',
-  mute:     '#87826f',
-  muteSoft: '#1a2335',
+  mute:     '#6f7888',
+  muteSoft: '#172235',
 };
 
 export const fonts = {

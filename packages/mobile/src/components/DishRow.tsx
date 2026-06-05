@@ -47,7 +47,7 @@ export function DishRow({ siteName, serial, score, downloadMbps, uploadMbps, sta
 }
 
 const styles = StyleSheet.create({
-  row:     { flexDirection: 'row', borderRadius: 10, borderWidth: 1, marginBottom: 8, overflow: 'hidden' },
+  row:     { flexDirection: 'row', borderRadius: 0, borderWidth: 1, marginBottom: 8, overflow: 'hidden' },
   accent:  { width: 4 },
   main:    { flex: 1, padding: 12, gap: 4 },
   topLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

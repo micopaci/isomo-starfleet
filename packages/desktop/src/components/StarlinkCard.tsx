@@ -119,7 +119,7 @@ export function StarlinkCard({ site, isAdmin, onTrigger }: Props) {
               if (firstDevice) void onTrigger(firstDevice.id, 'diagnostics');
             }}
           >
-            ⚙ Diagnostics
+            Diagnostics
           </button>
           <button
             className="btn-secondary"
@@ -128,7 +128,7 @@ export function StarlinkCard({ site, isAdmin, onTrigger }: Props) {
               if (firstDevice) void onTrigger(firstDevice.id, 'ping_dish');
             }}
           >
-            ⟳ Ping dish
+            Ping dish
           </button>
           <button
             className="btn-secondary"
@@ -137,7 +137,7 @@ export function StarlinkCard({ site, isAdmin, onTrigger }: Props) {
               if (firstDevice) void onTrigger(firstDevice.id, 'location_refresh');
             }}
           >
-            ↻ Refresh location
+            Refresh location
           </button>
           <button
             className="btn-secondary"
@@ -146,7 +146,7 @@ export function StarlinkCard({ site, isAdmin, onTrigger }: Props) {
               if (firstDevice) void onTrigger(firstDevice.id, 'data_pull');
             }}
           >
-            ↓ Pull data
+            Pull data
           </button>
           <button
             className="btn-secondary btn-secondary--danger"
@@ -156,7 +156,7 @@ export function StarlinkCard({ site, isAdmin, onTrigger }: Props) {
               if (firstDevice) void onTrigger(firstDevice.id, 'reboot_starlink');
             }}
           >
-            ⏻ Reboot dish
+            Reboot dish
           </button>
         </div>
       )}

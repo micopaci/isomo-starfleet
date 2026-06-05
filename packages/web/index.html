@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="build-version" content="2026-04-25-v3" />
-  <meta name="theme-color" content="#c8553d" />
+  <meta name="theme-color" content="#e47659" />
   <title>Starfleet · Isomo Ops</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
@@ -18,33 +18,33 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
   <style>
 /* Starfleet — operator dashboard stylesheet
-   Theme: warm off-white (light) / deep ink (dark), terracotta accent.
+   Theme: warm parchment (light) / deep navy instrument dark, terracotta accent.
    Type: Newsreader (serif titles) + Inter (UI) + IBM Plex Mono (numbers).
 */
 :root {
-  --bg:       #f6f3ec;
-  --bg-2:     #efeadd;
-  --surface:  #ffffff;
-  --surface-2:#f9f6ef;
-  --ink:      #141414;
-  --ink-2:    #3a3a3a;
-  --ink-3:    #6b6b6b;
-  --muted:    #8a867b;
-  --rule:     #d9d4c5;
-  --rule-2:   #e6e1d3;
+  --bg:       #f6f1e7;
+  --bg-2:     #eee7d9;
+  --surface:  #fbf8f1;
+  --surface-2:#f2ecdf;
+  --ink:      #171512;
+  --ink-2:    #4a4339;
+  --ink-3:    #766e5f;
+  --muted:    #9a907f;
+  --rule:     #d8cfbd;
+  --rule-2:   #e7ddcb;
 
   --accent:         #c8553d;
   --accent-ink:     #8c3422;
-  --accent-soft:    #f4d9cf;
+  --accent-soft:    #efd1c7;
 
-  --ok:      #3e7d4a;
-  --ok-soft: #d9e8d8;
-  --warn:    #b7791f;
-  --warn-soft:#f2e3c4;
-  --bad:     #b13c3c;
-  --bad-soft:#f2d6d3;
-  --mute:    #9e9a8b;
-  --mute-soft:#e7e3d6;
+  --ok:      #3d7a4b;
+  --ok-soft: #dbe8d8;
+  --warn:    #a87118;
+  --warn-soft:#eeddb8;
+  --bad:     #b33d3d;
+  --bad-soft:#efd4d0;
+  --mute:    #9a907f;
+  --mute-soft:#e8dfd0;
 
   --radius: 0px;
   --row-pad: 14px 16px;
@@ -57,29 +57,29 @@
 }
 
 [data-theme="dark"] {
-  --bg:       #0b1220;
-  --bg-2:     #0e1727;
-  --surface:  #111c2e;
-  --surface-2:#142339;
-  --ink:      #f2ede0;
-  --ink-2:    #c9c3b4;
-  --ink-3:    #97917f;
-  --muted:    #7a7665;
-  --rule:     #1e2d46;
-  --rule-2:   #18253a;
+  --bg:       #080f1b;
+  --bg-2:     #0b1321;
+  --surface:  #0d1726;
+  --surface-2:#111d30;
+  --ink:      #efe8d7;
+  --ink-2:    #c7bdab;
+  --ink-3:    #918a7d;
+  --muted:    #6f7888;
+  --rule:     #223047;
+  --rule-2:   #17253a;
 
-  --accent:      #e8856f;
-  --accent-ink:  #f7b9a8;
+  --accent:      #e47659;
+  --accent-ink:  #f1ac98;
   --accent-soft: #3b2019;
 
-  --ok:      #7ab389;
-  --ok-soft: #1d3626;
-  --warn:    #e6b86b;
+  --ok:      #66b47e;
+  --ok-soft: #1a3024;
+  --warn:    #d8a64a;
   --warn-soft:#3a2c13;
-  --bad:     #e28482;
+  --bad:     #ef6f6a;
   --bad-soft:#3a1b1b;
-  --mute:    #87826f;
-  --mute-soft:#1a2335;
+  --mute:    #6f7888;
+  --mute-soft:#172235;
 }
 
 * { box-sizing: border-box; }
@@ -335,25 +335,27 @@ body {
 .tbl-footer { padding: 12px 20px; font-size: 12px; border-top: 1px solid var(--rule-2); }
 
 /* ——— Status chips ——— */
-.dot { display: inline-block; border-radius: 50%; }
-.dot--ok   { background: var(--ok);   box-shadow: 0 0 0 2px color-mix(in oklch, var(--ok) 20%, transparent); }
-.dot--warn { background: var(--warn); box-shadow: 0 0 0 2px color-mix(in oklch, var(--warn) 20%, transparent); }
-.dot--bad  { background: var(--bad);  box-shadow: 0 0 0 2px color-mix(in oklch, var(--bad) 20%, transparent); animation: pulse 2s ease-in-out infinite; }
+.dot { display: inline-block; border-radius: 0; }
+.dot--ok   { background: var(--ok); }
+.dot--warn { background: var(--warn); }
+.dot--bad  { background: var(--bad); }
 .dot--mute { background: var(--mute); }
-@keyframes pulse { 0%,100%{box-shadow:0 0 0 2px color-mix(in oklch,var(--bad) 20%,transparent);} 50%{box-shadow:0 0 0 5px color-mix(in oklch,var(--bad) 10%,transparent);} }
 
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: 11.5px;
+  font-size: 10.5px;
   padding: 3px 8px;
-  border: 1px solid transparent;
-  font-family: var(--font-ui);
+  border: 1px solid var(--rule);
+  background: transparent;
+  font-family: var(--font-mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
   margin-right: 4px;
 }
-.chip--ok   { background: var(--ok-soft);   color: var(--ok);   border-color: color-mix(in oklch, var(--ok) 30%, transparent); }
-.chip--warn { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in oklch, var(--warn) 30%, transparent); }
-.chip--bad  { background: var(--bad-soft);  color: var(--bad);  border-color: color-mix(in oklch, var(--bad) 30%, transparent); }
-.chip--mute { background: var(--mute-soft); color: var(--mute); border-color: color-mix(in oklch, var(--mute) 30%, transparent); }
+.chip--ok   { color: var(--ok);   border-color: color-mix(in oklch, var(--ok) 36%, var(--rule)); }
+.chip--warn { color: var(--warn); border-color: color-mix(in oklch, var(--warn) 36%, var(--rule)); }
+.chip--bad  { color: var(--bad);  border-color: color-mix(in oklch, var(--bad) 36%, var(--rule)); }
+.chip--mute { color: var(--mute); }
 
 /* Monochrome status mode */
 .mono-status .chip { background: transparent; border-color: var(--rule); color: var(--ink-2); }
@@ -361,7 +363,6 @@ body {
   background: currentColor;
   box-shadow: none;
 }
-.mono-status .dot--bad { animation: none; }
 
 /* ——— Search ——— */
 .search {
@@ -1178,7 +1179,7 @@ function mapSites(sites) {
       obstruction:  sig?.obstruction_pct ?? 0,
       down:         firstNumber(s.download_mbps, sig?.download_mbps),
       up:           firstNumber(s.upload_mbps, sig?.upload_mbps),
-      uptime:       s.score     ?? 0,
+      uptime:       s.uptime_pct != null ? Number(s.uptime_pct) : null,
       score:        s.score,
       score7d:      s.score_7day_avg,
       anomaly:      sig?.anomaly       ?? false,
@@ -1486,7 +1487,8 @@ function Overview({ data, ui, onOpenDish, onJump, onRunDiagnostics }) {
   const maintenance = data.DISHES.filter(d=>d.status==='maintenance'||d.status==='standby').length;
   const healthyPCs = data.COMPUTERS.filter(c=>c.status==='healthy').length;
   const openAlerts = data.ALERTS.filter(a=>!a.ack).length;
-  const fleetUptime = (data.DISHES.reduce((s,d)=>s+d.uptime,0)/data.DISHES.length).toFixed(2);
+  const upDishes = data.DISHES.filter(d=>d.uptime != null);
+  const fleetUptime = upDishes.length ? (upDishes.reduce((s,d)=>s+d.uptime,0)/upDishes.length).toFixed(2) : '—';
   const avgLatency = Math.round(data.DISHES.filter(d=>d.latency>0).reduce((s,d)=>s+d.latency,0)/data.DISHES.filter(d=>d.latency>0).length);
   const topIssues = data.DISHES.filter(d=>d.status!=='online'&&d.status!=='standby').sort((a,b)=>a.status==='offline'?-1:b.status==='offline'?1:b.obstruction-a.obstruction).slice(0,4);
   return (
@@ -1503,7 +1505,7 @@ function Overview({ data, ui, onOpenDish, onJump, onRunDiagnostics }) {
         </div>
       </div>
       <div className="cards cards--4">
-        <Stat label="Fleet uptime · 30d" value={fleetUptime+'%'} sub={`${online}/${data.DISHES.length} online now`} trend={[98.8,99.1,99.0,99.3,99.2,99.4,99.5,99.6,99.7,99.8,99.7,99.8]} />
+        <Stat label="Fleet uptime" value={fleetUptime==='—'?'—':fleetUptime+'%'} sub={`${online}/${data.DISHES.length} dishes online now`} trend={[98.8,99.1,99.0,99.3,99.2,99.4,99.5,99.6,99.7,99.8,99.7,99.8]} />
         <Stat label="Avg latency" value={avgLatency+'ms'} sub="p95 across online dishes" trend={[42,38,44,41,39,37,36,38,35,34,36,35]} />
         <Stat label="Open alerts" value={openAlerts} sub={openAlerts?'requires triage':'all clear'} tone={openAlerts?'warn':'ok'} />
         <Stat label="Managed laptops" value={data.COMPUTERS.length} sub={`${healthyPCs} healthy`} />
@@ -1603,7 +1605,7 @@ function Starlinks({ data, filter, onOpenDish }) {
     status: d => ({ online: 1, degraded: 2, maintenance: 3, standby: 3, offline: 4 })[d.status] ?? 9,
     latency: d => d.latency || null,
     obstruction: d => d.obstruction,
-    uptime: d => d.uptime,
+    uptime: d => d.uptime ?? -1,
     rain: d => d.rainfall,
   });
   const counts = {
@@ -1653,7 +1655,7 @@ function Starlinks({ data, filter, onOpenDish }) {
                   <td className="num mono">{d.latency?d.latency+'ms':'—'}</td>
                   <td className="num mono">{d.obstruction.toFixed(1)}%</td>
                   <td><WeatherCell dish={d} /></td>
-                  <td className="num mono">{d.uptime.toFixed(2)}%</td>
+                  <td className="num mono">{d.uptime != null ? d.uptime.toFixed(2)+'%' : '—'}</td>
                   <td><Sparkline points={d.throughputTrend} dim={d.status!=='online'} /></td>
                   <td className="tbl__chev">{Icon.arrow}</td>
                 </tr>
@@ -1900,7 +1902,7 @@ function DishDetail({ dish, data, onClose }) {
           <StatC label="Latency"  value={dish.latency?dish.latency+'ms':'—'} tone={dish.latency>80?'warn':null} />
           <StatC label="SNR"      value={dish.snr?dish.snr.toFixed(1):'—'} />
           <StatC label="Obstruct." value={dish.obstruction.toFixed(1)+'%'} tone={dish.obstruction>5?'warn':null} />
-          <StatC label="Uptime 30d" value={dish.uptime.toFixed(2)+'%'} />
+          <StatC label="Uptime" value={dish.uptime != null ? dish.uptime.toFixed(2)+'%' : '—'} />
           <StatC label="Connected" value={`${dish.onlineLaptops ?? 0}/${dish.totalLaptops ?? 0}`} />
           <StatC label="Intune laptops" value={`${dish.onlineIntuneLaptops ?? 0}/${dish.totalIntuneLaptops ?? 0}`} />
           <StatC label="Chromebooks" value={`${dish.onlineChromebooks ?? 0}/${dish.totalChromebooks ?? 0}`} />
@@ -1936,19 +1938,19 @@ function DishDetail({ dish, data, onClose }) {
           <h4 className="panel__subtitle">Remediation actions</h4>
           <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
             <button className="btn" onClick={()=>triggerSite('diagnostics')} disabled={!!busyAction}>
-              {busyAction==='diagnostics' ? 'Queuing…' : '⚙ Diagnostics'}
+              {busyAction==='diagnostics' ? 'Queuing…' : 'Diagnostics'}
             </button>
             <button className="btn" onClick={()=>triggerSite('ping_dish')} disabled={!!busyAction}>
-              {busyAction==='ping_dish' ? 'Queuing…' : '⟳ Ping dish'}
+              {busyAction==='ping_dish' ? 'Queuing…' : 'Ping dish'}
             </button>
             <button className="btn" onClick={()=>triggerSite('data_pull')} disabled={!!busyAction}>
-              {busyAction==='data_pull' ? 'Queuing…' : '↓ Pull data'}
+              {busyAction==='data_pull' ? 'Queuing…' : 'Pull data'}
             </button>
             <button className="btn" onClick={()=>triggerSite('location_refresh')} disabled={!!busyAction}>
-              {busyAction==='location_refresh' ? 'Queuing…' : '↻ Location'}
+              {busyAction==='location_refresh' ? 'Queuing…' : 'Location'}
             </button>
             <button className="btn" onClick={()=>triggerSite('reboot_starlink')} disabled={!!busyAction}>
-              {busyAction==='reboot_starlink' ? 'Queuing…' : '⏻ Reboot dish'}
+              {busyAction==='reboot_starlink' ? 'Queuing…' : 'Reboot dish'}
             </button>
           </div>
         </section>
@@ -2439,16 +2441,16 @@ const DishDetail = window._DishDetail;
 const MapView = window._MapView;
 
 const TWEAK_DEFAULTS = {
-  theme: 'light', accent: 'terracotta', typePairing: 'serif-sans',
-  density: 'default', sidebar: 'wide', monochromeStatus: false,
+  theme: 'dark', accent: 'terracotta', typePairing: 'serif-sans',
+  density: 'dense', sidebar: 'wide', monochromeStatus: true,
   landingTab: 'overview', showTopPulse: true,
 };
 const ACCENTS = {
-  terracotta: { light:'#c8553d', dark:'#e8856f', soft_l:'#f4d9cf', soft_d:'#3b2019', ink_l:'#8c3422', ink_d:'#f7b9a8' },
+  terracotta: { light:'#c8553d', dark:'#e47659', soft_l:'#efd1c7', soft_d:'#3b2019', ink_l:'#8c3422', ink_d:'#f1ac98' },
   indigo:     { light:'#3b5bdb', dark:'#8aa0ff', soft_l:'#dbe0fa', soft_d:'#1a2150', ink_l:'#1e3a8a', ink_d:'#c0cdff' },
   forest:     { light:'#3e7d4a', dark:'#7ab389', soft_l:'#d9e8d8', soft_d:'#1d3626', ink_l:'#1f4a2a', ink_d:'#b8dcbd' },
   ochre:      { light:'#b7791f', dark:'#e6b86b', soft_l:'#f2e3c4', soft_d:'#3a2c13', ink_l:'#7a4e10', ink_d:'#f5d494' },
-  ink:        { light:'#141414', dark:'#f2ede0', soft_l:'#e6e1d3', soft_d:'#1e2d46', ink_l:'#000',    ink_d:'#fff'    },
+  ink:        { light:'#171512', dark:'#efe8d7', soft_l:'#e7ddcb', soft_d:'#223047', ink_l:'#171512', ink_d:'#efe8d7' },
 };
 const TYPE_PAIRINGS = {
   'serif-sans': { serif:"'Newsreader', Georgia, serif",   ui:"'Inter', system-ui, sans-serif" },
@@ -2758,8 +2760,9 @@ function App() {
   const liveData = { CAMPUSES, DISHES, COMPUTERS, ALERTS, ALERT_SUMMARY: alertSummary };
 
   const onlineDishes = DISHES.filter(d=>d.status==='online').length;
-  const fleetUptime = DISHES.length
-    ? (DISHES.reduce((s,d)=>s+(d.uptime||0),0)/DISHES.length).toFixed(2)
+  const upDishes = DISHES.filter(d=>d.uptime != null);
+  const fleetUptime = upDishes.length
+    ? (upDishes.reduce((s,d)=>s+d.uptime,0)/upDishes.length).toFixed(2)
     : '—';
   const openAlertCount = ALERTS.filter(a=>!a.ack).length;
   const criticalCount  = ALERTS.filter(a=>!a.ack&&a.severity==='critical').length;
@@ -2791,8 +2794,8 @@ function App() {
         </div>
         <div className="side__foot">
           <div className="side__pulse">
-            <div className="side__pulse__label">Fleet uptime · 30d</div>
-            <div className="side__pulse__value">{fleetUptime}<span style={{fontSize:14,color:'var(--muted)'}}>%</span></div>
+            <div className="side__pulse__label">Fleet uptime</div>
+            <div className="side__pulse__value">{fleetUptime}{fleetUptime!=='—' && <span style={{fontSize:14,color:'var(--muted)'}}>%</span>}</div>
             <div className="side__pulse__sub">{onlineDishes}/{liveData.DISHES.length} dishes online</div>
           </div>
         </div>
@@ -2809,13 +2812,13 @@ function App() {
             <div className="top__pulse">
               <div className="top__pulse__item">
                 <span className="lbl">Status</span>
-                <span className="val">{criticalCount?'⚠ '+criticalCount+' critical':'All systems normal'}</span>
+                <span className="val">{criticalCount ? criticalCount + ' critical' : 'All systems normal'}</span>
               </div>
               {kpData && (
                 <div className="top__pulse__item">
                   <span className="lbl">Kp</span>
                   <span className="val" style={{ color: kpData.k_index >= 5 ? 'var(--bad)' : kpData.k_index >= 4 ? 'var(--warn)' : 'var(--ok)' }}>
-                    {kpData.k_index}{kpData.k_index >= 5 ? ' ⚡' : ''}
+                    {kpData.k_index}{kpData.k_index >= 5 ? ' storm' : ''}
                   </span>
                 </div>
               )}
@@ -2829,8 +2832,8 @@ function App() {
           <button className="icon-btn" onClick={()=>patch({theme:tweaks.theme==='dark'?'light':'dark'})} aria-label="Toggle theme" title="Toggle theme">
             {tweaks.theme==='dark'?AppIcon.sun:AppIcon.moon}
           </button>
-          <button className="icon-btn" onClick={()=>setTweaksOpen(o=>!o)} aria-label="Tweaks" title="Tweaks" style={{fontSize:'11px',fontFamily:'var(--font-mono)'}}>⚙</button>
-          <button className="icon-btn" title="Sign out" onClick={()=>{ window._API.doLogout(); setAuthed(false); setSites([]); setDevices([]); }} style={{fontSize:'11px',fontFamily:'var(--font-mono)'}}>⏻</button>
+          <button className="icon-btn" onClick={()=>setTweaksOpen(o=>!o)} aria-label="Tweaks" title="Tweaks" style={{fontSize:'11px',fontFamily:'var(--font-mono)'}}>SET</button>
+          <button className="icon-btn" title="Sign out" onClick={()=>{ window._API.doLogout(); setAuthed(false); setSites([]); setDevices([]); }} style={{fontSize:'11px',fontFamily:'var(--font-mono)'}}>OFF</button>
         </header>
         {loading && sites.length === 0 && (
           <div style={{padding:'60px 28px',textAlign:'center',color:'var(--muted)',fontFamily:'var(--font-mono)',fontSize:12,letterSpacing:'0.08em'}}>
@@ -2845,7 +2848,7 @@ function App() {
             fontFamily:'var(--font-mono)',fontSize:12,color:'var(--bad,#b13c3c)',
             display:'flex',alignItems:'center',gap:16,flexWrap:'wrap',
           }}>
-            <span style={{flex:1}}>⚠ {loadErr}</span>
+            <span style={{flex:1}}>{loadErr}</span>
             <button className="btn btn--sm" onClick={loadAll} style={{whiteSpace:'nowrap'}}>Retry</button>
             <button className="btn btn--sm" onClick={() => {
               localStorage.removeItem('sf_tok');
@@ -2862,9 +2865,8 @@ function App() {
             fontFamily:'var(--font-mono)',fontSize:12,color:'var(--warn)',
             display:'flex',alignItems:'center',gap:10,
           }}>
-            <span style={{fontSize:16}}>⚡</span>
             <span>
-              <strong>Geomagnetic storm active</strong> — NOAA Kp index is {kpData.k_index} ({kpData.condition_label || 'G'+(kpData.k_index-4)+' storm'}).
+              <strong>Geomagnetic storm active</strong>. NOAA Kp index is {kpData.k_index} ({kpData.condition_label || 'G'+(kpData.k_index-4)+' storm'}).
               Starlink latency and signal quality may be degraded.
             </span>
           </div>

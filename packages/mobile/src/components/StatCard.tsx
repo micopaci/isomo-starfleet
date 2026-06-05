@@ -14,7 +14,7 @@ interface Props {
 export function StatCard({ label, value, sub, color, icon, colors }: Props) {
   const accent = color ?? colors.accent;
   return (
-    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.rule, borderLeftColor: accent }]}>
+    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.rule }]}>
       {icon && <Text style={styles.icon}>{icon}</Text>}
       <Text style={[styles.value, { color: accent }]}>{value}</Text>
       <Text style={[styles.label, { color: colors.ink3 }]}>{label}</Text>
@@ -25,7 +25,7 @@ export function StatCard({ label, value, sub, color, icon, colors }: Props) {
 
 const styles = StyleSheet.create({
   card:  {
-    flex: 1, borderRadius: 10, borderWidth: 1, borderLeftWidth: 3,
+    flex: 1, borderRadius: 0, borderWidth: 1,
     padding: 12, gap: 2,
   },
   icon:  { fontSize: 18, marginBottom: 4 },
