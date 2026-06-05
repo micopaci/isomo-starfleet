@@ -146,18 +146,18 @@ const styles = StyleSheet.create({
   screen:      { flex: 1 },
   content:     { padding: 16, gap: 16, paddingBottom: 40 },
   inputRow:    { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  input:       { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10,
+  input:       { flex: 1, borderWidth: 1, borderRadius: 0, paddingHorizontal: 10,
                  paddingVertical: 8, fontSize: 13 },
-  saveBtn:     { borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9 },
-  saveBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
+  saveBtn:     { borderRadius: 0, paddingHorizontal: 14, paddingVertical: 9 },
+  saveBtnText: { color: C.bg, fontWeight: '600', fontSize: 13 },
   editHint:    { fontSize: 11, marginTop: 2 },
   savedMsg:    { fontSize: 12, marginTop: 4 },
-  logoutBtn:   { borderWidth: 1.5, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 4 },
+  logoutBtn:   { borderWidth: 1.5, borderRadius: 0, padding: 14, alignItems: 'center', marginTop: 4 },
   logoutText:  { fontWeight: '600', fontSize: 15 },
 });
 
 const sS = StyleSheet.create({
-  wrap:  { borderRadius: 10, borderWidth: 1, padding: 14, gap: 10 },
+  wrap:  { borderRadius: 0, borderWidth: 1, padding: 14, gap: 10 },
   title: { fontSize: 11, fontWeight: '600', letterSpacing: 0.8, marginBottom: 2 },
 });
 

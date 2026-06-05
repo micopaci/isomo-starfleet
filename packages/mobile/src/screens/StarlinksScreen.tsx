@@ -39,9 +39,9 @@ type SortKey   = 'score' | 'download' | 'upload' | 'latency';
 
 const FILTER_LABELS: Record<FilterKey, string> = {
   all:      'All',
-  online:   '✅ Online',
-  degraded: '⚠️ Degraded',
-  offline:  '🔴 Offline',
+  online:   'Online',
+  degraded: 'Degraded',
+  offline:  'Offline',
 };
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -130,7 +130,7 @@ export function StarlinksScreen() {
       {/* Search */}
       <View style={[styles.searchWrap, { backgroundColor: C.surface, borderBottomColor: C.rule }]}>
         <View style={[styles.searchInput, { backgroundColor: C.surface2, borderColor: C.rule }]}>
-          <Text style={[styles.searchIcon, { color: C.muted }]}>🔍</Text>
+          <Text style={[styles.searchIcon, { color: C.muted }]}>⌕</Text>
           <TextInput
             style={[styles.searchText, { color: C.ink }]}
             placeholder="Site name or serial…"
@@ -168,7 +168,7 @@ export function StarlinksScreen() {
                 },
               ]}
             >
-              <Text style={[styles.filterText, { color: active ? '#fff' : C.ink3 }]}>
+              <Text style={[styles.filterText, { color: active ? C.bg : C.ink3 }]}>
                 {FILTER_LABELS[k]} {counts[k] > 0 ? `(${counts[k]})` : ''}
               </Text>
             </TouchableOpacity>
@@ -261,13 +261,13 @@ export function StarlinksScreen() {
 const styles = StyleSheet.create({
   screen:      { flex: 1 },
   searchWrap:  { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  searchInput: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, borderWidth: 1,
+  searchInput: { flexDirection: 'row', alignItems: 'center', borderRadius: 0, borderWidth: 1,
                  paddingHorizontal: 10, paddingVertical: 8, gap: 6 },
   searchIcon:  { fontSize: 14 },
   searchText:  { flex: 1, fontSize: 14, padding: 0 },
   filterRow:   { paddingHorizontal: 12, paddingVertical: 8, gap: 6,
                  borderBottomWidth: StyleSheet.hairlineWidth },
-  filterChip:  { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 99, borderWidth: 1 },
+  filterChip:  { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 0, borderWidth: 1 },
   filterText:  { fontSize: 12, fontWeight: '600' },
   sortBar:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12,
                  paddingVertical: 8, gap: 6, borderBottomWidth: StyleSheet.hairlineWidth },
@@ -280,5 +280,5 @@ const styles = StyleSheet.create({
   center:      { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, padding: 40 },
   errorText:   { fontSize: 14, textAlign: 'center' },
   emptyText:   { fontSize: 14 },
-  retryBtn:    { borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
+  retryBtn:    { borderWidth: 1, borderRadius: 0, paddingHorizontal: 14, paddingVertical: 8 },
 });

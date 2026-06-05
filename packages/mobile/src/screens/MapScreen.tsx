@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
 
   card: {
     position: 'absolute', bottom: 12, left: 12, right: 12,
-    borderRadius: 10, borderWidth: 1, overflow: 'hidden',
+    borderRadius: 0, borderWidth: 1, overflow: 'hidden',
   },
   cardRow: {
     flexDirection: 'row', alignItems: 'center',
@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
 
   hint: {
     position: 'absolute', bottom: 12, left: 12, right: 12,
-    borderRadius: 8, paddingVertical: 12, alignItems: 'center',
+    borderRadius: 0, paddingVertical: 12, alignItems: 'center',
   },
   hintText: { fontSize: 13 },
 });

@@ -91,7 +91,7 @@ export function SitesScreen({ navigation }: SitesListProps) {
       {/* Search bar */}
       <View style={[styles.searchWrap, { backgroundColor: C.surface, borderBottomColor: C.rule }]}>
         <View style={[styles.searchInput, { backgroundColor: C.surface2, borderColor: C.rule }]}>
-          <Text style={[styles.searchIcon, { color: C.muted }]}>🔍</Text>
+          <Text style={[styles.searchIcon, { color: C.muted }]}>⌕</Text>
           <TextInput
             style={[styles.searchText, { color: C.ink }]}
             placeholder="Search campuses…"
@@ -125,7 +125,7 @@ export function SitesScreen({ navigation }: SitesListProps) {
                   },
                 ]}
               >
-                <Text style={[styles.sortChipText, { color: active ? '#fff' : C.ink3 }]}>
+                <Text style={[styles.sortChipText, { color: active ? C.bg : C.ink3 }]}>
                   {SORT_LABELS[k]}
                 </Text>
               </TouchableOpacity>
@@ -169,13 +169,13 @@ export function SitesScreen({ navigation }: SitesListProps) {
 const styles = StyleSheet.create({
   screen:       { flex: 1 },
   searchWrap:   { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
-  searchInput:  { flexDirection: 'row', alignItems: 'center', borderRadius: 10, borderWidth: 1,
+  searchInput:  { flexDirection: 'row', alignItems: 'center', borderRadius: 0, borderWidth: 1,
                   paddingHorizontal: 10, paddingVertical: 8, gap: 6 },
   searchIcon:   { fontSize: 14 },
   searchText:   { flex: 1, fontSize: 14, padding: 0 },
   clearBtn:     { fontSize: 13, paddingLeft: 4 },
   sortRow:      { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  sortChip:     { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 99, borderWidth: 1 },
+  sortChip:     { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 0, borderWidth: 1 },
   sortChipText: { fontSize: 11, fontWeight: '600', letterSpacing: 0.4 },
   countLabel:   { marginLeft: 'auto', fontSize: 11 },
   skeletons:    { padding: 16 },

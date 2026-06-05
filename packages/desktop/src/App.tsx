@@ -253,14 +253,14 @@ function AuthedApp({
               <span className="val" style={{
                 color: kpData.k_index >= 5 ? 'var(--bad)' : kpData.k_index >= 4 ? 'var(--warn)' : 'var(--ok)',
               }}>
-                {kpData.k_index}{kpData.k_index >= 5 ? ' ⚡' : ''}
+                {kpData.k_index}{kpData.k_index >= 5 ? ' storm' : ''}
               </span>
             </div>
           )}
           <div className="topbar__status">
             <span>Status</span>
             <span className="val">
-              {openAlerts > 0 ? `⚠ ${openAlerts} issues` : 'All systems normal'}
+              {openAlerts > 0 ? `${openAlerts} issues` : 'All systems normal'}
             </span>
           </div>
         </header>

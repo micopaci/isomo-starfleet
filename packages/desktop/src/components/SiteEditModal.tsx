@@ -143,7 +143,7 @@ const overlay: React.CSSProperties = {
 };
 
 const dialog: React.CSSProperties = {
-  background: 'var(--surface)', borderRadius: 10, padding: 24,
+  background: 'var(--surface)', borderRadius: 0, padding: 24,
   width: 480, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto',
   boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
 };

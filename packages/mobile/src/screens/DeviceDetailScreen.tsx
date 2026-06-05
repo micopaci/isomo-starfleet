@@ -190,8 +190,8 @@ export function DeviceDetailScreen({ route, navigation }: DeviceDetailProps) {
               disabled={pulling || refreshing}
             >
               {pulling
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={styles.actionBtnText}>⬇ Pull Data</Text>}
+                ? <ActivityIndicator color={C.bg} size="small" />
+                : <Text style={styles.actionBtnText}>Pull data</Text>}
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: C.surface2, borderWidth: 1, borderColor: C.accent }]}
@@ -200,7 +200,7 @@ export function DeviceDetailScreen({ route, navigation }: DeviceDetailProps) {
             >
               {refreshing
                 ? <ActivityIndicator color={C.accent} size="small" />
-                : <Text style={[styles.actionBtnText, { color: C.accent }]}>📍 Location</Text>}
+                : <Text style={[styles.actionBtnText, { color: C.accent }]}>Location</Text>}
             </TouchableOpacity>
           </View>
           {!!actionMsg && (
@@ -256,7 +256,7 @@ function formatAgo(date: Date): string {
 const styles = StyleSheet.create({
   screen:          { flex: 1 },
   center:          { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
-  card:            { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 12, gap: 8 },
+  card:            { borderRadius: 0, borderWidth: 1, padding: 14, marginBottom: 12, gap: 8 },
   cardTitle:       { fontWeight: '600', fontSize: 14, marginBottom: 4 },
   statusRow:       { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   roleBadge:       { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
@@ -266,13 +266,13 @@ const styles = StyleSheet.create({
   infoLabel:       { fontSize: 12, flex: 0.42 },
   infoValue:       { fontSize: 13, fontWeight: '500', flex: 0.58, textAlign: 'right' },
   healthGrid:      { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  healthTile:      { borderRadius: 8, borderWidth: 1, padding: 10, minWidth: '47%', flex: 1 },
+  healthTile:      { borderRadius: 0, borderWidth: 1, padding: 10, minWidth: '47%', flex: 1 },
   healthValue:     { fontSize: 14, fontWeight: '700', marginBottom: 2 },
   healthLabel:     { fontSize: 11 },
   healthTimestamp: { fontSize: 11, marginTop: 4, textAlign: 'right' },
   actionsRow:      { flexDirection: 'row', gap: 8 },
-  actionBtn:       { flex: 1, borderRadius: 8, padding: 12, alignItems: 'center' },
-  actionBtnText:   { color: '#fff', fontWeight: '600', fontSize: 13 },
+  actionBtn:       { flex: 1, borderRadius: 0, padding: 12, alignItems: 'center' },
+  actionBtnText:   { color: C.bg, fontWeight: '600', fontSize: 13 },
   actionMsg:       { fontSize: 12, textAlign: 'center', marginTop: 4 },
   errorText:       { fontSize: 14 },
   retryBtn:        { borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 },

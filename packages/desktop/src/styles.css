@@ -1,7 +1,7 @@
 /* Starfleet — desktop app stylesheet
-   Theme: warm parchment (light) / warm deep ink (dark), terracotta accent.
+   Theme: warm parchment (light) / deep navy instrument dark, terracotta accent.
    Type: Newsreader (serif titles) + Inter (UI) + IBM Plex Mono (telemetry).
-   Shape: 2px radius — slightly softened rectangles.
+   Shape: sharp rectangles, hairline rules.
    Motion: Emil Kowalski principles — ease-out, specific properties, press states.
 */
 
@@ -17,39 +17,39 @@
 /* ── Design tokens — light ──────────────────────────────────────────────────── */
 :root {
   /* Surfaces — warm parchment */
-  --bg:        #f5f1e8;
-  --bg-2:      #ede8db;
-  --surface:   #fdfaf4;
-  --surface-2: #f5f1e8;
+  --bg:        #f6f1e7;
+  --bg-2:      #eee7d9;
+  --surface:   #fbf8f1;
+  --surface-2: #f2ecdf;
 
   /* Ink */
-  --ink:   #19140e;
-  --ink-2: #3d3528;
-  --ink-3: #6e6352;
-  --muted: #9c8f7c;
+  --ink:   #171512;
+  --ink-2: #4a4339;
+  --ink-3: #766e5f;
+  --muted: #9a907f;
 
   /* Rules — warm hairlines */
-  --rule:   #dbd4c4;
-  --rule-2: #e8e2d4;
+  --rule:   #d8cfbd;
+  --rule-2: #e7ddcb;
 
   /* Accent — terracotta */
-  --accent:      #b84e38;
-  --accent-ink:  #7a2e1c;
-  --accent-soft: #f2d9d0;
+  --accent:      #c8553d;
+  --accent-ink:  #8c3422;
+  --accent-soft: #efd1c7;
 
   /* Status — considered, not generic */
-  --ok:        #326b40;
-  --ok-soft:   #d8eadb;
-  --warn:      #9a6b1a;
-  --warn-soft: #f0e0bc;
-  --bad:       #9e3535;
-  --bad-soft:  #f0d4d3;
-  --mute-c:    #9a9284;
-  --mute-soft: #e5e0d5;
+  --ok:        #3d7a4b;
+  --ok-soft:   #dbe8d8;
+  --warn:      #a87118;
+  --warn-soft: #eeddb8;
+  --bad:       #b33d3d;
+  --bad-soft:  #efd4d0;
+  --mute-c:    #9a907f;
+  --mute-soft: #e8dfd0;
 
   /* Layout */
   --sidebar-w: 232px;
-  --radius:    2px;
+  --radius:    0px;
   --row-pad:   13px 16px;
   --panel-pad: 20px;
 
@@ -67,34 +67,33 @@
   text-rendering: optimizeLegibility;
 }
 
-/* ── Dark theme — warm ink, not cold blue ───────────────────────────────────── */
-/* The light theme is parchment; dark is the same paper read by candlelight.   */
+/* ── Dark theme — deep navy instrument surface ─────────────────────────────── */
 .dark, [data-theme="dark"] {
-  --bg:        #0f0c08;
-  --bg-2:      #151109;
-  --surface:   #1c1710;
-  --surface-2: #221e16;
+  --bg:        #080f1b;
+  --bg-2:      #0b1321;
+  --surface:   #0d1726;
+  --surface-2: #111d30;
 
-  --ink:   #ede5d4;
-  --ink-2: #c4b89e;
-  --ink-3: #8a7e6c;
-  --muted: #6b6052;
+  --ink:   #efe8d7;
+  --ink-2: #c7bdab;
+  --ink-3: #918a7d;
+  --muted: #6f7888;
 
-  --rule:   #2e2a20;
-  --rule-2: #26221a;
+  --rule:   #223047;
+  --rule-2: #17253a;
 
-  --accent:      #d96b52;
-  --accent-ink:  #f0a898;
+  --accent:      #e47659;
+  --accent-ink:  #f1ac98;
   --accent-soft: #3a1d12;
 
-  --ok:        #5ea86e;
-  --ok-soft:   #1a3220;
-  --warn:      #c49535;
+  --ok:        #66b47e;
+  --ok-soft:   #1a3024;
+  --warn:      #d8a64a;
   --warn-soft: #33240c;
-  --bad:       #c46060;
+  --bad:       #ef6f6a;
   --bad-soft:  #341616;
-  --mute-c:    #7a7264;
-  --mute-soft: #201d16;
+  --mute-c:    #6f7888;
+  --mute-soft: #172235;
 }
 
 body { background: var(--bg); color: var(--ink); height: 100vh; overflow: hidden; }
@@ -442,39 +441,37 @@ body { background: var(--bg); color: var(--ink); height: 100vh; overflow: hidden
 .status-dot {
   display: inline-block;
   width: 6px; height: 6px;
-  border-radius: 50%;
+  border-radius: 0;
   flex-shrink: 0;
 }
 .status-dot.ok,       .status-dot.online   { background: var(--ok); }
 .status-dot.warn,     .status-dot.degraded { background: var(--warn); }
 .status-dot.bad,      .status-dot.offline,
-.status-dot.critical, .status-dot.dark     { background: var(--bad); animation: pulse-dot 2.4s ease-in-out infinite; }
+.status-dot.critical, .status-dot.dark     { background: var(--bad); }
 .status-dot.mute, .status-dot.standby,
 .status-dot.maintenance, .status-dot.in-repair { background: var(--mute-c); }
 
-@keyframes pulse-dot {
-  0%, 100% { box-shadow: 0 0 0 0px color-mix(in srgb, var(--bad) 0%, transparent); }
-  50%       { box-shadow: 0 0 0 4px color-mix(in srgb, var(--bad) 15%, transparent); }
-}
-
-/* Status chips — text only, minimal footprint */
+/* Status chips — square label plus flat status dot */
 .status-chip {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px;
+  font-size: 10.5px;
   padding: 2px 7px;
-  border-radius: 999px;
-  font-family: var(--font-ui);
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-mono);
   font-weight: 500;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
-.status-chip.ok   { background: var(--ok-soft);   color: var(--ok);   }
-.status-chip.warn { background: var(--warn-soft); color: var(--warn); }
-.status-chip.bad  { background: var(--bad-soft);  color: var(--bad);  }
-.status-chip.mute { background: var(--mute-soft); color: var(--mute-c); }
+.status-chip.ok   { color: var(--ok);   border-color: color-mix(in srgb, var(--ok) 36%, var(--rule)); }
+.status-chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 36%, var(--rule)); }
+.status-chip.bad  { color: var(--bad);  border-color: color-mix(in srgb, var(--bad) 36%, var(--rule)); }
+.status-chip.mute { color: var(--mute-c); }
 
 /* ── Bar indicators ─────────────────────────────────────────────────────────── */
-.bar-track { height: 3px; background: var(--rule-2); position: relative; flex: 1; min-width: 48px; border-radius: 999px; }
-.bar-fill  { position: absolute; inset: 0; border-radius: 999px; }
+.bar-track { height: 3px; background: var(--rule-2); position: relative; flex: 1; min-width: 48px; border-radius: 0; }
+.bar-fill  { position: absolute; inset: 0; border-radius: 0; }
 .bar-fill.ok   { background: var(--ok); }
 .bar-fill.warn { background: var(--warn); }
 .bar-fill.bad  { background: var(--bad); }
@@ -693,7 +690,7 @@ button { font-family: inherit; cursor: pointer; }
 .link-btn:hover { color: var(--accent); }
 
 /* ── Score pill ─────────────────────────────────────────────────────────────── */
-.score-pill { padding: 3px 10px; color: #fff; font-size: 11.5px; font-weight: 600; font-family: var(--font-mono); border-radius: 999px; }
+.score-pill { padding: 3px 10px; color: var(--bg); font-size: 11.5px; font-weight: 600; font-family: var(--font-mono); border-radius: 0; }
 .score-pill-good { background: var(--ok); }
 .score-pill-warn { background: var(--warn); }
 .score-pill-bad  { background: var(--bad); }

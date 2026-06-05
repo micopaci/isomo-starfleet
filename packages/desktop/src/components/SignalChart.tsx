@@ -38,7 +38,7 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
     <div style={{
       background: 'var(--bg-card, #1e293b)',
       border: '1px solid var(--border, #334155)',
-      borderRadius: 8,
+      borderRadius: 0,
       padding: '8px 12px',
       fontSize: 12,
       minWidth: 200,
@@ -49,11 +49,11 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
       <div style={{ color: '#94a3b8', marginTop: 2 }}>{d.cause}</div>
       {d.anomaly && (
         <div style={{ color: '#ef4444', marginTop: 4 }}>
-          ⚠ Anomaly{d.anomaly_delta != null ? ` (−${Math.abs(d.anomaly_delta)} vs avg)` : ''}
+          Anomaly{d.anomaly_delta != null ? ` (${Math.abs(d.anomaly_delta)} vs avg)` : ''}
         </div>
       )}
       {d.data_quality === 'low_data' && (
-        <div style={{ color: '#f59e0b', marginTop: 2 }}>⚡ Low data — score may be imprecise</div>
+        <div style={{ color: '#f59e0b', marginTop: 2 }}>Low data, score may be imprecise</div>
       )}
     </div>
   );
@@ -95,12 +95,12 @@ export function SignalChart({ scores, hasAnomalies, hasLowData }: Props) {
         <div className="chart-badges">
           {hasAnomalies && (
             <span className="badge badge-alert" title="One or more anomaly days detected">
-              ⚠ Anomalies
+              Anomalies
             </span>
           )}
           {hasLowData && (
             <span className="badge badge-warn" title="Some days had fewer than 12 readings">
-              ⚡ Low data
+              Low data
             </span>
           )}
         </div>

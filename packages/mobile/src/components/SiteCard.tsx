@@ -58,7 +58,7 @@ export function SiteCard({ site, onPress, colors }: Props) {
 }
 
 const styles = StyleSheet.create({
-  card:      { borderRadius: 10, borderWidth: 1, padding: 14, marginBottom: 10, gap: 8 },
+  card:      { borderRadius: 0, borderWidth: 1, padding: 14, marginBottom: 10, gap: 8 },
   topRow:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   nameWrap:  { flex: 1, gap: 2 },
   name:      { fontSize: 14, fontWeight: '600' },

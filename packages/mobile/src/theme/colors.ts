@@ -25,7 +25,7 @@ function withAliases(base: ColorTokens): Colors {
     text:     base.ink,
     text2:    base.muted,
     border:   base.rule,
-    white:    '#ffffff',
+    white:    base.surface,
     online:   base.ok,
     degraded: base.warn,
     dark:     base.bad,

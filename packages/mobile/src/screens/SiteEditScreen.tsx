@@ -142,7 +142,7 @@ function FormField({
 const styles = StyleSheet.create({
   screen:      { flex: 1 },
   center:      { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  input:       { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14 },
-  saveBtn:     { borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
-  saveBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  input:       { borderWidth: 1, borderRadius: 0, padding: 10, fontSize: 14 },
+  saveBtn:     { borderRadius: 0, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
+  saveBtnText: { color: C.bg, fontWeight: '600', fontSize: 15 },
 });

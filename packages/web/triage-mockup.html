@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Starfleet — Triage (v3)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0c1320; --panel:#0e1726; --line:#1c2940; --line-2:#16223550;
+    --ink:#e9e4d6; --ink-2:#a8a596; --ink-3:#6e7686; --faint:#525c6e;
+    --accent:#d2674c;            /* terracotta — actions + active only */
+    --ok:#5c9c6e; --warn:#c1923c; --bad:#cb574f;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+    --serif:'Newsreader',Georgia,serif;
+    --ui:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--ui);font-size:13px;line-height:1.4;-webkit-font-smoothing:antialiased}
+  .m{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  /* status line — terminal-terse, no boxes */
+  .statusline{display:flex;align-items:center;gap:0;height:34px;padding:0 16px;border-bottom:1px solid var(--line);
+    font-family:var(--mono);font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden}
+  .statusline .nm{color:var(--ink);font-weight:600;letter-spacing:.3px}
+  .statusline .sep{margin:0 12px;color:var(--faint)}
+  .statusline b{color:var(--ink);font-weight:500}
+  .statusline .bad{color:var(--bad)} .statusline .warn{color:var(--warn)}
+  .statusline .right{margin-left:auto;color:var(--faint)}
+
+  .wrap{max-width:1280px;margin:0 auto;padding:22px 16px 50px}
+  .colhead{display:flex;align-items:baseline;gap:10px;padding:0 0 8px;margin-bottom:2px;border-bottom:1px solid var(--line)}
+  .colhead h2{font-family:var(--serif);font-weight:500;font-size:16px;letter-spacing:.2px}
+  .colhead .sub{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+  .colhead .r{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint)}
+
+  .layout{display:grid;grid-template-columns:1fr 300px;gap:0}
+  .queue{border-right:1px solid var(--line);padding-right:22px}
+  @media(max-width:920px){.layout{grid-template-columns:1fr}.queue{border-right:none;padding-right:0}}
+
+  /* ── Row: a site needing attention. Dense, two-line, hairline-separated. ── */
+  .row{display:grid;grid-template-columns:3px 1fr;gap:14px;padding:13px 4px 13px 0;border-bottom:1px solid var(--line)}
+  .row:hover{background:#0f1a2b}
+  .bar{align-self:stretch}
+  .row.bad .bar{background:var(--bad)} .row.warn .bar{background:var(--warn)}
+  .body{min-width:0}
+  .r1{display:flex;align-items:baseline;gap:10px}
+  .name{font-family:var(--serif);font-size:16px;font-weight:500;letter-spacing:.1px}
+  .region{font-size:12px;color:var(--ink-3)}
+  .state{margin-left:auto;font-family:var(--mono);font-size:11.5px;letter-spacing:.3px}
+  .state.bad{color:var(--bad)} .state.warn{color:var(--warn)}
+  .r2{display:flex;align-items:center;gap:14px;margin-top:6px}
+  .why{color:var(--ink-2);font-size:12.5px;flex:1;min-width:0}
+  .why .m{color:var(--ink);font-size:12px}
+  .spark{flex:none}
+  /* metrics: terse mono, no chips. dim by default, status-colored only when it matters */
+  .r3{margin-top:7px;font-family:var(--mono);font-size:11.5px;color:var(--faint);display:flex;flex-wrap:wrap;gap:0 18px}
+  .r3 .k{color:var(--ink-3)} .r3 .v{color:var(--ink-2)} .r3 .bad{color:var(--bad)} .r3 .warn{color:var(--warn)}
+  .r3 .down::after{content:"\2193";color:var(--bad);margin-left:1px}
+  .meta{margin-top:7px;font-size:11.5px;color:var(--faint)}
+  .meta b{color:var(--ink-3);font-weight:500}
+  .acts{display:flex;align-items:center;gap:16px;margin-top:9px}
+  .act{font-family:var(--ui);font-size:12px;color:var(--ink-2);background:none;border:none;cursor:pointer;padding:0}
+  .act:hover{color:var(--ink)}
+  .act.go{color:var(--accent);font-weight:500}
+  .act.go:hover{color:#e08163}
+  .act + .act{border-left:1px solid var(--line);padding-left:16px}
+
+  .green{display:flex;align-items:center;gap:9px;padding:12px 4px;font-size:12px;color:var(--ink-3);font-family:var(--mono)}
+  .green b{color:var(--ink-2);font-weight:500}
+  .green .show{margin-left:auto;color:var(--accent);font-family:var(--ui);cursor:pointer}
+  .pip{width:6px;height:6px;background:var(--ok);flex:none}
+
+  /* ── Right column: change log + env, flat mono ── */
+  .side{padding-left:22px}
+  @media(max-width:920px){.side{padding-left:0;margin-top:26px}}
+  .log{list-style:none;font-family:var(--mono);font-size:11.5px}
+  .log li{display:grid;grid-template-columns:42px 1fr;gap:8px;padding:7px 0;border-bottom:1px solid var(--line-2);color:var(--ink-2)}
+  .log .t{color:var(--faint)}
+  .log b{color:var(--ink);font-weight:500}
+  .log .d{display:inline-block;width:5px;height:5px;margin-right:6px;vertical-align:middle}
+  .log .d.bad{background:var(--bad)} .log .d.warn{background:var(--warn)} .log .d.ok{background:var(--ok)}
+  .env{margin-top:24px}
+  .env h3{font-family:var(--mono);font-size:10.5px;letter-spacing:1px;color:var(--ink-3);text-transform:uppercase;margin-bottom:8px}
+  .env .e{display:flex;justify-content:space-between;padding:5px 0;font-size:12px;color:var(--ink-3);border-bottom:1px solid var(--line-2)}
+  .env .e .v{font-family:var(--mono);color:var(--ink-2)}
+  .env .e .v.warn{color:var(--warn)}
+  .foot{margin-top:22px;font-size:11px;color:var(--faint);line-height:1.55;font-family:var(--mono)}
+</style>
+</head>
+<body>
+
+<div class="statusline">
+  <span class="nm">STARFLEET</span><span class="sep">·</span>
+  <b>37</b>/40 up<span class="sep">·</span><span class="bad"><b>2</b> crit</span><span class="sep">·</span>
+  <b>268</b>/301 dev 1h<span class="sep">·</span><span class="warn">Kp 5 storm</span>
+  <span class="right">isomoacademy · 14:32 CAT</span>
+</div>
+
+<div class="wrap">
+  <div class="layout">
+
+    <!-- ── Worklist ── -->
+    <section class="queue">
+      <div class="colhead"><h2>Needs attention</h2><span class="sub">sorted by severity</span><span class="r">4 open</span></div>
+
+      <!-- 1 offline -->
+      <div class="row bad">
+        <div class="bar"></div>
+        <div class="body">
+          <div class="r1"><span class="name">GS Nyange</span><span class="region">Mugesera · Eastern</span>
+            <span class="state bad">OFFLINE 12m</span></div>
+          <div class="r2">
+            <span class="why">No heartbeat since 14:20. Signal was already collapsing — <span class="m">SNR 3.1</span> and falling before the dish dropped.</span>
+            <svg class="spark" width="92" height="22" viewBox="0 0 92 22"><polyline points="0,5 12,6 24,7 36,9 48,11 60,15 72,19 80,21" fill="none" stroke="#cb574f" stroke-width="1.5"/><line x1="80" y1="21" x2="92" y2="21" stroke="#525c6e" stroke-width="1" stroke-dasharray="2 2"/></svg>
+          </div>
+          <div class="r3"><span><span class="k">snr</span> <span class="bad down">3.1</span></span><span><span class="k">lat</span> <span class="v">—</span></span><span><span class="k">rain</span> <span class="v">4.5mm</span></span><span><span class="k">kp</span> <span class="warn">5</span></span><span><span class="k">obs</span> <span class="v">2.1%</span></span><span><span class="k">reboot</span> <span class="v">6d ago</span></span></div>
+          <div class="meta"><b>42 laptops</b> at site · unassigned</div>
+          <div class="acts"><button class="act go">Reboot dish</button><button class="act">Ping</button><button class="act">Assign</button><button class="act">Ack</button></div>
+        </div>
+      </div>
+
+      <!-- 2 degraded -->
+      <div class="row bad">
+        <div class="bar"></div>
+        <div class="body">
+          <div class="r1"><span class="name">GS Gishyita</span><span class="region">Karongi · Western</span>
+            <span class="state bad">DEGRADED −44%</span></div>
+          <div class="r2">
+            <span class="why">Signal quality <span class="m">41</span>. The dip tracks the rainfall curve almost exactly — weather, not hardware. Hold off on a reboot.</span>
+            <svg class="spark" width="92" height="22" viewBox="0 0 92 22"><polyline points="0,7 12,6 24,8 36,7 48,12 60,16 72,14 84,17" fill="none" stroke="#cb574f" stroke-width="1.5"/></svg>
+          </div>
+          <div class="r3"><span><span class="k">snr</span> <span class="warn">6.2</span></span><span><span class="k">obs</span> <span class="bad">6.2%</span></span><span><span class="k">rain</span> <span class="v">12mm</span></span><span><span class="k">cloud</span> <span class="v">97%</span></span><span><span class="k">kp</span> <span class="warn">5</span></span></div>
+          <div class="meta">probable cause <b>weather</b> · 18 laptops · unassigned</div>
+          <div class="acts"><button class="act go">Diagnostics</button><button class="act">Ping</button><button class="act">Assign</button><button class="act">Ack</button></div>
+        </div>
+      </div>
+
+      <!-- 3 stale laptops -->
+      <div class="row warn">
+        <div class="bar"></div>
+        <div class="body">
+          <div class="r1"><span class="name">Maranyundo Girls</span><span class="region">Bugesera · Eastern</span>
+            <span class="state warn">14 STALE</span></div>
+          <div class="r2"><span class="why">14 of 38 laptops silent &gt;3h. Dish is healthy and reporting — this is the devices, not the link.</span></div>
+          <div class="r3"><span><span class="k">dish</span> <span class="v">online</span></span><span><span class="k">stale</span> <span class="warn">14 / 38</span></span><span><span class="k">intune sync</span> <span class="v">3h ago</span></span><span><span class="k">uptime</span> <span class="v">99.1%</span></span></div>
+          <div class="meta">assigned <b>Pacifique</b> · ack 1h ago</div>
+          <div class="acts"><button class="act go">Push update</button><button class="act">View laptops</button><button class="act">Reassign</button></div>
+        </div>
+      </div>
+
+      <!-- 4 latency -->
+      <div class="row warn">
+        <div class="bar"></div>
+        <div class="body">
+          <div class="r1"><span class="name">ES Kirambo</span><span class="region">Burera · Northern</span>
+            <span class="state warn">p95 320ms</span></div>
+          <div class="r2">
+            <span class="why">Latency p95 crossed 300ms at 13:48 and the spread keeps widening. Online, but getting worse.</span>
+            <svg class="spark" width="92" height="22" viewBox="0 0 92 22"><polyline points="0,16 12,15 24,14 36,13 48,11 60,9 72,7 84,5" fill="none" stroke="#c1923c" stroke-width="1.5"/></svg>
+          </div>
+          <div class="r3"><span><span class="k">p50</span> <span class="v">110ms</span></span><span><span class="k">p95</span> <span class="warn">320ms</span></span><span><span class="k">obs</span> <span class="v">4.1%</span></span><span><span class="k">cloud</span> <span class="v">97%</span></span></div>
+          <div class="meta">23 laptops · unassigned</div>
+          <div class="acts"><button class="act go">Ping dish</button><button class="act">Diagnostics</button><button class="act">Assign</button><button class="act">Ack</button></div>
+        </div>
+      </div>
+
+      <div class="green"><span class="pip"></span><b>33</b> sites healthy<span style="color:var(--faint)">·</span><b>268</b> laptops in<span style="color:var(--faint)">·</span>avg lat <b>38ms</b><span style="color:var(--faint)">·</span>uptime <b>99.4%</b><span class="show">show all →</span></div>
+    </section>
+
+    <!-- ── Change log + environment ── -->
+    <aside class="side">
+      <div class="colhead"><h2>Changes</h2><span class="r">today</span></div>
+      <ul class="log">
+        <li><span class="t">14:20</span><span><span class="d bad"></span><b>GS Nyange</b> offline — no heartbeat</span></li>
+        <li><span class="t">14:02</span><span><span class="d warn"></span>Kp rose to <b>5</b> — storm began</span></li>
+        <li><span class="t">13:54</span><span><span class="d bad"></span><b>GS Gishyita</b> signal &lt; 60</span></li>
+        <li><span class="t">13:48</span><span><span class="d warn"></span><b>ES Kirambo</b> p95 &gt; 300ms</span></li>
+        <li><span class="t">12:30</span><span><span class="d warn"></span><b>Maranyundo</b> 14 laptops stale</span></li>
+        <li><span class="t">11:15</span><span><span class="d ok"></span><b>CIC Muramba</b> recovered</span></li>
+      </ul>
+
+      <div class="env">
+        <h3>Environment</h3>
+        <div class="e"><span>geomagnetic Kp</span><span class="v warn">5 storm</span></div>
+        <div class="e"><span>sites w/ rain &gt;5mm</span><span class="v">6</span></div>
+        <div class="e"><span>avg obstruction</span><span class="v">1.4%</span></div>
+        <div class="e"><span>starlink sats overhead</span><span class="v">18</span></div>
+      </div>
+
+      <p class="foot">v3 — flat, hairline, mono-dense. No glow, no gradient, no chips.<br>Color only on status. Sparklines carry the trend. Interest from density &amp; type, not decoration.</p>
+    </aside>
+
+  </div>
+</div>
+
+</body>
+</html>
