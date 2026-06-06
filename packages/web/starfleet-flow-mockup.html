@@ -6,7 +6,18 @@
   <title>Starfleet Flow Mockup</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;1,8..60,400&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    (function() {
+      const h = document.documentElement;
+      const light = new Set(["warm-paper","chalk","stone"]);
+      const p = localStorage.getItem("sf_palette") || localStorage.getItem("sf_pin_palette") || "field-green";
+      h.dataset.palette = p;
+      h.dataset.typeset = localStorage.getItem("sf_typeset") || localStorage.getItem("sf_pin_typeset") || "editorial";
+      h.dataset.density = localStorage.getItem("sf_density") || localStorage.getItem("sf_pin_density") || "comfortable";
+      h.dataset.theme = light.has(p) ? "light" : "dark";
+    })();
+  </script>
   <style>
     :root {
       --bg: #f3f6f1;
@@ -378,6 +389,11 @@
       background: var(--surface-2);
       padding: 0 12px;
     }
+    th[data-sort] { cursor: pointer; user-select: none; }
+    th[data-sort]:hover { color: var(--ink-2); }
+    th.sort-asc::after  { content: " ↑"; opacity: .7; letter-spacing: 0; font-size: 9px; }
+    th.sort-desc::after { content: " ↓"; opacity: .7; letter-spacing: 0; font-size: 9px; }
+    th.sort-asc, th.sort-desc { color: var(--ink-2); }
     td {
       height: 44px;
       border-bottom: 1px solid var(--rule-2);
@@ -850,6 +866,201 @@
       .campus-grid { grid-template-columns: 1fr; }
       .campus-card { border-right: 0; }
     }
+
+    /* ── Palettes ── come after [data-theme], so they win */
+    [data-palette="navy"] {
+      --bg: #0c1320; --rail: #0f172a; --surface: #131d2e; --surface-2: #192535;
+      --ink: #e9e4d6; --ink-2: #c4bfb2; --ink-3: #7a7568; --muted: #585450;
+      --rule: #22304a; --rule-2: #1a263c;
+      --accent: #d2674c; --accent-2: #f0896e;
+      --ok: #4daa72; --warn: #d4a038; --bad: #d95a5a; --info: #5bb8bd;
+    }
+    [data-palette="carbon"] {
+      --bg: #0b0b0d; --rail: #0e0e11; --surface: #141418; --surface-2: #1c1c21;
+      --ink: #f2f2f2; --ink-2: #c0c0c0; --ink-3: #7a7a7a; --muted: #545454;
+      --rule: #242429; --rule-2: #1d1d22;
+      --accent: #d9a441; --accent-2: #f2c360;
+      --ok: #48a870; --warn: #d9a441; --bad: #d45252; --info: #5ab4b9;
+    }
+    [data-palette="slate"] {
+      --bg: #11161d; --rail: #141a22; --surface: #181f28; --surface-2: #1e2630;
+      --ink: #e8ecf1; --ink-2: #bec5cf; --ink-3: #78838e; --muted: #546068;
+      --rule: #252f3c; --rule-2: #1c2531;
+      --accent: #4f8fd1; --accent-2: #7ab0e4;
+      --ok: #4aae74; --warn: #d4a040; --bad: #d45858; --info: #56b4ba;
+    }
+    [data-palette="warm-paper"] {
+      --bg: #f6f3ec; --rail: #ede9e0; --surface: #fdfaf5; --surface-2: #f0ece3;
+      --ink: #141414; --ink-2: #3c3830; --ink-3: #7a7268; --muted: #9c9288;
+      --rule: #d8d0c4; --rule-2: #e4ddd5;
+      --accent: #c8553d; --accent-2: #9c3e2a;
+      --ok: #287a52; --warn: #a06818; --bad: #b83636; --info: #2a7a82;
+    }
+    [data-palette="chalk"] {
+      --bg: #f5f7fb; --rail: #edf0f7; --surface: #ffffff; --surface-2: #eef1f8;
+      --ink: #141820; --ink-2: #38405a; --ink-3: #6878a0; --muted: #96a0b8;
+      --rule: #ccd4e8; --rule-2: #dae0f0;
+      --accent: #3d67cc; --accent-2: #2a4a9c;
+      --ok: #1e8850; --warn: #987412; --bad: #c03030; --info: #2878a0;
+    }
+    [data-palette="stone"] {
+      --bg: #f0eeea; --rail: #e5e2db; --surface: #faf8f5; --surface-2: #e8e5de;
+      --ink: #1a1816; --ink-2: #44403a; --ink-3: #7c7870; --muted: #a09890;
+      --rule: #ccc8c0; --rule-2: #d8d4cc;
+      --accent: #6b5030; --accent-2: #48341a;
+      --ok: #2a7e50; --warn: #8c6218; --bad: #b02828; --info: #2a6878;
+    }
+
+    /* ── Type sets ── */
+    [data-typeset="terminal"] {
+      --font-ui: "IBM Plex Mono", ui-monospace, monospace;
+      --font-serif: "IBM Plex Mono", ui-monospace, monospace;
+      --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+    [data-typeset="clean-sans"] {
+      --font-ui: "Inter", system-ui, -apple-system, sans-serif;
+      --font-serif: "Inter", system-ui, -apple-system, sans-serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+    [data-typeset="humanist"] {
+      --font-ui: "Inter", system-ui, -apple-system, sans-serif;
+      --font-serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+
+    /* ── Density ── */
+    [data-density="compact"] { font-size: 11px; }
+    [data-density="comfortable"] { font-size: 13px; }
+    [data-density="large"] { font-size: 16px; }
+
+    [data-density="compact"] .topbar  { min-height: 38px; padding: 0 16px; }
+    [data-density="compact"] h1       { font-size: 20px; }
+    [data-density="compact"] .lede    { font-size: 12px; }
+    [data-density="compact"] .timecode { margin-bottom: 5px; }
+    [data-density="compact"] .hero-flow { padding-bottom: 14px; margin-bottom: 14px; }
+    [data-density="compact"] .view    { padding: 16px 18px 60px; }
+    [data-density="compact"] th       { height: 26px; font-size: 9px; }
+    [data-density="compact"] td       { height: 32px; padding: 3px 10px; }
+    [data-density="compact"] .kpi     { min-height: 68px; padding: 8px 10px; }
+    [data-density="compact"] .kpi-label { font-size: 8.5px; margin-bottom: 4px; }
+    [data-density="compact"] .kpi-value { font-size: 17px; }
+    [data-density="compact"] .kpi-sub { font-size: 10px; margin-top: 4px; }
+    [data-density="compact"] .panel-head { min-height: 38px; padding: 0 12px; }
+    [data-density="compact"] .panel-head h2, [data-density="compact"] .panel-head h3 { font-size: 15px; }
+    [data-density="compact"] .nav button { padding: 4px 8px; }
+    [data-density="compact"] .nav-label { margin: 2px 6px 4px; }
+    [data-density="compact"] .sidebar { padding: 12px 10px; gap: 12px; }
+    [data-density="compact"] .flow-row > div:first-child { padding: 8px 12px; }
+    [data-density="compact"] .flow-row .actions { padding: 8px 10px; gap: 5px; }
+    [data-density="compact"] .flow-meta { margin-top: 4px; gap: 8px; }
+    [data-density="compact"] .flow-copy { margin-top: 3px; }
+    [data-density="compact"] .campus-card { padding: 10px 12px; min-height: 96px; }
+    [data-density="compact"] .campus-name { font-size: 14px; }
+    [data-density="compact"] .campus-metrics { margin-top: 8px; gap: 6px; }
+    [data-density="compact"] .alert-row { padding: 8px 12px; }
+    [data-density="compact"] .change-row { padding: 4px 0; }
+    [data-density="compact"] .kpi-strip { margin-bottom: 14px; }
+    [data-density="compact"] .grid-2  { margin-bottom: 14px; gap: 14px; }
+    [data-density="compact"] .mini-hud { padding: 8px; }
+    [data-density="compact"] .mini-hud .line + .line { margin-top: 5px; }
+
+    [data-density="large"] .topbar    { min-height: 66px; padding: 0 28px; }
+    [data-density="large"] h1         { font-size: 44px; }
+    [data-density="large"] .lede      { font-size: 16px; line-height: 1.65; }
+    [data-density="large"] .hero-flow { padding-bottom: 30px; margin-bottom: 30px; }
+    [data-density="large"] .view      { padding: 36px 28px 80px; }
+    [data-density="large"] th         { height: 42px; font-size: 11px; }
+    [data-density="large"] td         { height: 58px; padding: 10px 14px; }
+    [data-density="large"] .kpi       { min-height: 136px; padding: 20px 18px; }
+    [data-density="large"] .kpi-label { font-size: 11px; margin-bottom: 10px; }
+    [data-density="large"] .kpi-value { font-size: 32px; }
+    [data-density="large"] .kpi-sub   { font-size: 14px; margin-top: 10px; }
+    [data-density="large"] .panel-head { min-height: 68px; padding: 0 20px; }
+    [data-density="large"] .panel-head h2, [data-density="large"] .panel-head h3 { font-size: 22px; }
+    [data-density="large"] .nav button { padding: 12px 10px; font-size: 14px; }
+    [data-density="large"] .sidebar   { padding: 22px 16px; gap: 22px; }
+    [data-density="large"] .flow-row > div:first-child { padding: 20px 20px; }
+    [data-density="large"] .flow-row .actions { padding: 20px 16px; gap: 10px; }
+    [data-density="large"] .flow-meta { margin-top: 10px; gap: 18px; font-size: 13px; }
+    [data-density="large"] .campus-card { padding: 20px; min-height: 172px; }
+    [data-density="large"] .campus-name { font-size: 20px; }
+    [data-density="large"] .campus-metrics { margin-top: 16px; gap: 14px; font-size: 13px; }
+    [data-density="large"] .alert-row { padding: 20px 18px; }
+    [data-density="large"] .change-row { padding: 12px 0; font-size: 13px; }
+    [data-density="large"] .kpi-strip { margin-bottom: 28px; }
+    [data-density="large"] .grid-2   { margin-bottom: 28px; gap: 24px; }
+    [data-density="large"] .mini-hud { padding: 16px; }
+    [data-density="large"] .mini-hud .line { font-size: 13px; }
+    [data-density="large"] .mini-hud .line + .line { margin-top: 12px; }
+
+    /* ── SET panel ── */
+    .set-backdrop {
+      position: fixed; inset: 0; display: none;
+      background: color-mix(in srgb, var(--bg) 72%, transparent);
+      z-index: 30;
+    }
+    .set-backdrop.open { display: block; }
+    .set-panel {
+      position: fixed; top: 0; right: 0; bottom: 0;
+      width: 310px; max-width: 100vw;
+      transform: translateX(100%);
+      transition: transform 180ms cubic-bezier(.22, 1, .36, 1);
+      background: var(--surface); border-left: 1px solid var(--rule);
+      z-index: 40; display: flex; flex-direction: column;
+    }
+    .set-panel.open { transform: translateX(0); }
+    .set-head {
+      padding: 18px 20px; border-bottom: 1px solid var(--rule);
+      display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    }
+    .set-body { overflow-y: auto; padding: 16px 20px 32px; display: grid; gap: 20px; }
+    .set-section-label {
+      color: var(--muted); font-family: var(--font-mono);
+      font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .set-options { display: grid; gap: 4px; }
+    .set-opt {
+      width: 100%; border: 1px solid var(--rule);
+      background: var(--surface-2); color: var(--ink-2);
+      cursor: pointer; padding: 8px 12px; border-radius: 0;
+      text-align: left; display: flex; justify-content: space-between; align-items: center;
+      transition: border-color .1s;
+    }
+    .set-opt:hover { border-color: var(--ink-3); color: var(--ink); }
+    .set-opt.active {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+      color: var(--ink);
+    }
+    .set-opt .opt-name { font-weight: 500; }
+    .set-opt .opt-meta { color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
+    .set-opt.active .opt-meta { color: var(--accent); }
+    .set-swatch {
+      display: grid; grid-template-columns: repeat(4, 8px); gap: 2px; flex-shrink: 0;
+    }
+    .set-swatch span {
+      width: 8px; height: 8px; display: block;
+    }
+    .set-default-row {
+      display: flex; gap: 8px; padding-bottom: 16px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .set-default-btn, .set-restore-btn {
+      flex: 1; border: 1px solid var(--rule); background: var(--surface-2);
+      color: var(--ink-2); cursor: pointer; padding: 8px 10px; border-radius: 0;
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: .02em;
+      transition: all .1s;
+    }
+    .set-default-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .set-default-btn.pinned {
+      border-color: var(--accent); color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 8%, var(--surface-2));
+    }
+    .set-restore-btn:hover { border-color: var(--ink-3); color: var(--ink); }
+    .set-note {
+      font-size: 11px; color: var(--muted); line-height: 1.6;
+    }
   </style>
 </head>
 <body>
@@ -883,7 +1094,7 @@
             <option>Sites with open alerts</option>
           </select>
         </label>
-        <button class="quiet-btn" id="theme-toggle" type="button">Light mode</button>
+        <button class="quiet-btn" id="set-open" type="button">SET</button>
         <div class="mini-hud">
           <div class="line"><span>kp index</span><b style="color: var(--info)">5 storm</b></div>
           <div class="line"><span>rain &gt;5mm</span><b>6 sites</b></div>
@@ -908,7 +1119,7 @@
             <option>Eastern</option>
             <option>Western</option>
           </select>
-          <button class="quiet-btn" id="theme-toggle-top" type="button">Light</button>
+          <button class="quiet-btn" id="set-open-top" type="button">SET</button>
         </div>
       </header>
 
@@ -1203,6 +1414,33 @@
     </div>
   </aside>
 
+  <div class="set-backdrop" id="set-backdrop"></div>
+  <aside class="set-panel" id="set-panel" aria-hidden="true">
+    <div class="set-head">
+      <div class="drawer-title">Settings</div>
+      <button class="quiet-btn" id="set-close" type="button">Close</button>
+    </div>
+    <div class="set-body">
+      <section>
+        <div class="set-section-label">A — Palette</div>
+        <div class="set-options" id="palette-opts"></div>
+      </section>
+      <section>
+        <div class="set-section-label">B — Type set</div>
+        <div class="set-options" id="typeset-opts"></div>
+      </section>
+      <section>
+        <div class="set-section-label">C — Density</div>
+        <div class="set-options" id="density-opts"></div>
+      </section>
+      <div class="set-default-row">
+        <button class="set-default-btn" id="set-pin-btn" type="button">☆ Set as default</button>
+        <button class="set-restore-btn" id="set-restore-btn" type="button" style="display:none">↩ Restore default</button>
+      </div>
+      <p class="set-note">Changes apply live and persist across sessions. Every preset keeps the rule: color only ever means status.</p>
+    </div>
+  </aside>
+
   <script>
     const dishes = [
       { name: "GS Nyange", campus: "Mugesera", region: "Eastern", status: "offline", latency: 0, snr: 3.1, obs: 2.1, down: 0, up: 0, uptime: 98.7, rain: 4.5, laptops: 42, spark: [88,84,79,73,66,58,49,40,30,18,6], lat: [72,76,91,105,118,136,0] },
@@ -1297,11 +1535,28 @@
       renderCampuses("overview-campus-grid", dishes.slice(0, 8));
     }
 
+    const dishSort = { col: null, dir: 1 };
+    const statusOrder = { offline: 0, degraded: 1, online: 2 };
+
+    function sortDishes(rows) {
+      if (!dishSort.col) return rows;
+      return [...rows].sort((a, b) => {
+        let va, vb;
+        if (dishSort.col === "status")      { va = statusOrder[a.status] ?? 3; vb = statusOrder[b.status] ?? 3; }
+        else if (dishSort.col === "name")   { va = a.name;   vb = b.name; }
+        else if (dishSort.col === "campus") { va = a.campus; vb = b.campus; }
+        else                                { va = a[dishSort.col] ?? 0; vb = b[dishSort.col] ?? 0; }
+        if (va < vb) return -dishSort.dir;
+        if (va > vb) return dishSort.dir;
+        return 0;
+      });
+    }
+
     function renderDishes() {
       const tbody = document.querySelector("#dish-table tbody");
       const filter = document.querySelector("#starlink-filter button.active").dataset.filter;
       const q = document.getElementById("dish-search").value.toLowerCase();
-      const rows = dishes.filter(d => (filter === "all" || d.status === filter) && `${d.name} ${d.campus} ${d.region}`.toLowerCase().includes(q));
+      const rows = sortDishes(dishes.filter(d => (filter === "all" || d.status === filter) && `${d.name} ${d.campus} ${d.region}`.toLowerCase().includes(q)));
       tbody.innerHTML = rows.map(d => `<tr data-dish="${d.name}">
         <td><div class="row-title">${d.name}</div><div class="row-sub">${d.region} . ${d.laptops} laptops</div></td>
         <td>${d.campus}</td>
@@ -1378,7 +1633,8 @@
     }
 
     function renderCampuses(targetId = "campus-grid", source = dishes) {
-      document.getElementById(targetId).innerHTML = source.map(d => `<article class="campus-card">
+      const el = document.getElementById(targetId);
+      el.innerHTML = source.map(d => `<article class="campus-card" data-dish="${d.name}" style="cursor:pointer">
         <div class="campus-name">${d.name}</div>
         <div class="campus-region">${d.region} . ${d.campus}</div>
         <div class="campus-metrics">
@@ -1392,6 +1648,9 @@
           <span class="dot ${d.rain > 5 ? "warn" : "ok"}"></span>
         </div>
       </article>`).join("");
+      el.querySelectorAll(".campus-card").forEach(card => {
+        card.addEventListener("click", () => openDrawer(card.dataset.dish));
+      });
     }
 
     function renderMap() {
@@ -1473,12 +1732,119 @@
       window.scrollTo({ top: 0, behavior: "instant" });
     }
 
-    function toggleTheme() {
-      const html = document.documentElement;
-      const light = html.dataset.theme === "light";
-      html.dataset.theme = light ? "dark" : "light";
-      document.getElementById("theme-toggle").textContent = light ? "Light mode" : "Dark mode";
-      document.getElementById("theme-toggle-top").textContent = light ? "Light" : "Dark";
+    // ── SET panel ──
+    const PALETTES = [
+      { id: "field-green", name: "Field Green", meta: "dark · green accent",    swatches: ["#141f1c","#34b483","#cf5b48","#d9a441"] },
+      { id: "navy",        name: "Isomo Navy",  meta: "dark · terracotta accent", swatches: ["#0c1320","#d2674c","#4daa72","#d4a038"] },
+      { id: "carbon",      name: "Carbon",      meta: "dark · amber accent",    swatches: ["#0b0b0d","#d9a441","#48a870","#d45252"] },
+      { id: "slate",       name: "Slate",       meta: "dark · blue accent",     swatches: ["#11161d","#4f8fd1","#4aae74","#d45858"] },
+      { id: "warm-paper",  name: "Warm Paper",  meta: "light · terracotta",  swatches: ["#f6f3ec","#c8553d","#287a52","#a06818"] },
+      { id: "chalk",       name: "Chalk",       meta: "light · blue",        swatches: ["#f5f7fb","#3d67cc","#1e8850","#987412"] },
+      { id: "stone",       name: "Stone",       meta: "light · brown",       swatches: ["#f0eeea","#6b5030","#2a7e50","#8c6218"] },
+    ];
+    const TYPESETS = [
+      { id: "editorial",  name: "Editorial",  meta: "Newsreader + Inter + Mono" },
+      { id: "terminal",   name: "Terminal",   meta: "IBM Plex Mono throughout"  },
+      { id: "clean-sans", name: "Clean Sans", meta: "Inter throughout"          },
+      { id: "humanist",   name: "Humanist",   meta: "Source Serif + Inter + Mono" },
+    ];
+    const DENSITIES = [
+      { id: "compact",     name: "Compact",     meta: "11px · tight rows, max info"  },
+      { id: "comfortable", name: "Comfortable", meta: "13px · default"               },
+      { id: "large",       name: "Large",       meta: "16px · spacious, wall screen"  },
+    ];
+
+    function getPrefs() {
+      return {
+        palette: localStorage.getItem("sf_palette") || "field-green",
+        typeset: localStorage.getItem("sf_typeset") || "editorial",
+        density: localStorage.getItem("sf_density") || "comfortable",
+      };
+    }
+    const LIGHT_PALETTES = new Set(["warm-paper", "chalk", "stone"]);
+
+    function applyPrefs(prefs) {
+      const h = document.documentElement;
+      h.dataset.palette = prefs.palette;
+      h.dataset.typeset = prefs.typeset;
+      h.dataset.density = prefs.density;
+      h.dataset.theme = LIGHT_PALETTES.has(prefs.palette) ? "light" : "dark";
+    }
+    function saveAndApply(key, value) {
+      localStorage.setItem("sf_" + key, value);
+      applyPrefs(getPrefs());
+      syncDefaultUI();
+    }
+
+    function getPinnedDefault() {
+      const p = localStorage.getItem("sf_pin_palette");
+      if (!p) return null;
+      return {
+        palette: p,
+        typeset: localStorage.getItem("sf_pin_typeset") || "editorial",
+        density: localStorage.getItem("sf_pin_density") || "comfortable",
+      };
+    }
+    function pinCurrentAsDefault() {
+      const prefs = getPrefs();
+      localStorage.setItem("sf_pin_palette", prefs.palette);
+      localStorage.setItem("sf_pin_typeset", prefs.typeset);
+      localStorage.setItem("sf_pin_density", prefs.density);
+      syncDefaultUI();
+    }
+    function restorePinnedDefault() {
+      const pin = getPinnedDefault();
+      if (!pin) return;
+      ["palette","typeset","density"].forEach(k => localStorage.setItem("sf_" + k, pin[k]));
+      applyPrefs(pin);
+      buildSetOpts("palette-opts", PALETTES, "palette");
+      buildSetOpts("typeset-opts", TYPESETS, "typeset");
+      buildSetOpts("density-opts", DENSITIES, "density");
+      syncDefaultUI();
+    }
+    function syncDefaultUI() {
+      const pin = getPinnedDefault();
+      const prefs = getPrefs();
+      const pinBtn = document.getElementById("set-pin-btn");
+      const restoreBtn = document.getElementById("set-restore-btn");
+      if (!pinBtn) return;
+      const atDefault = pin && pin.palette === prefs.palette && pin.typeset === prefs.typeset && pin.density === prefs.density;
+      pinBtn.textContent = pin ? (atDefault ? "★ Default saved" : "☆ Set as default") : "☆ Set as default";
+      pinBtn.classList.toggle("pinned", !!atDefault);
+      restoreBtn.style.display = (pin && !atDefault) ? "block" : "none";
+    }
+    function buildSetOpts(containerId, items, keyName) {
+      const current = getPrefs()[keyName];
+      const el = document.getElementById(containerId);
+      el.innerHTML = items.map(item => {
+        const swatches = item.swatches
+          ? `<span class="set-swatch">${item.swatches.map(c => `<span style="background:${c}"></span>`).join("")}</span>`
+          : "";
+        return `<button class="set-opt${item.id === current ? " active" : ""}" data-id="${item.id}">
+          <span class="opt-name">${item.name}</span>
+          <span style="display:flex;align-items:center;gap:8px">
+            ${swatches}<span class="opt-meta">${item.meta}</span>
+          </span>
+        </button>`;
+      }).join("");
+      el.querySelectorAll(".set-opt").forEach(btn => btn.addEventListener("click", () => {
+        saveAndApply(keyName, btn.dataset.id);
+        el.querySelectorAll(".set-opt").forEach(b => b.classList.toggle("active", b.dataset.id === btn.dataset.id));
+      }));
+    }
+    function openSetPanel() {
+      buildSetOpts("palette-opts", PALETTES, "palette");
+      buildSetOpts("typeset-opts", TYPESETS, "typeset");
+      buildSetOpts("density-opts", DENSITIES, "density");
+      syncDefaultUI();
+      document.getElementById("set-backdrop").classList.add("open");
+      document.getElementById("set-panel").classList.add("open");
+      document.getElementById("set-panel").setAttribute("aria-hidden", "false");
+    }
+    function closeSetPanel() {
+      document.getElementById("set-backdrop").classList.remove("open");
+      document.getElementById("set-panel").classList.remove("open");
+      document.getElementById("set-panel").setAttribute("aria-hidden", "true");
     }
 
     document.querySelectorAll("[data-view]").forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
@@ -1495,12 +1861,27 @@
     }));
     document.getElementById("dish-search").addEventListener("input", renderDishes);
     document.getElementById("computer-search").addEventListener("input", renderComputers);
-    document.getElementById("theme-toggle").addEventListener("click", toggleTheme);
-    document.getElementById("theme-toggle-top").addEventListener("click", toggleTheme);
+
+    // Dish table sort
+    document.querySelectorAll("#dish-table th[data-sort]").forEach(th => {
+      th.addEventListener("click", () => {
+        const col = th.dataset.sort;
+        if (dishSort.col === col) { dishSort.dir *= -1; }
+        else { dishSort.col = col; dishSort.dir = 1; }
+        document.querySelectorAll("#dish-table th[data-sort]").forEach(h => h.classList.remove("sort-asc", "sort-desc"));
+        th.classList.add(dishSort.dir === 1 ? "sort-asc" : "sort-desc");
+        renderDishes();
+      });
+    });
+    document.querySelectorAll("#set-open, #set-open-top").forEach(btn => btn.addEventListener("click", openSetPanel));
+    document.getElementById("set-close").addEventListener("click", closeSetPanel);
+    document.getElementById("set-backdrop").addEventListener("click", closeSetPanel);
+    document.getElementById("set-pin-btn").addEventListener("click", pinCurrentAsDefault);
+    document.getElementById("set-restore-btn").addEventListener("click", restorePinnedDefault);
     document.getElementById("drawer-close").addEventListener("click", closeDrawer);
     document.getElementById("drawer-backdrop").addEventListener("click", closeDrawer);
     document.addEventListener("keydown", event => {
-      if (event.key === "Escape") closeDrawer();
+      if (event.key === "Escape") { closeDrawer(); closeSetPanel(); }
     });
 
     renderOverview();
