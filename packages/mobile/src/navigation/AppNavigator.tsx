@@ -96,7 +96,7 @@ export function AppNavigator({ colors, onLogout, role, email }: Props) {
       </Tab.Screen>
       <Tab.Screen
         name="Settings"
-        options={{ tabBarIcon: ({ color }) => <TabIcon icon="⚙️" color={color} />, tabBarLabel: 'Settings' }}
+        options={{ tabBarIcon: ({ color }) => <TabIcon icon="SET" color={color} />, tabBarLabel: 'Settings' }}
       >
         {() => <SettingsScreen colors={colors} onLogout={onLogout} role={role} email={email} />}
       </Tab.Screen>

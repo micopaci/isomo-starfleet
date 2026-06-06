@@ -191,7 +191,7 @@ export function DeviceDetailScreen({ route, navigation }: DeviceDetailProps) {
             >
               {pulling
                 ? <ActivityIndicator color={C.bg} size="small" />
-                : <Text style={styles.actionBtnText}>Pull data</Text>}
+                : <Text style={[styles.actionBtnText, { color: C.bg }]}>Pull data</Text>}
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: C.surface2, borderWidth: 1, borderColor: C.accent }]}
@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
   healthTimestamp: { fontSize: 11, marginTop: 4, textAlign: 'right' },
   actionsRow:      { flexDirection: 'row', gap: 8 },
   actionBtn:       { flex: 1, borderRadius: 0, padding: 12, alignItems: 'center' },
-  actionBtnText:   { color: C.bg, fontWeight: '600', fontSize: 13 },
+  actionBtnText:   { fontWeight: '600', fontSize: 13 },
   actionMsg:       { fontSize: 12, textAlign: 'center', marginTop: 4 },
   errorText:       { fontSize: 14 },
   retryBtn:        { borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 },

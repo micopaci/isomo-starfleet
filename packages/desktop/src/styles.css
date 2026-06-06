@@ -1,5 +1,5 @@
 /* Starfleet — desktop app stylesheet
-   Theme: warm parchment (light) / deep navy instrument dark, terracotta accent.
+   Theme: warm field-paper (light) / green-black instrument dark, field-green accent.
    Type: Newsreader (serif titles) + Inter (UI) + IBM Plex Mono (telemetry).
    Shape: sharp rectangles, hairline rules.
    Motion: Emil Kowalski principles — ease-out, specific properties, press states.
@@ -16,36 +16,36 @@
 
 /* ── Design tokens — light ──────────────────────────────────────────────────── */
 :root {
-  /* Surfaces — warm parchment */
-  --bg:        #f6f1e7;
-  --bg-2:      #eee7d9;
-  --surface:   #fbf8f1;
-  --surface-2: #f2ecdf;
+  /* Surfaces — warm field paper */
+  --bg:        #f3f6f1;
+  --bg-2:      #e8eee8;
+  --surface:   #fbfcf8;
+  --surface-2: #eef4ee;
 
   /* Ink */
-  --ink:   #171512;
-  --ink-2: #4a4339;
-  --ink-3: #766e5f;
-  --muted: #9a907f;
+  --ink:   #222b27;
+  --ink-2: #44514b;
+  --ink-3: #68756e;
+  --muted: #84908a;
 
-  /* Rules — warm hairlines */
-  --rule:   #d8cfbd;
-  --rule-2: #e7ddcb;
+  /* Rules — green-tinted hairlines */
+  --rule:   #cfd9d2;
+  --rule-2: #dfe6e1;
 
-  /* Accent — terracotta */
-  --accent:      #c8553d;
-  --accent-ink:  #8c3422;
-  --accent-soft: #efd1c7;
+  /* Accent — field green */
+  --accent:      #24825f;
+  --accent-ink:  #0e3d2b;
+  --accent-soft: #d7eadf;
 
   /* Status — considered, not generic */
-  --ok:        #3d7a4b;
-  --ok-soft:   #dbe8d8;
-  --warn:      #a87118;
-  --warn-soft: #eeddb8;
-  --bad:       #b33d3d;
-  --bad-soft:  #efd4d0;
-  --mute-c:    #9a907f;
-  --mute-soft: #e8dfd0;
+  --ok:        #347a56;
+  --ok-soft:   #dceade;
+  --warn:      #9b6f18;
+  --warn-soft: #eee1bd;
+  --bad:       #b45142;
+  --bad-soft:  #edd5d1;
+  --mute-c:    #84908a;
+  --mute-soft: #e4ebe5;
 
   /* Layout */
   --sidebar-w: 232px;
@@ -67,33 +67,33 @@
   text-rendering: optimizeLegibility;
 }
 
-/* ── Dark theme — deep navy instrument surface ─────────────────────────────── */
+/* ── Dark theme — green-black instrument surface ───────────────────────────── */
 .dark, [data-theme="dark"] {
-  --bg:        #080f1b;
-  --bg-2:      #0b1321;
-  --surface:   #0d1726;
-  --surface-2: #111d30;
+  --bg:        #141f1c;
+  --bg-2:      #17251f;
+  --surface:   #1b2b24;
+  --surface-2: #22332b;
 
-  --ink:   #efe8d7;
-  --ink-2: #c7bdab;
-  --ink-3: #918a7d;
-  --muted: #6f7888;
+  --ink:   #e6efe9;
+  --ink-2: #b8c5be;
+  --ink-3: #7c8a84;
+  --muted: #66746d;
 
-  --rule:   #223047;
-  --rule-2: #17253a;
+  --rule:   #33443c;
+  --rule-2: #26362f;
 
-  --accent:      #e47659;
-  --accent-ink:  #f1ac98;
-  --accent-soft: #3a1d12;
+  --accent:      #34b483;
+  --accent-ink:  #10241b;
+  --accent-soft: #15382a;
 
-  --ok:        #66b47e;
-  --ok-soft:   #1a3024;
-  --warn:      #d8a64a;
-  --warn-soft: #33240c;
-  --bad:       #ef6f6a;
-  --bad-soft:  #341616;
-  --mute-c:    #6f7888;
-  --mute-soft: #172235;
+  --ok:        #5fc28e;
+  --ok-soft:   #183526;
+  --warn:      #d9a441;
+  --warn-soft: #392d14;
+  --bad:       #cf5b48;
+  --bad-soft:  #3b1e1a;
+  --mute-c:    #7c8a84;
+  --mute-soft: #22312b;
 }
 
 body { background: var(--bg); color: var(--ink); height: 100vh; overflow: hidden; }
@@ -142,7 +142,7 @@ body { background: var(--bg); color: var(--ink); height: 100vh; overflow: hidden
 .sidebar-logo {
   width: 26px; height: 26px;
   background: var(--accent);
-  color: #fff;
+  color: var(--bg);
   display: grid; place-items: center;
   font-family: var(--font-serif);
   font-weight: 500;
@@ -201,12 +201,12 @@ body { background: var(--bg); color: var(--ink); height: 100vh; overflow: hidden
 .site-item.active {
   background: var(--bg-2);
   color: var(--ink);
-  box-shadow: inset 2px 0 0 var(--accent);
+  border-left: 1px solid var(--accent);
 }
 
 .site-dot {
   width: 6px; height: 6px;
-  border-radius: 50%;
+  border-radius: 0;
   flex-shrink: 0;
 }
 .site-dot.status-online   { background: var(--ok); }
@@ -266,8 +266,7 @@ body { background: var(--bg); color: var(--ink); height: 100vh; overflow: hidden
   display: flex; align-items: center; gap: 14px;
   padding: 11px 28px;
   border-bottom: 1px solid var(--rule);
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
-  backdrop-filter: blur(10px);
+  background: var(--bg);
   flex-shrink: 0;
 }
 .topbar__crumbs { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
@@ -504,7 +503,7 @@ body { background: var(--bg); color: var(--ink); height: 100vh; overflow: hidden
   border-radius: var(--radius);
   width: fit-content;
 }
-.sev-badge.critical { background: var(--bad);  color: #fff; }
+.sev-badge.critical { background: var(--bad);  color: var(--bg); }
 .sev-badge.warning  { background: var(--warn-soft); color: var(--warn); }
 .sev-badge.info     { background: var(--mute-soft); color: var(--muted); }
 .alert-msg  { font-size: 13.5px; color: var(--ink); }
@@ -519,7 +518,7 @@ body { background: var(--bg); color: var(--ink); height: 100vh; overflow: hidden
   align-items: center;
   padding: 10px 16px;
   background: var(--bad);
-  color: #fff;
+  color: var(--bg);
   font-size: 13px;
   font-weight: 500;
   flex-shrink: 0;
@@ -579,8 +578,8 @@ body { background: var(--bg); color: var(--ink); height: 100vh; overflow: hidden
 /* Mini bars */
 .minibars { padding: 14px 20px 20px; display: flex; flex-direction: column; gap: 12px; }
 .minibar__row { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 5px; }
-.minibar__track { height: 3px; background: var(--rule-2); position: relative; border-radius: 999px; }
-.minibar__fill { position: absolute; top: 0; left: 0; height: 100%; border-radius: 999px; }
+.minibar__track { height: 3px; background: var(--rule-2); position: relative; border-radius: 0; }
+.minibar__fill { position: absolute; top: 0; left: 0; height: 100%; border-radius: 0; }
 .minibar__fill.ok   { background: var(--ok); }
 .minibar__fill.warn { background: var(--warn); }
 .minibar__fill.bad  { background: var(--bad); }
@@ -607,7 +606,7 @@ body { background: var(--bg); color: var(--ink); height: 100vh; overflow: hidden
 .login-logo__mark {
   width: 40px; height: 40px;
   background: var(--accent);
-  color: #fff;
+  color: var(--bg);
   display: grid; place-items: center; margin: 0 auto 14px;
   font-family: var(--font-serif);
   font-weight: 500;
@@ -628,9 +627,9 @@ body { background: var(--bg); color: var(--ink); height: 100vh; overflow: hidden
   font-family: inherit;
   font-size: 13.5px;
   outline: none;
-  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+  transition: border-color 150ms ease-out;
 }
-.login-card input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.login-card input:focus { border-color: var(--accent);  }
 .login-error { color: var(--bad); font-size: 12px; font-family: var(--font-mono); }
 
 /* ── Buttons ────────────────────────────────────────────────────────────────── */
@@ -651,7 +650,7 @@ button { font-family: inherit; cursor: pointer; }
 .btn:active { transform: scale(0.97); }
 .btn:disabled, .btn.is-disabled { opacity: .4; cursor: not-allowed; transform: none; }
 .btn--primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
-.btn--primary:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn--primary:hover { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .btn--sm { padding: 4px 9px; font-size: 11.5px; }
 .btn--primary:disabled { opacity: .4; cursor: not-allowed; }
 
@@ -746,8 +745,8 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ── Storage / battery bars ─────────────────────────────────────────────────── */
 .sbar { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; min-width: 80px; }
-.sbar__track { width: 48px; height: 3px; background: var(--rule-2); position: relative; border-radius: 999px; }
-.sbar__fill  { position: absolute; top: 0; left: 0; height: 100%; border-radius: 999px; }
+.sbar__track { width: 48px; height: 3px; background: var(--rule-2); position: relative; border-radius: 0; }
+.sbar__fill  { position: absolute; top: 0; left: 0; height: 100%; border-radius: 0; }
 .sbar__fill--ok   { background: var(--ok); }
 .sbar__fill--warn { background: var(--warn); }
 .sbar__fill--bad  { background: var(--bad); }
@@ -755,8 +754,8 @@ button { font-family: inherit; cursor: pointer; }
 /* ── Nav badge ──────────────────────────────────────────────────────────────── */
 .nav-badge {
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--bad); color: #fff;
-  border-radius: 999px;
+  background: var(--bad); color: var(--bg);
+  border-radius: 0;
   font-family: var(--font-mono); font-size: 9px;
   min-width: 16px; height: 16px; padding: 0 4px;
   margin-left: auto;

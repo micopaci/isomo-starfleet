@@ -1,8 +1,8 @@
 /**
  * Starfleet design tokens — single source of truth for all platforms.
  *
- * Light: warm parchment backgrounds, deep ink text, terracotta accent.
- * Dark:  deep navy instrument backgrounds, warm off-white text, softened terracotta.
+ * Light: warm field-paper backgrounds, deep green-black text, signal-green accent.
+ * Dark:  green-black instrument backgrounds, soft bone text, field-green accent.
  */
 
 export interface ColorTokens {
@@ -34,59 +34,59 @@ export interface ColorTokens {
 }
 
 export const lightColors: ColorTokens = {
-  bg:       '#f6f1e7',
-  bg2:      '#eee7d9',
-  surface:  '#fbf8f1',
-  surface2: '#f2ecdf',
+  bg:       '#f3f6f1',
+  bg2:      '#e8eee8',
+  surface:  '#fbfcf8',
+  surface2: '#eef4ee',
 
-  ink:      '#171512',
-  ink2:     '#4a4339',
-  ink3:     '#766e5f',
-  muted:    '#9a907f',
+  ink:      '#222b27',
+  ink2:     '#44514b',
+  ink3:     '#68756e',
+  muted:    '#84908a',
 
-  rule:     '#d8cfbd',
-  rule2:    '#e7ddcb',
+  rule:     '#cfd9d2',
+  rule2:    '#dfe6e1',
 
-  accent:      '#c8553d',
-  accentInk:   '#8c3422',
-  accentSoft:  '#efd1c7',
+  accent:      '#24825f',
+  accentInk:   '#0e3d2b',
+  accentSoft:  '#d7eadf',
 
-  ok:       '#3d7a4b',
-  okSoft:   '#dbe8d8',
-  warn:     '#a87118',
-  warnSoft: '#eeddb8',
-  bad:      '#b33d3d',
-  badSoft:  '#efd4d0',
-  mute:     '#9a907f',
-  muteSoft: '#e8dfd0',
+  ok:       '#347a56',
+  okSoft:   '#dceade',
+  warn:     '#9b6f18',
+  warnSoft: '#eee1bd',
+  bad:      '#b45142',
+  badSoft:  '#edd5d1',
+  mute:     '#84908a',
+  muteSoft: '#e4ebe5',
 };
 
 export const darkColors: ColorTokens = {
-  bg:       '#080f1b',
-  bg2:      '#0b1321',
-  surface:  '#0d1726',
-  surface2: '#111d30',
+  bg:       '#141f1c',
+  bg2:      '#17251f',
+  surface:  '#1b2b24',
+  surface2: '#22332b',
 
-  ink:      '#efe8d7',
-  ink2:     '#c7bdab',
-  ink3:     '#918a7d',
-  muted:    '#6f7888',
+  ink:      '#e6efe9',
+  ink2:     '#b8c5be',
+  ink3:     '#7c8a84',
+  muted:    '#66746d',
 
-  rule:     '#223047',
-  rule2:    '#17253a',
+  rule:     '#33443c',
+  rule2:    '#26362f',
 
-  accent:      '#e47659',
-  accentInk:   '#f1ac98',
-  accentSoft:  '#3b2019',
+  accent:      '#34b483',
+  accentInk:   '#10241b',
+  accentSoft:  '#15382a',
 
-  ok:       '#66b47e',
-  okSoft:   '#1a3024',
-  warn:     '#d8a64a',
-  warnSoft: '#3a2c13',
-  bad:      '#ef6f6a',
-  badSoft:  '#3a1b1b',
-  mute:     '#6f7888',
-  muteSoft: '#172235',
+  ok:       '#5fc28e',
+  okSoft:   '#183526',
+  warn:     '#d9a441',
+  warnSoft: '#392d14',
+  bad:      '#cf5b48',
+  badSoft:  '#3b1e1a',
+  mute:     '#7c8a84',
+  muteSoft: '#22312b',
 };
 
 export const fonts = {

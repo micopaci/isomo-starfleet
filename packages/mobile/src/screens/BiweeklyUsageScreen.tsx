@@ -121,7 +121,7 @@ export function BiweeklyUsageScreen({ route }: BiweeklyUsageProps) {
           style={[styles.addBtn, { backgroundColor: C.accent }]}
           onPress={() => setShowForm(v => !v)}
         >
-          <Text style={styles.addBtnText}>{showForm ? 'Cancel' : '+ Add entry'}</Text>
+          <Text style={[styles.addBtnText, { color: C.bg }]}>{showForm ? 'Cancel' : 'Add entry'}</Text>
         </TouchableOpacity>
       )}
 
@@ -137,7 +137,7 @@ export function BiweeklyUsageScreen({ route }: BiweeklyUsageProps) {
             onPress={handleSave}
             disabled={saving}
           >
-            <Text style={styles.addBtnText}>{saving ? 'Saving…' : 'Save entry'}</Text>
+            <Text style={[styles.addBtnText, { color: C.bg }]}>{saving ? 'Saving…' : 'Save entry'}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
   center:       { flex: 1, justifyContent: 'center', alignItems: 'center' },
   empty:        { fontSize: 14, textAlign: 'center', marginTop: 32 },
   addBtn:       { borderRadius: 0, paddingVertical: 10, alignItems: 'center', marginBottom: 12 },
-  addBtnText:   { color: C.bg, fontWeight: '600', fontSize: 14 },
+  addBtnText:   { fontWeight: '600', fontSize: 14 },
   saveBtn:      { borderRadius: 0, paddingVertical: 10, alignItems: 'center', marginTop: 4 },
   formCard:     { borderRadius: 0, borderWidth: 1, padding: 14, marginBottom: 14 },
   formInput:    { borderWidth: 1, borderRadius: 6, padding: 8, fontSize: 14 },

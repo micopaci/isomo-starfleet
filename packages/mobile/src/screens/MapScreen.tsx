@@ -77,7 +77,7 @@ export function MapScreen() {
 
   const outerStyle: CircleLayerStyle = {
     circleRadius: ['case', ['==', ['get', 'selected'], 1], 10, 7] as any,
-    circleColor: '#ffffff',
+    circleColor: C.bg,
     circleStrokeColor: ['get', 'color'] as any,
     circleStrokeWidth: 2,
   };

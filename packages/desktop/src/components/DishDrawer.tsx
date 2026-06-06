@@ -176,7 +176,7 @@ export function DishDrawer({ site, onClose, onOpenFull, isAdmin, onTriggerSite }
             margin: '16px 24px 0',
             padding: '12px 14px',
             background: 'var(--warn-soft)',
-            borderLeft: '3px solid var(--warn)',
+            border: '1px solid var(--warn)',
             fontSize: 12.5,
           }}>
             <strong style={{ color: 'var(--warn)' }}>Anomaly detected</strong>
@@ -194,7 +194,7 @@ export function DishDrawer({ site, onClose, onOpenFull, isAdmin, onTriggerSite }
             margin: '16px 24px 0',
             padding: '12px 14px',
             background: 'var(--warn-soft)',
-            borderLeft: '3px solid var(--warn)',
+            border: '1px solid var(--warn)',
             fontSize: 12.5,
           }}>
             <strong style={{ color: 'var(--warn)' }}>{site.weather_predictor.label}</strong>

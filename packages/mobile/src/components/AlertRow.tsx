@@ -15,7 +15,7 @@ interface AlertRowProps {
 }
 
 export function AlertRow({ type, siteName, description, timeAgo, acknowledged, canAck, acking, onAck, colors }: AlertRowProps) {
-  const icon = type === 'location' ? '📍' : '⏱️';
+  const label = type === 'location' ? 'LOC' : 'STALE';
 
   return (
     <View style={[
@@ -26,7 +26,7 @@ export function AlertRow({ type, siteName, description, timeAgo, acknowledged, c
         opacity: acknowledged ? 0.7 : 1,
       },
     ]}>
-      <Text style={styles.icon}>{icon}</Text>
+      <Text style={[styles.icon, { color: colors.muted }]}>{label}</Text>
       <View style={styles.body}>
         <Text style={[styles.site, { color: colors.ink }]} numberOfLines={1}>{siteName}</Text>
         <Text style={[styles.desc, { color: colors.ink3 }]} numberOfLines={2}>{description}</Text>
@@ -54,7 +54,7 @@ export function AlertRow({ type, siteName, description, timeAgo, acknowledged, c
 
 const styles = StyleSheet.create({
   row:       { flexDirection: 'row', borderRadius: 0, borderWidth: 1, padding: 12, marginBottom: 8, alignItems: 'flex-start', gap: 10 },
-  icon:      { fontSize: 20, marginTop: 1 },
+  icon:      { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginTop: 3, width: 36 },
   body:      { flex: 1, gap: 3 },
   site:      { fontSize: 13, fontWeight: '600' },
   desc:      { fontSize: 12 },

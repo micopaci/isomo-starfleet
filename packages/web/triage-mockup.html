@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Starfleet — Triage (v3)</title>
+<title>Starfleet, Triage (v3)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0c1320; --panel:#0e1726; --line:#1c2940; --line-2:#16223550;
-    --ink:#e9e4d6; --ink-2:#a8a596; --ink-3:#6e7686; --faint:#525c6e;
-    --accent:#d2674c;            /* terracotta — actions + active only */
-    --ok:#5c9c6e; --warn:#c1923c; --bad:#cb574f;
+    --bg:#141f1c; --panel:#1b2b24; --line:#33443c; --line-2:#26362f80;
+    --ink:#e6efe9; --ink-2:#b8c5be; --ink-3:#7c8a84; --faint:#66746d;
+    --accent:#34b483;            /* field green, actions + active only */
+    --ok:#5fc28e; --warn:#d9a441; --bad:#cf5b48;
     --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
     --serif:'Newsreader',Georgia,serif;
     --ui:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
@@ -21,7 +21,7 @@
   body{background:var(--bg);color:var(--ink);font-family:var(--ui);font-size:13px;line-height:1.4;-webkit-font-smoothing:antialiased}
   .m{font-family:var(--mono);font-variant-numeric:tabular-nums}
 
-  /* status line — terminal-terse, no boxes */
+  /* status line, terminal-terse, no boxes */
   .statusline{display:flex;align-items:center;gap:0;height:34px;padding:0 16px;border-bottom:1px solid var(--line);
     font-family:var(--mono);font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden}
   .statusline .nm{color:var(--ink);font-weight:600;letter-spacing:.3px}
@@ -42,7 +42,7 @@
 
   /* ── Row: a site needing attention. Dense, two-line, hairline-separated. ── */
   .row{display:grid;grid-template-columns:3px 1fr;gap:14px;padding:13px 4px 13px 0;border-bottom:1px solid var(--line)}
-  .row:hover{background:#0f1a2b}
+  .row:hover{background:#17251f}
   .bar{align-self:stretch}
   .row.bad .bar{background:var(--bad)} .row.warn .bar{background:var(--warn)}
   .body{min-width:0}
@@ -65,7 +65,7 @@
   .act{font-family:var(--ui);font-size:12px;color:var(--ink-2);background:none;border:none;cursor:pointer;padding:0}
   .act:hover{color:var(--ink)}
   .act.go{color:var(--accent);font-weight:500}
-  .act.go:hover{color:#e08163}
+  .act.go:hover{color:#5fc28e}
   .act + .act{border-left:1px solid var(--line);padding-left:16px}
 
   .green{display:flex;align-items:center;gap:9px;padding:12px 4px;font-size:12px;color:var(--ink-3);font-family:var(--mono)}
@@ -113,8 +113,8 @@
           <div class="r1"><span class="name">GS Nyange</span><span class="region">Mugesera · Eastern</span>
             <span class="state bad">OFFLINE 12m</span></div>
           <div class="r2">
-            <span class="why">No heartbeat since 14:20. Signal was already collapsing — <span class="m">SNR 3.1</span> and falling before the dish dropped.</span>
-            <svg class="spark" width="92" height="22" viewBox="0 0 92 22"><polyline points="0,5 12,6 24,7 36,9 48,11 60,15 72,19 80,21" fill="none" stroke="#cb574f" stroke-width="1.5"/><line x1="80" y1="21" x2="92" y2="21" stroke="#525c6e" stroke-width="1" stroke-dasharray="2 2"/></svg>
+            <span class="why">No heartbeat since 14:20. Signal was already collapsing, <span class="m">SNR 3.1</span> and falling before the dish dropped.</span>
+            <svg class="spark" width="92" height="22" viewBox="0 0 92 22"><polyline points="0,5 12,6 24,7 36,9 48,11 60,15 72,19 80,21" fill="none" stroke="#cf5b48" stroke-width="1.5"/><line x1="80" y1="21" x2="92" y2="21" stroke="#66746d" stroke-width="1" stroke-dasharray="2 2"/></svg>
           </div>
           <div class="r3"><span><span class="k">snr</span> <span class="bad down">3.1</span></span><span><span class="k">lat</span> <span class="v">—</span></span><span><span class="k">rain</span> <span class="v">4.5mm</span></span><span><span class="k">kp</span> <span class="warn">5</span></span><span><span class="k">obs</span> <span class="v">2.1%</span></span><span><span class="k">reboot</span> <span class="v">6d ago</span></span></div>
           <div class="meta"><b>42 laptops</b> at site · unassigned</div>
@@ -129,8 +129,8 @@
           <div class="r1"><span class="name">GS Gishyita</span><span class="region">Karongi · Western</span>
             <span class="state bad">DEGRADED −44%</span></div>
           <div class="r2">
-            <span class="why">Signal quality <span class="m">41</span>. The dip tracks the rainfall curve almost exactly — weather, not hardware. Hold off on a reboot.</span>
-            <svg class="spark" width="92" height="22" viewBox="0 0 92 22"><polyline points="0,7 12,6 24,8 36,7 48,12 60,16 72,14 84,17" fill="none" stroke="#cb574f" stroke-width="1.5"/></svg>
+            <span class="why">Signal quality <span class="m">41</span>. The dip tracks the rainfall curve almost exactly, weather, not hardware. Hold off on a reboot.</span>
+            <svg class="spark" width="92" height="22" viewBox="0 0 92 22"><polyline points="0,7 12,6 24,8 36,7 48,12 60,16 72,14 84,17" fill="none" stroke="#cf5b48" stroke-width="1.5"/></svg>
           </div>
           <div class="r3"><span><span class="k">snr</span> <span class="warn">6.2</span></span><span><span class="k">obs</span> <span class="bad">6.2%</span></span><span><span class="k">rain</span> <span class="v">12mm</span></span><span><span class="k">cloud</span> <span class="v">97%</span></span><span><span class="k">kp</span> <span class="warn">5</span></span></div>
           <div class="meta">probable cause <b>weather</b> · 18 laptops · unassigned</div>
@@ -144,7 +144,7 @@
         <div class="body">
           <div class="r1"><span class="name">Maranyundo Girls</span><span class="region">Bugesera · Eastern</span>
             <span class="state warn">14 STALE</span></div>
-          <div class="r2"><span class="why">14 of 38 laptops silent &gt;3h. Dish is healthy and reporting — this is the devices, not the link.</span></div>
+          <div class="r2"><span class="why">14 of 38 laptops silent &gt;3h. Dish is healthy and reporting, this is the devices, not the link.</span></div>
           <div class="r3"><span><span class="k">dish</span> <span class="v">online</span></span><span><span class="k">stale</span> <span class="warn">14 / 38</span></span><span><span class="k">intune sync</span> <span class="v">3h ago</span></span><span><span class="k">uptime</span> <span class="v">99.1%</span></span></div>
           <div class="meta">assigned <b>Pacifique</b> · ack 1h ago</div>
           <div class="acts"><button class="act go">Push update</button><button class="act">View laptops</button><button class="act">Reassign</button></div>
@@ -159,7 +159,7 @@
             <span class="state warn">p95 320ms</span></div>
           <div class="r2">
             <span class="why">Latency p95 crossed 300ms at 13:48 and the spread keeps widening. Online, but getting worse.</span>
-            <svg class="spark" width="92" height="22" viewBox="0 0 92 22"><polyline points="0,16 12,15 24,14 36,13 48,11 60,9 72,7 84,5" fill="none" stroke="#c1923c" stroke-width="1.5"/></svg>
+            <svg class="spark" width="92" height="22" viewBox="0 0 92 22"><polyline points="0,16 12,15 24,14 36,13 48,11 60,9 72,7 84,5" fill="none" stroke="#d9a441" stroke-width="1.5"/></svg>
           </div>
           <div class="r3"><span><span class="k">p50</span> <span class="v">110ms</span></span><span><span class="k">p95</span> <span class="warn">320ms</span></span><span><span class="k">obs</span> <span class="v">4.1%</span></span><span><span class="k">cloud</span> <span class="v">97%</span></span></div>
           <div class="meta">23 laptops · unassigned</div>
@@ -174,8 +174,8 @@
     <aside class="side">
       <div class="colhead"><h2>Changes</h2><span class="r">today</span></div>
       <ul class="log">
-        <li><span class="t">14:20</span><span><span class="d bad"></span><b>GS Nyange</b> offline — no heartbeat</span></li>
-        <li><span class="t">14:02</span><span><span class="d warn"></span>Kp rose to <b>5</b> — storm began</span></li>
+        <li><span class="t">14:20</span><span><span class="d bad"></span><b>GS Nyange</b> offline, no heartbeat</span></li>
+        <li><span class="t">14:02</span><span><span class="d warn"></span>Kp rose to <b>5</b>, storm began</span></li>
         <li><span class="t">13:54</span><span><span class="d bad"></span><b>GS Gishyita</b> signal &lt; 60</span></li>
         <li><span class="t">13:48</span><span><span class="d warn"></span><b>ES Kirambo</b> p95 &gt; 300ms</span></li>
         <li><span class="t">12:30</span><span><span class="d warn"></span><b>Maranyundo</b> 14 laptops stale</span></li>
@@ -190,7 +190,7 @@
         <div class="e"><span>starlink sats overhead</span><span class="v">18</span></div>
       </div>
 
-      <p class="foot">v3 — flat, hairline, mono-dense. No glow, no gradient, no chips.<br>Color only on status. Sparklines carry the trend. Interest from density &amp; type, not decoration.</p>
+      <p class="foot">v3, flat, hairline, mono-dense. No glow, no gradient, no chips.<br>Color only on status. Sparklines carry the trend. Interest from density &amp; type, not decoration.</p>
     </aside>
 
   </div>

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="build-version" content="2026-04-25-v3" />
-  <meta name="theme-color" content="#e47659" />
+  <meta name="theme-color" content="#34b483" />
   <title>Starfleet · Isomo Ops</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
@@ -18,33 +18,33 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
   <style>
 /* Starfleet — operator dashboard stylesheet
-   Theme: warm parchment (light) / deep navy instrument dark, terracotta accent.
+   Theme: warm field-paper (light) / green-black instrument dark, field-green accent.
    Type: Newsreader (serif titles) + Inter (UI) + IBM Plex Mono (numbers).
 */
 :root {
-  --bg:       #f6f1e7;
-  --bg-2:     #eee7d9;
-  --surface:  #fbf8f1;
-  --surface-2:#f2ecdf;
-  --ink:      #171512;
-  --ink-2:    #4a4339;
-  --ink-3:    #766e5f;
-  --muted:    #9a907f;
-  --rule:     #d8cfbd;
-  --rule-2:   #e7ddcb;
+  --bg:       #f3f6f1;
+  --bg-2:     #e8eee8;
+  --surface:  #fbfcf8;
+  --surface-2:#eef4ee;
+  --ink:      #222b27;
+  --ink-2:    #44514b;
+  --ink-3:    #68756e;
+  --muted:    #84908a;
+  --rule:     #cfd9d2;
+  --rule-2:   #dfe6e1;
 
-  --accent:         #c8553d;
-  --accent-ink:     #8c3422;
-  --accent-soft:    #efd1c7;
+  --accent:         #24825f;
+  --accent-ink:     #0e3d2b;
+  --accent-soft:    #d7eadf;
 
-  --ok:      #3d7a4b;
-  --ok-soft: #dbe8d8;
-  --warn:    #a87118;
-  --warn-soft:#eeddb8;
-  --bad:     #b33d3d;
-  --bad-soft:#efd4d0;
-  --mute:    #9a907f;
-  --mute-soft:#e8dfd0;
+  --ok:      #347a56;
+  --ok-soft: #dceade;
+  --warn:    #9b6f18;
+  --warn-soft:#eee1bd;
+  --bad:     #b45142;
+  --bad-soft:#edd5d1;
+  --mute:    #84908a;
+  --mute-soft:#e4ebe5;
 
   --radius: 0px;
   --row-pad: 14px 16px;
@@ -57,29 +57,29 @@
 }
 
 [data-theme="dark"] {
-  --bg:       #080f1b;
-  --bg-2:     #0b1321;
-  --surface:  #0d1726;
-  --surface-2:#111d30;
-  --ink:      #efe8d7;
-  --ink-2:    #c7bdab;
-  --ink-3:    #918a7d;
-  --muted:    #6f7888;
-  --rule:     #223047;
-  --rule-2:   #17253a;
+  --bg:       #141f1c;
+  --bg-2:     #17251f;
+  --surface:  #1b2b24;
+  --surface-2:#22332b;
+  --ink:      #e6efe9;
+  --ink-2:    #b8c5be;
+  --ink-3:    #7c8a84;
+  --muted:    #66746d;
+  --rule:     #33443c;
+  --rule-2:   #26362f;
 
-  --accent:      #e47659;
-  --accent-ink:  #f1ac98;
-  --accent-soft: #3b2019;
+  --accent:      #34b483;
+  --accent-ink:  #10241b;
+  --accent-soft: #15382a;
 
-  --ok:      #66b47e;
-  --ok-soft: #1a3024;
-  --warn:    #d8a64a;
-  --warn-soft:#3a2c13;
-  --bad:     #ef6f6a;
-  --bad-soft:#3a1b1b;
-  --mute:    #6f7888;
-  --mute-soft:#172235;
+  --ok:      #5fc28e;
+  --ok-soft: #183526;
+  --warn:    #d9a441;
+  --warn-soft:#392d14;
+  --bad:     #cf5b48;
+  --bad-soft:#3b1e1a;
+  --mute:    #7c8a84;
+  --mute-soft:#22312b;
 }
 
 * { box-sizing: border-box; }
@@ -186,7 +186,7 @@ body {
 .nav__item.is-active {
   background: var(--surface);
   color: var(--ink);
-  box-shadow: inset 2px 0 0 var(--accent);
+  border-left: 1px solid var(--accent);
 }
 .nav__item .nav__count { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
 .nav__item.is-active .nav__count { color: var(--accent); }
@@ -209,8 +209,7 @@ body {
   display: flex; align-items: center; gap: 14px;
   padding: 12px 28px;
   border-bottom: 1px solid var(--rule);
-  background: color-mix(in oklch, var(--bg) 88%, transparent);
-  backdrop-filter: blur(8px);
+  background: var(--bg);
 }
 .top__crumbs { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
 .top__crumbs strong { color: var(--ink); font-weight: 500; }
@@ -262,7 +261,7 @@ body {
 }
 .btn:hover { background: var(--bg-2); border-color: var(--ink-3); }
 .btn--primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-.btn--primary:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn--primary:hover { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .btn--sm { padding: 4px 9px; font-size: 11.5px; }
 
 .link {
@@ -359,10 +358,7 @@ body {
 
 /* Monochrome status mode */
 .mono-status .chip { background: transparent; border-color: var(--rule); color: var(--ink-2); }
-.mono-status .dot--ok, .mono-status .dot--warn, .mono-status .dot--bad, .mono-status .dot--mute {
-  background: currentColor;
-  box-shadow: none;
-}
+.mono-status .dot--ok, .mono-status .dot--warn, .mono-status .dot--bad, .mono-status .dot--mute { background: currentColor; }
 
 /* ——— Search ——— */
 .search {
@@ -501,7 +497,7 @@ body {
   padding: 2px 7px;
   width: fit-content;
 }
-.sev--critical { background: var(--bad);  color: #fff; }
+.sev--critical { background: var(--bad);  color: var(--bg); }
 .sev--warning  { background: var(--warn); color: #1a1a1a; }
 .sev--info     { background: var(--mute-soft); color: var(--ink-2); border: 1px solid var(--rule); }
 .alert__msg { font-size: 13.5px; }
@@ -565,7 +561,7 @@ body {
 .starfleet-popup .maplibregl-popup-content {
   padding: 8px 10px;
   border-radius: 2px;
-  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  
   font-family: var(--font-ui);
 }
 .map-legend {
@@ -582,7 +578,7 @@ body {
   padding: 8px 0;
   font-size: 12px;
   min-width: 160px;
-  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  
 }
 .layer-hud__title {
   font-family: var(--font-mono);
@@ -608,7 +604,7 @@ body {
 }
 .layer-hud__item .dot {
   width: 8px; height: 8px;
-  border-radius: 50%;
+  border-radius: 0;
   flex-shrink: 0;
 }
 .layer-hud__item.is-off { opacity: 0.45; }
@@ -655,7 +651,7 @@ body {
   width: 308px;
   background: var(--surface);
   border: 1px solid var(--rule);
-  box-shadow: 0 20px 50px -20px rgba(0,0,0,.25);
+  
   padding: 16px 16px 18px;
   font-size: 12.5px;
   display: flex; flex-direction: column; gap: 14px;
@@ -739,7 +735,7 @@ body {
   font-weight: 600;
   cursor: pointer;
 }
-.btn-primary:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
 
 /* ——— Density variants ——— */
@@ -900,8 +896,7 @@ body {
     gap: 0;
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--rule);
-    background: color-mix(in oklch, var(--bg) 94%, transparent);
-    backdrop-filter: blur(10px);
+    background: var(--bg);
   }
   .bottom-nav__item {
     position: relative;
@@ -921,7 +916,7 @@ body {
   .bottom-nav__item.is-active {
     color: var(--ink);
     background: var(--surface);
-    box-shadow: inset 0 -2px 0 var(--accent);
+    border-bottom: 1px solid var(--accent);
   }
   .bottom-nav__count {
     position: absolute;
@@ -933,7 +928,7 @@ body {
     display: grid;
     place-items: center;
     background: var(--accent);
-    color: #fff;
+    color: var(--bg);
     font-family: var(--font-mono);
     font-size: 9px;
     line-height: 1;
@@ -2035,8 +2030,7 @@ function PinTooltip({ p, flip }) {
   const tc = p.health.tone === 'ok' ? 'var(--ok)' : p.health.tone === 'warn' ? 'var(--warn)' : 'var(--bad)';
   return (
     <g transform={`translate(${p.x + ox} ${p.y + oy})`} style={{ pointerEvents: 'none' }}>
-      <rect width={W} height={H} rx="2" fill="var(--surface)" stroke={tc} strokeWidth="1.5"
-        style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,.18))' }} />
+      <rect width={W} height={H} rx="0" fill="var(--surface)" stroke={tc} strokeWidth="1.5" />
       <text x="10" y="14" fontSize="12" fill="var(--ink)" fontFamily="var(--font-ui)" fontWeight="600">{p.name}</text>
       <text x="10" y="27" fontSize="10" fill="var(--muted)" fontFamily="var(--font-mono)" letterSpacing="0.05em">
         {p.health.onlineDishes}/{p.health.dishes} DISHES · {p.health.pcs} PCS
@@ -2111,18 +2105,18 @@ function MapStage({ pins, selected, onSelect, flyToId, satellites }) {
 
       const el = document.createElement('div');
       el.style.cssText = `
-        width: ${size + 6}px; height: ${size + 6}px; border-radius: 50%;
+        width: ${size + 6}px; height: ${size + 6}px; border-radius: 0;
         background: white; border: 2px solid ${color};
         display: flex; align-items: center; justify-content: center;
         cursor: pointer; transition: transform 0.15s;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        
       `;
       if (isSel) el.style.transform = 'scale(1.2)';
 
       const inner = document.createElement('div');
       inner.style.cssText = `
         width: ${size - 4}px; height: ${size - 4}px;
-        border-radius: 50%; background: ${color};
+        border-radius: 0; background: ${color};
       `;
       el.appendChild(inner);
 
@@ -2168,9 +2162,9 @@ function MapStage({ pins, selected, onSelect, flyToId, satellites }) {
     satellites.forEach(sat => {
       const el = document.createElement('div');
       el.style.cssText = `
-        width: 6px; height: 6px; border-radius: 50%;
-        background: #e8856f; opacity: 0.7;
-        box-shadow: 0 0 4px rgba(232,133,111,0.6);
+        width: 6px; height: 6px; border-radius: 0;
+        background: var(--accent); opacity: 0.7;
+        
         pointer-events: auto; cursor: default;
       `;
 
@@ -2210,7 +2204,7 @@ const MAP_LAYERS = [
   { id: 'sites',    label: 'Sites',         color: 'var(--ok)',     key: '1' },
   { id: 'kp',       label: 'Space weather',  color: '#7c5cfc',      key: '2' },
   { id: 'weather',  label: 'Weather',        color: '#5ba3d9',      key: '3' },
-  { id: 'passes',   label: 'Sat passes',     color: '#e8856f',      key: '4' },
+  { id: 'passes',   label: 'Sat passes',     color: '#34b483',      key: '4' },
   { id: 'alerts',   label: 'Alerts',         color: 'var(--bad)',    key: '5' },
   { id: 'coverage', label: 'Coverage zones',  color: 'var(--warn)',  key: '6' },
   { id: 'labels',   label: 'Labels',         color: 'var(--muted)', key: '7' },
@@ -2441,16 +2435,17 @@ const DishDetail = window._DishDetail;
 const MapView = window._MapView;
 
 const TWEAK_DEFAULTS = {
-  theme: 'dark', accent: 'terracotta', typePairing: 'serif-sans',
+  theme: 'dark', accent: 'signal', typePairing: 'serif-sans',
   density: 'dense', sidebar: 'wide', monochromeStatus: true,
   landingTab: 'overview', showTopPulse: true,
 };
 const ACCENTS = {
-  terracotta: { light:'#c8553d', dark:'#e47659', soft_l:'#efd1c7', soft_d:'#3b2019', ink_l:'#8c3422', ink_d:'#f1ac98' },
+  signal:     { light:'#24825f', dark:'#34b483', soft_l:'#d7eadf', soft_d:'#15382a', ink_l:'#0e3d2b', ink_d:'#10241b' },
+  terracotta: { light:'#b45142', dark:'#cf5b48', soft_l:'#edd5d1', soft_d:'#3b1e1a', ink_l:'#743024', ink_d:'#f0b4a9' },
   indigo:     { light:'#3b5bdb', dark:'#8aa0ff', soft_l:'#dbe0fa', soft_d:'#1a2150', ink_l:'#1e3a8a', ink_d:'#c0cdff' },
   forest:     { light:'#3e7d4a', dark:'#7ab389', soft_l:'#d9e8d8', soft_d:'#1d3626', ink_l:'#1f4a2a', ink_d:'#b8dcbd' },
-  ochre:      { light:'#b7791f', dark:'#e6b86b', soft_l:'#f2e3c4', soft_d:'#3a2c13', ink_l:'#7a4e10', ink_d:'#f5d494' },
-  ink:        { light:'#171512', dark:'#efe8d7', soft_l:'#e7ddcb', soft_d:'#223047', ink_l:'#171512', ink_d:'#efe8d7' },
+  ochre:      { light:'#9b6f18', dark:'#d9a441', soft_l:'#eee1bd', soft_d:'#392d14', ink_l:'#60420d', ink_d:'#f1d590' },
+  ink:        { light:'#222b27', dark:'#e6efe9', soft_l:'#dfe6e1', soft_d:'#33443c', ink_l:'#222b27', ink_d:'#e6efe9' },
 };
 const TYPE_PAIRINGS = {
   'serif-sans': { serif:"'Newsreader', Georgia, serif",   ui:"'Inter', system-ui, sans-serif" },
@@ -2720,7 +2715,7 @@ function App() {
   aUE(() => {
     const root = document.documentElement;
     root.setAttribute('data-theme', tweaks.theme==='dark'?'dark':'light');
-    const a = ACCENTS[tweaks.accent] || ACCENTS.terracotta;
+    const a = ACCENTS[tweaks.accent] || ACCENTS.signal;
     root.style.setProperty('--accent',      tweaks.theme==='dark'?a.dark:a.light);
     root.style.setProperty('--accent-soft', tweaks.theme==='dark'?a.soft_d:a.soft_l);
     root.style.setProperty('--accent-ink',  tweaks.theme==='dark'?a.ink_d:a.ink_l);
