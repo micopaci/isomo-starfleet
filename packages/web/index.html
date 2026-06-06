@@ -1062,12 +1062,12 @@ function computeScore(sig) {
 }
 
 function siteStatusStr(site) {
-  if (site.online_laptops === 0) return 'dark';
   const sig = site.signal;
+  // No signal ingested in the last 2 hours → dish is offline
   if (!sig) return 'dark';
-  if (sig.confidence === 'low') return 'degraded';
-  if (computeScore(sig) < 60) return 'degraded';
-  return 'online';
+  // Good metrics → online (confidence only reflects reporter count, not signal quality)
+  if (computeScore(sig) >= 60) return 'online';
+  return 'degraded';
 }
 
 function timeAgoStr(iso) {
