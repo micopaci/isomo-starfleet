@@ -114,7 +114,7 @@ export function SiteDetailScreen({ route, navigation }: SiteDetailProps) {
               <StatusChip status={siteStatus} colors={C} />
               {sig?.anomaly && (
                 <View style={[styles.badge, { borderColor: C.warn, backgroundColor: C.warnSoft }]}>
-                  <Text style={[styles.badgeText, { color: C.warn }]}>⚠ Anomaly</Text>
+                  <Text style={[styles.badgeText, { color: C.warn }]}>Anomaly</Text>
                 </View>
               )}
             </View>

@@ -43,10 +43,10 @@ export function SiteCard({ site, onPress, colors }: Props) {
 
       <View style={styles.bottomRow}>
         <Text style={[styles.meta, { color: colors.ink3 }]}>
-          📡 {dishesOnline}/{dishesTotal} · 💻 {devicesOnline}
+          dishes {dishesOnline}/{dishesTotal} · devices {devicesOnline}
         </Text>
         {scoreVal != null && (
-          <View style={[styles.scorePill, { backgroundColor: colors.surface2 }]}>
+          <View style={[styles.scorePill, { backgroundColor: colors.surface2, borderColor: colors.rule }]}>
             <Text style={[styles.scoreText, { color: scoreColor(scoreVal, colors) }]}>
               {scoreVal}
             </Text>
@@ -65,6 +65,6 @@ const styles = StyleSheet.create({
   code:      { fontSize: 11, letterSpacing: 0.3 },
   bottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   meta:      { fontSize: 12 },
-  scorePill: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  scorePill: { borderRadius: 0, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3 },
   scoreText: { fontSize: 13, fontWeight: '700' },
 });

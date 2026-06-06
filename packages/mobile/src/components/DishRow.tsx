@@ -23,7 +23,6 @@ export function DishRow({ siteName, serial, score, downloadMbps, uploadMbps, sta
       activeOpacity={onPress ? 0.7 : 1}
       style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.rule }]}
     >
-      <View style={[styles.accent, { backgroundColor: scoreVal != null ? scoreColor(scoreVal, colors) : colors.muted }]} />
       <View style={styles.main}>
         <View style={styles.topLine}>
           <Text style={[styles.site, { color: colors.ink }]} numberOfLines={1}>{siteName}</Text>
@@ -48,7 +47,6 @@ export function DishRow({ siteName, serial, score, downloadMbps, uploadMbps, sta
 
 const styles = StyleSheet.create({
   row:     { flexDirection: 'row', borderRadius: 0, borderWidth: 1, marginBottom: 8, overflow: 'hidden' },
-  accent:  { width: 4 },
   main:    { flex: 1, padding: 12, gap: 4 },
   topLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   site:    { fontSize: 14, fontWeight: '600', flex: 1, marginRight: 8 },

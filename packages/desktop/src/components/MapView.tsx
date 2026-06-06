@@ -109,7 +109,7 @@ export function MapView({ sites, onSelectSite }: Props) {
       el.style.cssText = `
         width: ${size + 6}px;
         height: ${size + 6}px;
-        border-radius: 50%;
+        border-radius: 0;
         background: white;
         border: 2px solid ${color};
         display: flex;
@@ -117,7 +117,7 @@ export function MapView({ sites, onSelectSite }: Props) {
         justify-content: center;
         cursor: pointer;
         transition: transform 0.15s;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        
       `;
       if (isSel) el.style.transform = 'scale(1.2)';
 
@@ -125,7 +125,7 @@ export function MapView({ sites, onSelectSite }: Props) {
       inner.style.cssText = `
         width: ${size - 4}px;
         height: ${size - 4}px;
-        border-radius: 50%;
+        border-radius: 0;
         background: ${color};
       `;
       el.appendChild(inner);
@@ -198,9 +198,9 @@ export function MapView({ sites, onSelectSite }: Props) {
     satellites.forEach(sat => {
       const el = document.createElement('div');
       el.style.cssText = `
-        width: 6px; height: 6px; border-radius: 50%;
-        background: #e8856f; opacity: 0.7;
-        box-shadow: 0 0 4px rgba(232,133,111,0.6);
+        width: 6px; height: 6px; border-radius: 0;
+        background: var(--accent); opacity: 0.7;
+        
         pointer-events: auto; cursor: default;
       `;
       el.addEventListener('mouseenter', () => {

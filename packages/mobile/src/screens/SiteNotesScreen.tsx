@@ -107,7 +107,7 @@ export function SiteNotesScreen({ route }: SiteNotesProps) {
             onPress={handleAdd}
             disabled={saving || !draft.trim()}
           >
-            <Text style={styles.addBtnText}>{saving ? 'Saving…' : 'Add note'}</Text>
+            <Text style={[styles.addBtnText, { color: C.bg }]}>{saving ? 'Saving…' : 'Add note'}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -135,5 +135,5 @@ const styles = StyleSheet.create({
   input:       { borderWidth: 1, borderRadius: 6, padding: 8, fontSize: 14,
                  minHeight: 72, textAlignVertical: 'top', marginBottom: 10 },
   addBtn:      { borderRadius: 0, paddingVertical: 10, alignItems: 'center' },
-  addBtnText:  { color: C.bg, fontWeight: '600', fontSize: 14 },
+  addBtnText:  { fontWeight: '600', fontSize: 14 },
 });

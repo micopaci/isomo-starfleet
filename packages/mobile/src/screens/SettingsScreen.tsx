@@ -85,7 +85,7 @@ export function SettingsScreen({ colors, onLogout, role, email }: Props) {
               style={[styles.saveBtn, { backgroundColor: C.accent }]}
               onPress={handleSaveApiBase}
             >
-              <Text style={styles.saveBtnText}>Save</Text>
+              <Text style={[styles.saveBtnText, { color: C.bg }]}>Save</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
   input:       { flex: 1, borderWidth: 1, borderRadius: 0, paddingHorizontal: 10,
                  paddingVertical: 8, fontSize: 13 },
   saveBtn:     { borderRadius: 0, paddingHorizontal: 14, paddingVertical: 9 },
-  saveBtnText: { color: C.bg, fontWeight: '600', fontSize: 13 },
+  saveBtnText: { fontWeight: '600', fontSize: 13 },
   editHint:    { fontSize: 11, marginTop: 2 },
   savedMsg:    { fontSize: 12, marginTop: 4 },
   logoutBtn:   { borderWidth: 1.5, borderRadius: 0, padding: 14, alignItems: 'center', marginTop: 4 },

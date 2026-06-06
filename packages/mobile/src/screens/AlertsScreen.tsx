@@ -174,7 +174,7 @@ export function AlertsScreen({ colors, role, onAlertCountChange }: Props) {
               </Text>
               {t.badge > 0 && (
                 <View style={[styles.tabBadge, { backgroundColor: t.key === 'changes' ? C.bad : C.warn }]}>
-                  <Text style={styles.tabBadgeText}>{t.badge}</Text>
+                  <Text style={[styles.tabBadgeText, { color: C.bg }]}>{t.badge}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -276,7 +276,7 @@ export function AlertsScreen({ colors, role, onAlertCountChange }: Props) {
             }
             ListEmptyComponent={
               <View style={styles.empty}>
-                <Text style={styles.emptyIcon}>✅</Text>
+                <Text style={[styles.emptyIcon, { color: C.ok }]}>OK</Text>
                 <Text style={[styles.emptyText, { color: C.ink3 }]}>No stale devices</Text>
                 <Text style={[styles.emptySub, { color: C.muted }]}>
                   {staleError || 'All computers checking in on time'}
@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
   tabText:         { fontSize: 13, fontWeight: '600' },
   tabBadge:        { borderRadius: 0, minWidth: 18, height: 18, alignItems: 'center',
                      justifyContent: 'center', paddingHorizontal: 5 },
-  tabBadgeText:    { color: C.bg, fontSize: 10, fontWeight: '700' },
+  tabBadgeText:    { fontSize: 10, fontWeight: '700' },
   list:            { padding: 12, paddingBottom: 24 },
   summaryBanner:   { borderRadius: 0, borderWidth: 1, padding: 10, marginBottom: 8 },
   summaryText:     { fontSize: 13, fontWeight: '500', textAlign: 'center' },

@@ -4,8 +4,8 @@
   "description": "Isomo Starfleet operations dashboard",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#080f1b",
-  "theme_color": "#e47659",
+  "background_color": "#141f1c",
+  "theme_color": "#34b483",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",

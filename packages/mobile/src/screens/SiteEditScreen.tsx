@@ -109,7 +109,7 @@ export function SiteEditScreen({ route, navigation }: SiteEditProps) {
         onPress={handleSave}
         disabled={saving}
       >
-        <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save changes'}</Text>
+        <Text style={[styles.saveBtnText, { color: C.bg }]}>{saving ? 'Saving…' : 'Save changes'}</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -144,5 +144,5 @@ const styles = StyleSheet.create({
   center:      { flex: 1, justifyContent: 'center', alignItems: 'center' },
   input:       { borderWidth: 1, borderRadius: 0, padding: 10, fontSize: 14 },
   saveBtn:     { borderRadius: 0, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
-  saveBtnText: { color: C.bg, fontWeight: '600', fontSize: 15 },
+  saveBtnText: { fontWeight: '600', fontSize: 15 },
 });
