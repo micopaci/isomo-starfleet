@@ -67,6 +67,7 @@ async function getSiteSignal(siteId) {
             download_mbps, upload_mbps, confidence, recorded_at
      FROM signal_readings
      WHERE site_id = $1
+       AND recorded_at > NOW() - INTERVAL '2 hours'
      ORDER BY recorded_at DESC
      LIMIT 1`,
     [siteId]
@@ -227,6 +228,7 @@ async function syncDerivedAlerts() {
         SELECT pop_latency_ms, snr, obstruction_pct, ping_drop_pct, confidence
         FROM signal_readings
         WHERE site_id = s.id
+          AND recorded_at > NOW() - INTERVAL '2 hours'
         ORDER BY recorded_at DESC
         LIMIT 1
       ) sig ON TRUE
@@ -260,7 +262,7 @@ async function syncDerivedAlerts() {
       const score = computeSignalScore(sig);
       const siteLabel = row.name || row.starlink_sn || `Site ${row.id}`;
 
-      if (row.online_laptops === 0 || !sig) {
+      if (!sig) {
         const active_key = `site:${row.id}:offline`;
         activeKeys.push(active_key);
         await upsertAlert(client, {
@@ -271,10 +273,10 @@ async function syncDerivedAlerts() {
           severity: 'critical',
           category: 'connectivity',
           title: 'Site unreachable',
-          message: `${siteLabel} is offline or has no current signal reporters.`,
-          metadata: { online_laptops: row.online_laptops, starlink_sn: row.starlink_sn },
+          message: `${siteLabel} has not reported signal in the last 2 hours.`,
+          metadata: { starlink_sn: row.starlink_sn },
         });
-      } else if (row.confidence === 'low' || (score != null && score < 60)) {
+      } else if (score != null && score < 60) {
         const active_key = `site:${row.id}:degraded`;
         activeKeys.push(active_key);
         await upsertAlert(client, {
