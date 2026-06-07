@@ -63,6 +63,11 @@ function require400(res, body, fields) {
   return true;
 }
 
+function asJsonOrNull(value) {
+  if (value === undefined || value === null || value === '') return null;
+  return value;
+}
+
 /**
  * Maps agent device_sn (BIOS) to database windows_sn.
  * Updates OS and Model metadata on every check-in.
@@ -334,6 +339,9 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
       download_mbps, upload_mbps,
       lat, lon,
       starlink_id, starlink_uuid, starlink_sn, kit_id,
+      is_snr_above_noise_floor, starlink_alerts, disablement_code, ready_states,
+      dl_bandwidth_restricted_reason, ul_bandwidth_restricted_reason,
+      dish_uptime_s, dish_bootcount, dish_grpc_reachable, starlink_power_verdict,
       payload_id,
     } = req.body;
     if (!require400(res, req.body, ['device_sn', 'site_id'])) return;
@@ -381,24 +389,43 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
             pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
             download_mbps, upload_mbps,
             reporter_count, confidence,
-            starlink_id, starlink_uuid, starlink_sn, kit_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+            starlink_id, starlink_uuid, starlink_sn, kit_id,
+            is_snr_above_noise_floor, starlink_alerts, disablement_code, ready_states,
+            dl_bandwidth_restricted_reason, ul_bandwidth_restricted_reason,
+            dish_uptime_s, dish_bootcount, dish_grpc_reachable, starlink_power_verdict)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+                 $16, $17::jsonb, $18, $19::jsonb, $20, $21, $22, $23, $24, $25)`,
         [site_id, device_id, timestamp_utc || new Date().toISOString(),
           pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
           download_mbps ?? null, upload_mbps ?? null,
           reporterCount, confidence,
-          starlink_id || null, starlink_uuid || null, starlink_sn || null, kit_id || null]
+          starlink_id || null, starlink_uuid || null, starlink_sn || null, kit_id || null,
+          is_snr_above_noise_floor ?? null,
+          asJsonOrNull(starlink_alerts),
+          disablement_code || null,
+          asJsonOrNull(ready_states),
+          dl_bandwidth_restricted_reason || null,
+          ul_bandwidth_restricted_reason || null,
+          dish_uptime_s ?? null,
+          dish_bootcount ?? null,
+          dish_grpc_reachable ?? null,
+          starlink_power_verdict || null]
       );
 
       const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
       const recentRes = await client.query(
         `SELECT pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
-                download_mbps, upload_mbps
+                download_mbps, upload_mbps,
+                is_snr_above_noise_floor, starlink_alerts, disablement_code, ready_states,
+                dl_bandwidth_restricted_reason, ul_bandwidth_restricted_reason,
+                dish_uptime_s, dish_bootcount, dish_grpc_reachable, starlink_power_verdict
          FROM signal_readings
-         WHERE site_id = $1 AND recorded_at > $2`,
+         WHERE site_id = $1 AND recorded_at > $2
+         ORDER BY recorded_at ASC`,
         [site_id, twoMinAgo]
       );
       const rows = recentRes.rows;
+      const latest = rows[rows.length - 1] || {};
       const aggregated = {
         snr: median(rows.map(r => parseFloat(r.snr)).filter(v => !Number.isNaN(v))),
         pop_latency_ms: median(rows.map(r => parseFloat(r.pop_latency_ms)).filter(v => !Number.isNaN(v))),
@@ -406,6 +433,16 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
         ping_drop_pct: median(rows.map(r => parseFloat(r.ping_drop_pct)).filter(v => !Number.isNaN(v))),
         download_mbps: median(rows.map(r => parseFloat(r.download_mbps)).filter(v => !Number.isNaN(v))),
         upload_mbps: median(rows.map(r => parseFloat(r.upload_mbps)).filter(v => !Number.isNaN(v))),
+        is_snr_above_noise_floor: latest.is_snr_above_noise_floor ?? null,
+        starlink_alerts: latest.starlink_alerts ?? null,
+        disablement_code: latest.disablement_code ?? null,
+        ready_states: latest.ready_states ?? null,
+        dl_bandwidth_restricted_reason: latest.dl_bandwidth_restricted_reason ?? null,
+        ul_bandwidth_restricted_reason: latest.ul_bandwidth_restricted_reason ?? null,
+        dish_uptime_s: latest.dish_uptime_s == null ? null : Number(latest.dish_uptime_s),
+        dish_bootcount: latest.dish_bootcount == null ? null : Number(latest.dish_bootcount),
+        dish_grpc_reachable: latest.dish_grpc_reachable ?? null,
+        starlink_power_verdict: latest.starlink_power_verdict ?? null,
         confidence,
         updatedAt: new Date().toISOString(),
       };

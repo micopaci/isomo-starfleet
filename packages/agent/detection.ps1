@@ -5,7 +5,7 @@ $ConfigPath = Join-Path $DataDir "agent.config.json"
 $InstallSourcePath = Join-Path $DataDir "install_source.json"
 $LastHeartbeatPath = Join-Path $DataDir "last_heartbeat.txt"
 $TaskName = "StarfleetPulse"
-$ExpectedAgentVersion = "1.2.1"
+$ExpectedAgentVersion = "1.3.0"
 
 function ConvertFrom-Base64Url {
     param([string]$Value)

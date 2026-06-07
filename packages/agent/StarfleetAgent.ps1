@@ -12,8 +12,8 @@ $DeviceFile = Join-Path $DataDir "device.json"
 $InstallSourceFile = Join-Path $DataDir "install_source.json"
 $LastHeartbeatFile = Join-Path $DataDir "last_heartbeat.txt"
 $UsageBaselineFile = Join-Path $DataDir "usage_baseline.json"
-$SchemaVersion = "1.1"
-$AgentVersion = "1.2.1"
+$SchemaVersion = "1.2"
+$AgentVersion = "1.3.0"
 $RunId = [guid]::NewGuid().ToString()
 $SampleWindowSec = 300
 $UsageAdapterPolicy = "wifi_default_route"
@@ -347,6 +347,92 @@ function Find-FirstString {
     return $null
 }
 
+function Find-FirstBoolean {
+    param(
+        [object]$Object,
+        [string[]]$Names
+    )
+
+    if ($null -eq $Object) {
+        return $null
+    }
+
+    if ($Object -is [System.Collections.IEnumerable] -and -not ($Object -is [string])) {
+        foreach ($item in $Object) {
+            $found = Find-FirstBoolean -Object $item -Names $Names
+            if ($null -ne $found) {
+                return $found
+            }
+        }
+        return $null
+    }
+
+    foreach ($prop in $Object.PSObject.Properties) {
+        foreach ($name in $Names) {
+            if ($prop.Name -ieq $name) {
+                if ($prop.Value -is [bool]) {
+                    return [bool]$prop.Value
+                }
+                $parsed = $false
+                if ([bool]::TryParse([string]$prop.Value, [ref]$parsed)) {
+                    return $parsed
+                }
+            }
+        }
+    }
+
+    foreach ($prop in $Object.PSObject.Properties) {
+        if ($null -ne $prop.Value -and -not ($prop.Value -is [string])) {
+            $found = Find-FirstBoolean -Object $prop.Value -Names $Names
+            if ($null -ne $found) {
+                return $found
+            }
+        }
+    }
+
+    return $null
+}
+
+function Find-FirstObject {
+    param(
+        [object]$Object,
+        [string[]]$Names
+    )
+
+    if ($null -eq $Object) {
+        return $null
+    }
+
+    if ($Object -is [System.Collections.IEnumerable] -and -not ($Object -is [string])) {
+        foreach ($item in $Object) {
+            $found = Find-FirstObject -Object $item -Names $Names
+            if ($null -ne $found) {
+                return $found
+            }
+        }
+        return $null
+    }
+
+    foreach ($prop in $Object.PSObject.Properties) {
+        foreach ($name in $Names) {
+            if ($prop.Name -ieq $name -and $null -ne $prop.Value) {
+                return $prop.Value
+            }
+        }
+    }
+
+    foreach ($prop in $Object.PSObject.Properties) {
+        if ($null -ne $prop.Value -and -not ($prop.Value -is [string])) {
+            $found = Find-FirstObject -Object $prop.Value -Names $Names
+            if ($null -ne $found) {
+                return $found
+            }
+        }
+    }
+
+    return $null
+}
+
 function Find-StarlinkUtIdInBytes {
     param([byte[]]$Bytes)
 
@@ -402,6 +488,50 @@ function Convert-BpsToMbps {
         return $null
     }
     return [math]::Round(([double]$Value / 1000000), 2)
+}
+
+function Convert-ToNullableInt64 {
+    param([object]$Value)
+    if ($null -eq $Value) {
+        return $null
+    }
+    $n = [Int64]0
+    if ([Int64]::TryParse([string]$Value, [ref]$n)) {
+        return $n
+    }
+    return $null
+}
+
+function Convert-ToNullableInt {
+    param([object]$Value)
+    if ($null -eq $Value) {
+        return $null
+    }
+    $n = 0
+    if ([int]::TryParse([string]$Value, [ref]$n)) {
+        return $n
+    }
+    return $null
+}
+
+function Convert-ToSignalJsonObject {
+    param([object]$Value)
+    if ($null -eq $Value) {
+        return $null
+    }
+    return $Value
+}
+
+function Convert-ToSignalText {
+    param([object]$Value)
+    if ($null -eq $Value) {
+        return $null
+    }
+    $text = ([string]$Value).Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $null
+    }
+    return $text
 }
 
 function Get-JsonObjectCandidatesFromText {
@@ -1555,6 +1685,14 @@ function Get-StarlinkSnapshot {
             $starlinkId = Find-FirstString -Object $httpRaw -Names @("starlink_id", "starlinkId", "device_id", "deviceId", "id")
             $azimuth = Find-FirstNumber -Object $httpRaw -Names @("boresightAzimuthDeg", "boresight_azimuth_deg", "azimuth", "azimuthDeg")
             $elevation = Find-FirstNumber -Object $httpRaw -Names @("boresightElevationDeg", "boresight_elevation_deg", "elevation", "elevationDeg")
+            $isSnrAboveNoiseFloor = Find-FirstBoolean -Object $httpRaw -Names @("isSnrAboveNoiseFloor", "is_snr_above_noise_floor")
+            $alerts = Find-FirstObject -Object $httpRaw -Names @("alerts")
+            $disablementCode = Find-FirstString -Object $httpRaw -Names @("disablementCode", "disablement_code")
+            $readyStates = Find-FirstObject -Object $httpRaw -Names @("readyStates", "ready_states")
+            $dlRestrictedReason = Find-FirstString -Object $httpRaw -Names @("dlBandwidthRestrictedReason", "dl_bandwidth_restricted_reason")
+            $ulRestrictedReason = Find-FirstString -Object $httpRaw -Names @("ulBandwidthRestrictedReason", "ul_bandwidth_restricted_reason")
+            $dishUptimeS = Find-FirstNumber -Object $httpRaw -Names @("uptimeS", "uptime_s")
+            $dishBootcount = Find-FirstNumber -Object $httpRaw -Names @("bootcount", "bootCount", "boot_count")
 
             return [pscustomobject]@{
                 Lat = $lat
@@ -1569,6 +1707,16 @@ function Get-StarlinkSnapshot {
                 UploadMbps = Convert-BpsToMbps $upBps
                 AzimuthDeg = $azimuth
                 ElevationDeg = $elevation
+                IsSnrAboveNoiseFloor = $isSnrAboveNoiseFloor
+                Alerts = Convert-ToSignalJsonObject $alerts
+                DisablementCode = Convert-ToSignalText $disablementCode
+                ReadyStates = Convert-ToSignalJsonObject $readyStates
+                DlBandwidthRestrictedReason = Convert-ToSignalText $dlRestrictedReason
+                UlBandwidthRestrictedReason = Convert-ToSignalText $ulRestrictedReason
+                DishUptimeS = Convert-ToNullableInt64 $dishUptimeS
+                DishBootcount = Convert-ToNullableInt $dishBootcount
+                DishGrpcReachable = $true
+                StarlinkPowerVerdict = "reachable"
             }
         }
 
@@ -1586,6 +1734,16 @@ function Get-StarlinkSnapshot {
             UploadMbps = $null
             AzimuthDeg = $null
             ElevationDeg = $null
+            IsSnrAboveNoiseFloor = $null
+            Alerts = $null
+            DisablementCode = $null
+            ReadyStates = $null
+            DlBandwidthRestrictedReason = $null
+            UlBandwidthRestrictedReason = $null
+            DishUptimeS = $null
+            DishBootcount = $null
+            DishGrpcReachable = $false
+            StarlinkPowerVerdict = "power_outage_suspected"
         }
     }
 
@@ -1604,6 +1762,19 @@ function Get-StarlinkSnapshot {
     $starlinkId = Find-FirstString -Object @($locRaw, $statusRaw) -Names @("starlink_id", "starlinkId", "device_id", "deviceId", "id")
     $azimuth = Find-FirstNumber -Object $statusRaw -Names @("boresightAzimuthDeg", "boresight_azimuth_deg", "azimuth", "azimuthDeg")
     $elevation = Find-FirstNumber -Object $statusRaw -Names @("boresightElevationDeg", "boresight_elevation_deg", "elevation", "elevationDeg")
+    $isSnrAboveNoiseFloor = Find-FirstBoolean -Object $statusRaw -Names @("isSnrAboveNoiseFloor", "is_snr_above_noise_floor")
+    $alerts = Find-FirstObject -Object $statusRaw -Names @("alerts")
+    $disablementCode = Find-FirstString -Object $statusRaw -Names @("disablementCode", "disablement_code")
+    $readyStates = Find-FirstObject -Object $statusRaw -Names @("readyStates", "ready_states")
+    $dlRestrictedReason = Find-FirstString -Object $statusRaw -Names @("dlBandwidthRestrictedReason", "dl_bandwidth_restricted_reason")
+    $ulRestrictedReason = Find-FirstString -Object $statusRaw -Names @("ulBandwidthRestrictedReason", "ul_bandwidth_restricted_reason")
+    $dishUptimeS = Find-FirstNumber -Object $statusRaw -Names @("uptimeS", "uptime_s")
+    $dishBootcount = Find-FirstNumber -Object $statusRaw -Names @("bootcount", "bootCount", "boot_count")
+    $dishGrpcReachable = ($null -ne $statusRaw)
+    $starlinkPowerVerdict = "power_outage_suspected"
+    if ($dishGrpcReachable) {
+        $starlinkPowerVerdict = "reachable"
+    }
 
     return [pscustomobject]@{
         Lat = $lat
@@ -1618,6 +1789,16 @@ function Get-StarlinkSnapshot {
         UploadMbps = Convert-BpsToMbps $upBps
         AzimuthDeg = $azimuth
         ElevationDeg = $elevation
+        IsSnrAboveNoiseFloor = $isSnrAboveNoiseFloor
+        Alerts = Convert-ToSignalJsonObject $alerts
+        DisablementCode = Convert-ToSignalText $disablementCode
+        ReadyStates = Convert-ToSignalJsonObject $readyStates
+        DlBandwidthRestrictedReason = Convert-ToSignalText $dlRestrictedReason
+        UlBandwidthRestrictedReason = Convert-ToSignalText $ulRestrictedReason
+        DishUptimeS = Convert-ToNullableInt64 $dishUptimeS
+        DishBootcount = Convert-ToNullableInt $dishBootcount
+        DishGrpcReachable = $dishGrpcReachable
+        StarlinkPowerVerdict = $starlinkPowerVerdict
     }
 }
 
@@ -2115,7 +2296,7 @@ try {
     $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     Flush-Queue -Config $config
 
-    if ($null -ne $snapshot.Lat -or $null -ne $snapshot.StarlinkId -or $null -ne $snapshot.PopLatencyMs -or $null -ne $snapshot.DownloadMbps) {
+    if ($null -ne $snapshot.Lat -or $null -ne $snapshot.StarlinkId -or $null -ne $snapshot.PopLatencyMs -or $null -ne $snapshot.DownloadMbps -or $snapshot.DishGrpcReachable -eq $false) {
         $hintSiteId = $identity.SiteId
         if ($hintSiteId -le 0) {
             $hintSiteId = $siteId
@@ -2137,6 +2318,16 @@ try {
             starlink_uuid = $snapshot.StarlinkUuid
             azimuth_deg = $snapshot.AzimuthDeg
             elevation_deg = $snapshot.ElevationDeg
+            is_snr_above_noise_floor = $snapshot.IsSnrAboveNoiseFloor
+            starlink_alerts = $snapshot.Alerts
+            disablement_code = $snapshot.DisablementCode
+            ready_states = $snapshot.ReadyStates
+            dl_bandwidth_restricted_reason = $snapshot.DlBandwidthRestrictedReason
+            ul_bandwidth_restricted_reason = $snapshot.UlBandwidthRestrictedReason
+            dish_uptime_s = $snapshot.DishUptimeS
+            dish_bootcount = $snapshot.DishBootcount
+            dish_grpc_reachable = $snapshot.DishGrpcReachable
+            starlink_power_verdict = $snapshot.StarlinkPowerVerdict
         }
         $signalPayload = Add-PayloadMeta -Payload $signalPayload -CollectedAtUtc $timestamp
         Send-Ingest -Config $config -Endpoint "signal" -Payload $signalPayload | Out-Null

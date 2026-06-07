@@ -1,0 +1,30 @@
+{
+  "dishGetStatus": {
+    "deviceInfo": {
+      "id": "ut11111111-22222222-33333333",
+      "hardwareVersion": "rev4_panda_prod2",
+      "bootcount": 95
+    },
+    "deviceState": {
+      "uptimeS": "328"
+    },
+    "popPingLatencyMs": -1,
+    "alerts": {},
+    "isSnrAboveNoiseFloor": true,
+    "readyStates": {
+      "scp": true,
+      "l1l2": true,
+      "xphy": true,
+      "aap": true,
+      "rf": true
+    },
+    "disablementCode": "OKAY",
+    "dlBandwidthRestrictedReason": "NO_LIMIT",
+    "ulBandwidthRestrictedReason": "NO_LIMIT",
+    "outage": {
+      "cause": 13,
+      "durationNs": "74000000000",
+      "didSwitch": false
+    }
+  }
+}

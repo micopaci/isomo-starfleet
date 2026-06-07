@@ -1,0 +1,34 @@
+{
+  "apiVersion": "42",
+  "dishGetStatus": {
+    "deviceInfo": {
+      "id": "ut31c88996-c611791c-599d1851",
+      "hardwareVersion": "rev4_panda_prod2",
+      "softwareVersion": "2026.05.30.mr80794",
+      "bootcount": 93
+    },
+    "deviceState": {
+      "uptimeS": "141724"
+    },
+    "obstructionStats": {
+      "fractionObstructed": 0.0008622548,
+      "currentlyObstructed": false
+    },
+    "alerts": {},
+    "downlinkThroughputBps": 2183412,
+    "uplinkThroughputBps": 454503.16,
+    "popPingLatencyMs": 18.445324,
+    "isSnrAboveNoiseFloor": true,
+    "readyStates": {
+      "scp": true,
+      "l1l2": true,
+      "xphy": true,
+      "aap": true,
+      "rf": true
+    },
+    "softwareUpdateState": "IDLE",
+    "disablementCode": "OKAY",
+    "dlBandwidthRestrictedReason": "NO_LIMIT",
+    "ulBandwidthRestrictedReason": "NO_LIMIT"
+  }
+}

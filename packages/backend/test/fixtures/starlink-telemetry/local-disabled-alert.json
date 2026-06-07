@@ -1,0 +1,30 @@
+{
+  "dishGetStatus": {
+    "deviceInfo": {
+      "id": "utaaaaaaaa-bbbbbbbb-cccccccc",
+      "hardwareVersion": "rev4_panda_prod2",
+      "bootcount": 94
+    },
+    "deviceState": {
+      "uptimeS": "142000"
+    },
+    "obstructionStats": {
+      "fractionObstructed": 0.01,
+      "currentlyObstructed": false
+    },
+    "alerts": {
+      "lowerSignalThanPredicted": true
+    },
+    "isSnrAboveNoiseFloor": false,
+    "readyStates": {
+      "scp": true,
+      "l1l2": true,
+      "xphy": true,
+      "aap": true,
+      "rf": true
+    },
+    "disablementCode": "UNAUTHORIZED",
+    "dlBandwidthRestrictedReason": "NO_LIMIT",
+    "ulBandwidthRestrictedReason": "NO_LIMIT"
+  }
+}

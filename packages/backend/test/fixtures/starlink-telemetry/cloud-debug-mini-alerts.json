@@ -1,0 +1,43 @@
+{
+  "dish": {
+    "reachable": true,
+    "apiVersion": 42,
+    "hardwareVersion": "mini1",
+    "rawStatus": {
+      "deviceInfo": {
+        "id": "ut11688382-00e07c1c-59693216",
+        "hardwareVersion": "mini1_panda_prod1",
+        "softwareVersion": "2026.05.26.mr80668",
+        "bootcount": 251
+      },
+      "deviceState": {
+        "uptimeS": "153243"
+      },
+      "obstructionStats": {
+        "currentlyObstructed": false,
+        "fractionObstructed": 0.05032529681921005
+      },
+      "alerts": {
+        "thermalThrottle": false,
+        "installPending": false,
+        "lowerSignalThanPredicted": true
+      },
+      "isSnrAboveNoiseFloor": true,
+      "isSnrPersistentlyLow": false,
+      "readyStates": {
+        "cady": false,
+        "scp": true,
+        "l1L2": true,
+        "xphy": true,
+        "aap": true,
+        "rf": true
+      },
+      "disablementCode": 1,
+      "dlBandwidthRestrictedReason": 1,
+      "ulBandwidthRestrictedReason": 1,
+      "downlinkThroughputBps": 8653210,
+      "uplinkThroughputBps": 1458267.25,
+      "popPingLatencyMs": 18.43311882019043
+    }
+  }
+}
