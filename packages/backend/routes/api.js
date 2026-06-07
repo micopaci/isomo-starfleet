@@ -13,6 +13,7 @@ const jwt     = require('jsonwebtoken');
 const pool    = require('../db');
 const { requireAdmin }   = require('../middleware/auth');
 const { currentSignal }  = require('../services/cache');
+const { classifyAttribution, activeAlertNames } = require('../services/starlinkTelemetry');
 const graphClient        = require('../services/graph');
 const { checkCoverageGap, getVisibleSatellites } = require('../services/orbitalSync');
 const {
@@ -58,9 +59,35 @@ function normalizeAgentTokenTtl(raw) {
   return '365d';
 }
 
+// Derive an outage-attribution verdict from the stored dish telemetry fields.
+// Pure + cheap, so it runs on every read regardless of cache vs. DB source.
+// Fields not yet persisted (outage, is_snr_persistently_low, software_update_state)
+// degrade gracefully to null until the agent collects them.
+function attachAttribution(signal) {
+  if (!signal) return signal;
+  const dish = {
+    dish_grpc_reachable: signal.dish_grpc_reachable,
+    outage: signal.outage || null,
+    disablement_code: signal.disablement_code || null,
+    ready_states: signal.ready_states || null,
+    obstruction_pct: signal.obstruction_pct == null ? null : Number(signal.obstruction_pct),
+    is_snr_above_noise_floor: signal.is_snr_above_noise_floor,
+    is_snr_persistently_low: signal.is_snr_persistently_low ?? null,
+    active_alerts: activeAlertNames(signal.starlink_alerts || {}),
+    software_update_state: signal.software_update_state || null,
+  };
+  const { verdict, confidence, failed_ready_states } = classifyAttribution({ dish });
+  signal.attribution = {
+    verdict,
+    confidence,
+    ...(failed_ready_states ? { failed_ready_states } : {}),
+  };
+  return signal;
+}
+
 async function getSiteSignal(siteId) {
   const cached = currentSignal.get(String(siteId));
-  if (cached) return cached;
+  if (cached) return attachAttribution({ ...cached });
 
   const { rows } = await pool.query(
     `SELECT pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
@@ -79,7 +106,7 @@ async function getSiteSignal(siteId) {
   if (!rows.length) return null;
 
   const row = rows[0];
-  return {
+  return attachAttribution({
     snr: row.snr == null ? null : Number(row.snr),
     pop_latency_ms: row.pop_latency_ms == null ? null : Number(row.pop_latency_ms),
     obstruction_pct: row.obstruction_pct == null ? null : Number(row.obstruction_pct),
@@ -98,7 +125,7 @@ async function getSiteSignal(siteId) {
     starlink_power_verdict: row.starlink_power_verdict || null,
     confidence: row.confidence || 'low',
     updatedAt: row.recorded_at,
-  };
+  });
 }
 
 function buildWeatherPredictor(weather) {

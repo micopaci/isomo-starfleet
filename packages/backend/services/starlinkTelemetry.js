@@ -183,6 +183,14 @@ function classifyAttribution({ dish, router, previousRouter }) {
   if (router?.no_wan_link === true) {
     return { verdict: 'starlink_wan_or_service_fault', confidence: 'high' };
   }
+
+  // The laptop is our only on-site sensor. If it could not reach the dish gRPC
+  // at all and we have no router telemetry, the most likely explanation is the
+  // site lost power. Battery is deliberately ignored — students run unplugged.
+  if (dish?.dish_grpc_reachable === false) {
+    return { verdict: 'power_outage_suspected', confidence: 'medium' };
+  }
+
   if (dish?.outage) {
     return { verdict: 'starlink_reported_outage', confidence: 'high' };
   }
