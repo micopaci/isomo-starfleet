@@ -17,7 +17,11 @@ for (let i = 2; i < process.argv.length; i += 1) {
 
 const apiBase = String(args.get('api-base') || 'https://api.starfleet.icircles.rw').replace(/\/+$/, '');
 const adminToken = args.get('admin-token') || process.env.STARFLEET_ADMIN_TOKEN;
-const ttl = args.get('expires-in') || process.env.DISCOVERY_TOKEN_TTL || '30d';
+// 365d default: field agents cannot self-renew once a token expires (the
+// bootstrap/refresh endpoints themselves require a non-expired token), so a
+// short discovery TTL locks the whole fleet out the moment it lapses. A 30-day
+// default did exactly that in May 2026. Override with --expires-in for pilots.
+const ttl = args.get('expires-in') || process.env.DISCOVERY_TOKEN_TTL || '365d';
 const out = args.get('out') || 'dist/intune/discovery-remediation.ps1';
 
 if (!adminToken) {
