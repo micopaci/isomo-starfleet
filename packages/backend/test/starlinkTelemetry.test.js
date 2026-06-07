@@ -104,3 +104,20 @@ test('detects router power cycling from bootcount delta', () => {
     confidence: 'high',
   });
 });
+
+test('attributes an unreachable dish gRPC to a suspected power outage', () => {
+  // Laptop alive (it reported) but could not reach the dish at 192.168.100.1.
+  assert.deepEqual(classifyAttribution({ dish: { dish_grpc_reachable: false } }), {
+    verdict: 'power_outage_suspected',
+    confidence: 'medium',
+  });
+});
+
+test('a reachable, all-clear dish is nominal, not a power outage', () => {
+  const dish = parseDishTelemetry(fixture('local-gen3-ok.json'));
+  dish.dish_grpc_reachable = true;
+  assert.deepEqual(classifyAttribution({ dish }), {
+    verdict: 'nominal',
+    confidence: 'high',
+  });
+});
