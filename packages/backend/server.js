@@ -216,7 +216,17 @@ async function ensureRuntimeSchema() {
       ADD COLUMN IF NOT EXISTS starlink_id TEXT,
       ADD COLUMN IF NOT EXISTS starlink_uuid TEXT,
       ADD COLUMN IF NOT EXISTS starlink_sn TEXT,
-      ADD COLUMN IF NOT EXISTS kit_id TEXT
+      ADD COLUMN IF NOT EXISTS kit_id TEXT,
+      ADD COLUMN IF NOT EXISTS is_snr_above_noise_floor BOOLEAN,
+      ADD COLUMN IF NOT EXISTS starlink_alerts JSONB,
+      ADD COLUMN IF NOT EXISTS disablement_code TEXT,
+      ADD COLUMN IF NOT EXISTS ready_states JSONB,
+      ADD COLUMN IF NOT EXISTS dl_bandwidth_restricted_reason TEXT,
+      ADD COLUMN IF NOT EXISTS ul_bandwidth_restricted_reason TEXT,
+      ADD COLUMN IF NOT EXISTS dish_uptime_s BIGINT,
+      ADD COLUMN IF NOT EXISTS dish_bootcount INTEGER,
+      ADD COLUMN IF NOT EXISTS dish_grpc_reachable BOOLEAN,
+      ADD COLUMN IF NOT EXISTS starlink_power_verdict TEXT
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_signal_readings_starlink_uuid
@@ -227,6 +237,16 @@ async function ensureRuntimeSchema() {
       CREATE INDEX IF NOT EXISTS idx_signal_readings_kit_id
       ON signal_readings(LOWER(kit_id))
       WHERE kit_id IS NOT NULL
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_signal_readings_dish_grpc_reachable
+      ON signal_readings(dish_grpc_reachable)
+      WHERE dish_grpc_reachable IS NOT NULL
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_signal_readings_power_verdict
+      ON signal_readings(starlink_power_verdict)
+      WHERE starlink_power_verdict IS NOT NULL
     `);
 
     await client.query(`

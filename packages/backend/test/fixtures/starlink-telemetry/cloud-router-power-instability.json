@@ -1,0 +1,29 @@
+{
+  "router": {
+    "reachable": true,
+    "apiVersion": 42,
+    "hardwareVersion": "v4",
+    "rawStatus": {
+      "noWanLink": false,
+      "alerts": {
+        "poeVinUndervoltage": true,
+        "poeVinOvervoltage": false,
+        "poeOnDishUnreachable": false,
+        "wanEthPoorConnection": false
+      },
+      "poeStats": {
+        "vsnsVin": 47.2
+      },
+      "deviceInfo": {
+        "bootcount": 1620,
+        "boot": {
+          "countByReason": {
+            "0": 3,
+            "1": 1576,
+            "2": 24
+          }
+        }
+      }
+    }
+  }
+}

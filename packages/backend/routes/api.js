@@ -64,7 +64,11 @@ async function getSiteSignal(siteId) {
 
   const { rows } = await pool.query(
     `SELECT pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
-            download_mbps, upload_mbps, confidence, recorded_at
+            download_mbps, upload_mbps,
+            is_snr_above_noise_floor, starlink_alerts, disablement_code, ready_states,
+            dl_bandwidth_restricted_reason, ul_bandwidth_restricted_reason,
+            dish_uptime_s, dish_bootcount, dish_grpc_reachable, starlink_power_verdict,
+            confidence, recorded_at
      FROM signal_readings
      WHERE site_id = $1
        AND recorded_at > NOW() - INTERVAL '2 hours'
@@ -82,6 +86,16 @@ async function getSiteSignal(siteId) {
     ping_drop_pct: row.ping_drop_pct == null ? null : Number(row.ping_drop_pct),
     download_mbps: row.download_mbps == null ? null : Number(row.download_mbps),
     upload_mbps: row.upload_mbps == null ? null : Number(row.upload_mbps),
+    is_snr_above_noise_floor: row.is_snr_above_noise_floor,
+    starlink_alerts: row.starlink_alerts || null,
+    disablement_code: row.disablement_code || null,
+    ready_states: row.ready_states || null,
+    dl_bandwidth_restricted_reason: row.dl_bandwidth_restricted_reason || null,
+    ul_bandwidth_restricted_reason: row.ul_bandwidth_restricted_reason || null,
+    dish_uptime_s: row.dish_uptime_s == null ? null : Number(row.dish_uptime_s),
+    dish_bootcount: row.dish_bootcount == null ? null : Number(row.dish_bootcount),
+    dish_grpc_reachable: row.dish_grpc_reachable,
+    starlink_power_verdict: row.starlink_power_verdict || null,
     confidence: row.confidence || 'low',
     updatedAt: row.recorded_at,
   };
