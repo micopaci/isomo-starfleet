@@ -72,8 +72,8 @@ Core responsibilities:
 | Read API | `/api/sites`, `/api/sites/:id`, `/api/devices`, `/api/agent-health` |
 | Admin actions | `/api/agent-tokens`, `/api/intune/sync`, `/api/trigger`, `/api/trigger/site` |
 | Intelligence | `/api/intel/space-weather`, `/api/intel/weather`, `/api/intel/coverage/:site_id` |
-| Usage | `/api/sites/:id/usage`, `/api/usage/monthly-import` |
-| Export | Signal, latency, monthly usage, and archived usage CSV endpoints |
+| Usage | `/api/sites/:id/usage`, `/api/sites/:id/usage/daily`, `/api/usage/monthly-import`, `/api/usage/daily-import`, `/api/usage/portal-snapshots` |
+| Export | Signal, latency, monthly/daily portal usage, and archived usage CSV endpoints |
 | Live updates | Authenticated WebSocket broadcasts for `device_online`, `signal_update`, `stale_devices` |
 
 Important environment variables:
@@ -107,11 +107,15 @@ Important environment variables:
 | `useSite` | Site detail plus live signal/stale-device updates |
 | `useSignalHistory` | 14-day score history and anomaly/low-data flags |
 | `useLatencyHistory` | 14-day daily latency aggregates |
-| `useUsageHistory` | Managed plus imported monthly Starlink usage |
+| `useUsageHistory` | Managed plus imported Starlink portal usage |
+| `StarfleetApi.getDailyUsageHistory` | Daily managed usage, portal total, and unattributed residual usage |
 | `useDevices`, `useStaleDevices` | Full or stale-only device lists |
 
 The desktop and mobile apps both rely on this package, so API response shape
 changes should be reflected in `packages/shared/src/types.ts`.
+
+Starlink portal daily usage totals are collected by an external Playwright
+worker on the always-on server. See `docs/STARLINK_PORTAL_USAGE_WORKER.md`.
 
 ## Web Dashboard
 

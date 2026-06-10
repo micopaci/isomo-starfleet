@@ -1126,6 +1126,21 @@ function formatMbps(value) {
   return `${n >= 100 ? n.toFixed(0) : n.toFixed(1)} Mb`;
 }
 
+function formatDataUsage(usage) {
+  if (!usage) return '—';
+  const gb = firstNumber(usage.gb_total, usage.gbTotal);
+  const bytes = firstNumber(usage.bytes_total, usage.bytesTotal);
+  const valueGb = gb != null ? gb : bytes != null ? bytes / (1024 * 1024 * 1024) : null;
+  if (valueGb == null) return '—';
+  if (valueGb >= 1024) return `${(valueGb / 1024).toFixed(2)} TB`;
+  return `${valueGb >= 100 ? valueGb.toFixed(0) : valueGb.toFixed(1)} GB`;
+}
+
+function formatShortDate(value) {
+  if (!value) return '';
+  return String(value).slice(0, 10);
+}
+
 function normalizeWeatherPredictor(site, weather) {
   const wp = site.weather_predictor || site.weatherPredictor || weather?.predictor || null;
   if (wp) return wp;
@@ -1161,6 +1176,9 @@ function mapSites(sites) {
     const st  = siteStatusStr(s);
     const weather = s.weather || null;
     const weatherPredictor = normalizeWeatherPredictor(s, weather);
+    const starlinkUsageDaily = s.starlink_usage_daily || s.starlinkUsageDaily || null;
+    const starlinkUsageBytes = firstNumber(starlinkUsageDaily?.bytes_total, starlinkUsageDaily?.bytesTotal);
+    const starlinkUsageGb = firstNumber(starlinkUsageDaily?.gb_total, starlinkUsageDaily?.gbTotal);
     return {
       _siteId:      s.id,
       id:           s.starlink_sn || `DISH-${s.id}`,
@@ -1175,6 +1193,15 @@ function mapSites(sites) {
       down:         firstNumber(s.download_mbps, sig?.download_mbps),
       up:           firstNumber(s.upload_mbps, sig?.upload_mbps),
       uptime:       s.uptime_pct != null ? Number(s.uptime_pct) : null,
+      starlinkUsageDaily,
+      starlinkUsageGb: starlinkUsageGb != null
+        ? starlinkUsageGb
+        : starlinkUsageBytes != null
+          ? starlinkUsageBytes / (1024 * 1024 * 1024)
+          : null,
+      starlinkUsageDate: starlinkUsageDaily?.date || null,
+      starlinkUsageConfidence: starlinkUsageDaily?.confidence || null,
+      starlinkUsageSource: starlinkUsageDaily?.source || null,
       score:        s.score,
       score7d:      s.score_7day_avg,
       anomaly:      sig?.anomaly       ?? false,
@@ -1601,6 +1628,7 @@ function Starlinks({ data, filter, onOpenDish }) {
     latency: d => d.latency || null,
     obstruction: d => d.obstruction,
     uptime: d => d.uptime ?? -1,
+    usage: d => d.starlinkUsageGb,
     rain: d => d.rainfall,
   });
   const counts = {
@@ -1621,6 +1649,7 @@ function Starlinks({ data, filter, onOpenDish }) {
             {id:'status:asc',label:'Status priority'},
             {id:'latency:desc',label:'Latency high first'},
             {id:'obstruction:desc',label:'Obstruction high first'},
+            {id:'usage:desc',label:'Portal usage high first'},
             {id:'rain:desc',label:'Rain high first'},
             {id:'uptime:asc',label:'Uptime low first'},
           ]} />
@@ -1638,13 +1667,17 @@ function Starlinks({ data, filter, onOpenDish }) {
       <section className="panel panel--flush">
         <div className="table-scroll">
           <table className="tbl tbl--data">
-            <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th className="num">Down</th><th className="num">Up</th><th className="num">Latency</th><th className="num">Obstruct.</th><th>Weather warning</th><th className="num">Uptime 30d</th><th>Throughput</th><th></th></tr></thead>
+            <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th className="num">Portal usage</th><th className="num">Down</th><th className="num">Up</th><th className="num">Latency</th><th className="num">Obstruct.</th><th>Weather warning</th><th className="num">Uptime 30d</th><th>Throughput</th><th></th></tr></thead>
             <tbody>
               {rows.map(d => (
                 <tr key={d.id} onClick={()=>onOpenDish(d)} className="tbl__row--click">
                   <td><div className="cell-primary">{d.name}</div><div className="cell-mono">{d.id} · {d.sku}</div></td>
                   <td>{campusName(data,d.campus)}</td>
                   <td><StatusChip status={d.status} /></td>
+                  <td className="num mono">
+                    <div>{formatDataUsage(d.starlinkUsageDaily)}</div>
+                    {d.starlinkUsageDate && <div className="cell-mono">{formatShortDate(d.starlinkUsageDate)}</div>}
+                  </td>
                   <td className="num mono">{formatMbps(d.down)}</td>
                   <td className="num mono">{formatMbps(d.up)}</td>
                   <td className="num mono">{d.latency?d.latency+'ms':'—'}</td>
@@ -1898,6 +1931,15 @@ function DishDetail({ dish, data, onClose }) {
           <StatC label="SNR"      value={dish.snr?dish.snr.toFixed(1):'—'} />
           <StatC label="Obstruct." value={dish.obstruction.toFixed(1)+'%'} tone={dish.obstruction>5?'warn':null} />
           <StatC label="Uptime" value={dish.uptime != null ? dish.uptime.toFixed(2)+'%' : '—'} />
+          <StatC
+            label="Portal usage"
+            value={formatDataUsage(dish.starlinkUsageDaily)}
+            sub={compactJoin([
+              formatShortDate(dish.starlinkUsageDate),
+              dish.starlinkUsageConfidence === 'derived_from_snapshot' ? 'daily delta' : null,
+              dish.starlinkUsageConfidence === 'cycle_reset_estimate' ? 'cycle reset' : null,
+            ])}
+          />
           <StatC label="Connected" value={`${dish.onlineLaptops ?? 0}/${dish.totalLaptops ?? 0}`} />
           <StatC label="Intune laptops" value={`${dish.onlineIntuneLaptops ?? 0}/${dish.totalIntuneLaptops ?? 0}`} />
           <StatC label="Chromebooks" value={`${dish.onlineChromebooks ?? 0}/${dish.totalChromebooks ?? 0}`} />
