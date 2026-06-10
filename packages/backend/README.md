@@ -59,6 +59,7 @@ Optional production integrations:
 | `/api/intune/sync` | Admin Graph managed-device sync |
 | `/api/trigger`, `/api/trigger/site` | Admin Intune remediation trigger actions |
 | `/api/intel/*` | Space-weather, local weather, and satellite coverage intelligence |
+| `/api/usage/*` | Monthly/daily Starlink portal usage imports and scraper-run audit |
 | `/api/export/*` | Admin CSV exports |
 
 See `docs/API_REFERENCE.md` for endpoint-level details.
@@ -86,6 +87,9 @@ curl https://api.starfleet.icircles.rw/health
 npm run migrate --workspace=packages/backend
 npm run intune:check --workspace=packages/backend
 npm run weather:check --workspace=packages/backend
+npm run starlink:portal:usage --workspace=packages/backend -- --help
 ```
+
+See `docs/STARLINK_PORTAL_USAGE_WORKER.md` for always-on server setup.
 
 Do not commit `.env`, generated JWTs, or token-bearing Intune artifacts.

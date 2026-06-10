@@ -12,7 +12,8 @@
     "intune:check": "node scripts/check_intune_data.js",
     "devices:duplicates": "node scripts/check_device_duplicates.js",
     "devices:dedupe": "node scripts/dedupe_devices_by_serial.js",
-    "weather:check": "node scripts/check_weather_data.js"
+    "weather:check": "node scripts/check_weather_data.js",
+    "starlink:portal:usage": "node scripts/starlink_portal_usage_worker.js"
   },
   "dependencies": {
     "@google-cloud/cloud-sql-connector": "^1.11.0",

@@ -31,6 +31,8 @@ export interface Site {
   uptime_pct?: number | null;
   weather?: WeatherReading | null;
   weather_predictor?: WeatherPredictor | null;
+  /** Latest Starlink portal daily site total, imported by scraper or manual admin import. */
+  starlink_usage_daily?: StarlinkDailyUsage | null;
 }
 
 export interface SignalSummary {
@@ -64,6 +66,26 @@ export interface WeatherPredictor {
   based_on_date: string | null;
   rainfall_mm: number | null;
   cloud_cover_pct: number | null;
+}
+
+export type StarlinkUsageConfidence =
+  | 'portal_total'
+  | 'manual'
+  | 'derived_from_snapshot'
+  | 'cycle_reset_estimate';
+
+export interface StarlinkDailyUsage {
+  date: string;
+  bytes_total: number;
+  gb_total: number;
+  source: string;
+  confidence: StarlinkUsageConfidence;
+  service_line_id: string | null;
+  starlink_identifier: string | null;
+  billing_period_start: string | null;
+  billing_period_end: string | null;
+  scraped_at: string | null;
+  uploaded_at: string | null;
 }
 
 export interface Device {
@@ -190,6 +212,96 @@ export interface UsageHistoryPoint {
   total_mb: number | null;
   unmanaged_est_mb: number | null;
   confidence: 'managed_only' | 'estimated_unmanaged';
+}
+
+export interface DailyUsageHistoryPoint {
+  date: string;
+  managed_mb: number;
+  total_mb: number | null;
+  unattributed_mb: number | null;
+  bytes_total: number | null;
+  source: string | null;
+  confidence: StarlinkUsageConfidence | 'missing';
+  service_line_id: string | null;
+  starlink_identifier: string | null;
+  billing_period_start: string | null;
+  billing_period_end: string | null;
+  scraped_at: string | null;
+  uploaded_at: string | null;
+}
+
+export interface DailyUsageImportEntry {
+  site_id: number;
+  date?: string;
+  bytes_total?: number;
+  mb_total?: number;
+  gb_total?: number;
+  source?: string;
+  confidence?: StarlinkUsageConfidence;
+  service_line_id?: string | null;
+  starlink_identifier?: string | null;
+  starlink_sn?: string | null;
+  kit_id?: string | null;
+  billing_period_start?: string | null;
+  billing_period_end?: string | null;
+  scraped_at?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PortalSnapshotImportEntry {
+  site_id: number;
+  snapshot_date?: string;
+  daily_date?: string;
+  date?: string;
+  bytes_used_cumulative?: number;
+  mb_used_cumulative?: number;
+  gb_used_cumulative?: number;
+  source?: string;
+  service_line_id?: string | null;
+  starlink_identifier?: string | null;
+  starlink_sn?: string | null;
+  kit_id?: string | null;
+  billing_period_start?: string | null;
+  billing_period_end?: string | null;
+  collected_at?: string | null;
+  scraped_at?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PortalSnapshotImportResult {
+  site_id: number;
+  snapshot_date?: string;
+  daily_date?: string;
+  imported: boolean;
+  daily_total?: boolean;
+  bytes_total?: number;
+  confidence?: StarlinkUsageConfidence;
+  reason?: string;
+}
+
+export interface PortalScraperRun {
+  id: number;
+  run_id: string;
+  status: 'running' | 'success' | 'partial' | 'failed';
+  started_at: string;
+  finished_at: string | null;
+  sites_seen: number;
+  sites_imported: number;
+  error: string | null;
+  report_sent_at: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface PortalScraperRunInput {
+  run_id: string;
+  status: PortalScraperRun['status'];
+  started_at?: string | null;
+  finished_at?: string | null;
+  sites_seen?: number;
+  sites_imported?: number;
+  error?: string | null;
+  report_sent_at?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface FleetSummary {

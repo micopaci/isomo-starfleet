@@ -1,6 +1,6 @@
 # Starfleet API Reference
 
-Document date: April 30, 2026
+Document date: June 10, 2026
 
 All `/api/*` and `/ingest/*` routes require a bearer token unless noted. Dashboard
 users authenticate with `/auth/login`; laptop agents use site-scoped or
@@ -46,6 +46,7 @@ Site resolution order:
 | `GET` | `/api/sites/:id/signal` | User | 14-day daily score history with data-quality and anomaly fields |
 | `GET` | `/api/sites/:id/latency` | User | 14-day daily P50/P95 latency aggregates |
 | `GET` | `/api/sites/:id/usage?months=N` | User | Monthly managed usage, imported Starlink portal totals, and estimated unmanaged usage |
+| `GET` | `/api/sites/:id/usage/daily?days=N` | User | Daily managed usage, Starlink portal total, and unattributed usage for up to 366 days |
 | `GET` | `/api/devices` | User | Device inventory with Intune-first status and health metadata |
 | `GET` | `/api/devices?filter=stale` | User | Devices older than the online window and inside the stale window |
 | `GET` | `/api/devices/:id` | User | Device detail with latest health, usage, and agent-health snapshot |
@@ -72,6 +73,10 @@ Device status defaults:
 | `POST` | `/api/trigger/site` | Admin | Trigger one Intune remediation action for all Intune-managed devices at a site |
 | `POST` | `/api/site-changes/:id/ack` | Admin | Acknowledge one site-change event |
 | `POST` | `/api/usage/monthly-import` | Admin | Import monthly Starlink portal totals |
+| `POST` | `/api/usage/daily-import` | Admin | Import direct daily Starlink portal totals |
+| `POST` | `/api/usage/portal-snapshots` | Admin | Import cumulative portal readings and derive daily totals |
+| `POST` | `/api/usage/portal-runs` | Admin | Record Playwright portal scraper run status |
+| `GET` | `/api/usage/portal-runs?limit=N` | Admin | Read recent Playwright portal scraper runs |
 
 Supported trigger types are `location_refresh`, `data_pull`, `diagnostics`,
 `ping_dish`, and `reboot_starlink`.
@@ -90,6 +95,52 @@ Monthly usage import body:
 
 Each entry may provide `bytes_total`, `mb_total`, or `gb_total`.
 
+Daily usage import body:
+
+```json
+{
+  "date": "2026-06-09",
+  "source": "starlink_portal_scraper",
+  "entries": [
+    {
+      "site_id": 41,
+      "gb_total": 27.8,
+      "confidence": "portal_total",
+      "service_line_id": "SL-123456",
+      "starlink_identifier": "KIT123456",
+      "billing_period_start": "2026-06-01",
+      "billing_period_end": "2026-06-30",
+      "scraped_at": "2026-06-10T03:15:00+02:00"
+    }
+  ]
+}
+```
+
+Cumulative portal snapshot body:
+
+```json
+{
+  "snapshot_date": "2026-06-10",
+  "daily_date": "2026-06-09",
+  "source": "starlink_portal_scraper",
+  "entries": [
+    {
+      "site_id": 41,
+      "gb_used_cumulative": 433.7,
+      "service_line_id": "SL-123456",
+      "starlink_identifier": "KIT123456",
+      "billing_period_start": "2026-06-01",
+      "billing_period_end": "2026-06-30"
+    }
+  ]
+}
+```
+
+When a previous snapshot exists for the same site/source, the API writes the
+daily delta to `site_usage_totals_daily` using `daily_date` when provided, or
+`snapshot_date` otherwise. If the billing-cycle counter resets, the current
+cumulative value is stored with `confidence: "cycle_reset_estimate"`.
+
 ## Intelligence API
 
 | Method | Path | Role | Purpose |
@@ -107,6 +158,7 @@ All export routes are admin-only and return `text/csv`.
 | `GET` | `/api/export/signal` | `site_id`, `from`, `to` | Signal readings for one site/date range |
 | `GET` | `/api/export/latency` | `site_id`, `from`, `to` | Latency readings for one site/date range |
 | `GET` | `/api/export/site-usage-monthly` | `from`, `to` | Imported monthly Starlink portal totals |
+| `GET` | `/api/export/site-usage-daily` | `from`, `to` | Imported daily Starlink portal totals |
 | `GET` | `/api/export/usage-archive` | `from`, `to` | Archived daily usage rows |
 
 ## WebSocket

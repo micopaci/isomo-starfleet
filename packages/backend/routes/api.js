@@ -46,6 +46,52 @@ function parseMonthStart(raw) {
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-01`;
 }
 
+function parseDateOnly(raw) {
+  if (!raw) return null;
+  const value = String(raw).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const dt = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(dt.getTime())) return null;
+  const normalized = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+  if (normalized !== value) return null;
+  return value;
+}
+
+function bytesFromUsageEntry(entry = {}, field = 'bytes_total') {
+  let bytes = null;
+  if (entry[field] != null) bytes = Number(entry[field]);
+  else if (entry.mb_total != null) bytes = Math.round(Number(entry.mb_total) * 1024 * 1024);
+  else if (entry.gb_total != null) bytes = Math.round(Number(entry.gb_total) * 1024 * 1024 * 1024);
+  else if (entry.mb_used_cumulative != null) bytes = Math.round(Number(entry.mb_used_cumulative) * 1024 * 1024);
+  else if (entry.gb_used_cumulative != null) bytes = Math.round(Number(entry.gb_used_cumulative) * 1024 * 1024 * 1024);
+
+  if (!Number.isFinite(bytes) || bytes < 0) return null;
+  return Math.round(bytes);
+}
+
+function safeMetadata(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value;
+}
+
+function mapDailyUsageRow(row) {
+  if (!row) return null;
+  const bytes = Number(row.bytes_total || 0);
+  return {
+    date: row.date,
+    bytes_total: bytes,
+    gb_total: Math.round((bytes / (1024 * 1024 * 1024)) * 100) / 100,
+    source: row.source,
+    confidence: row.confidence,
+    service_line_id: row.service_line_id || null,
+    starlink_identifier: row.starlink_identifier || null,
+    billing_period_start: row.billing_period_start || null,
+    billing_period_end: row.billing_period_end || null,
+    scraped_at: row.scraped_at || null,
+    uploaded_at: row.uploaded_at || null,
+  };
+}
+
 function getAgentTokenSignOptions() {
   if (process.env.JWT_PRIVATE_KEY && process.env.JWT_PRIVATE_KEY.startsWith('-----BEGIN')) {
     return { key: process.env.JWT_PRIVATE_KEY, options: { algorithm: 'RS256' } };
@@ -487,6 +533,17 @@ router.get('/sites', async (req, res, next) => {
        FROM weather_log
        ORDER BY site_id, date DESC`
     );
+    const dailyUsageRes = await pool.query(
+      `SELECT DISTINCT ON (site_id)
+              site_id, date::text AS date, bytes_total, source, confidence,
+              service_line_id, starlink_identifier,
+              billing_period_start::text AS billing_period_start,
+              billing_period_end::text AS billing_period_end,
+              scraped_at, uploaded_at
+       FROM site_usage_totals_daily
+       WHERE date >= CURRENT_DATE - INTERVAL '45 days'
+       ORDER BY site_id, date DESC`
+    );
     const uptimeBy  = Object.fromEntries(uptimeRes.rows.map(r => [r.site_id, Number(r.uptime_pct)]));
     const dataBy    = Object.fromEntries(dataRes.rows.map(r => [r.site_id, Number(r.data_mb_today)]));
     const weatherBy = Object.fromEntries(weatherRes.rows.map(r => [r.site_id, {
@@ -494,6 +551,7 @@ router.get('/sites', async (req, res, next) => {
       rainfall_mm: r.rainfall_mm == null ? null : Number(r.rainfall_mm),
       cloud_cover_pct: r.cloud_cover_pct == null ? null : Number(r.cloud_cover_pct),
     }]));
+    const dailyUsageBy = Object.fromEntries(dailyUsageRes.rows.map(r => [r.site_id, mapDailyUsageRow(r)]));
 
     const sites = await Promise.all(sitesRes.rows.map(async (site) => {
       const signal = await getSiteSignal(site.id);
@@ -532,6 +590,7 @@ router.get('/sites', async (req, res, next) => {
         download_mbps:  signal?.download_mbps ?? null,
         upload_mbps:    signal?.upload_mbps   ?? null,
         data_mb_today:  dataBy[site.id]   ?? 0,
+        starlink_usage_daily: dailyUsageBy[site.id] ?? null,
         uptime_pct:     uptimeBy[site.id] ?? null,
         weather:        weatherBy[site.id] ?? null,
         weather_predictor: buildWeatherPredictor(weatherBy[site.id] ?? null),
@@ -554,6 +613,18 @@ router.get('/sites/:id', async (req, res, next) => {
     const weatherRes = await pool.query(
       `SELECT date::text AS date, rainfall_mm, cloud_cover_pct
        FROM weather_log
+       WHERE site_id = $1
+       ORDER BY date DESC
+       LIMIT 1`,
+      [id]
+    );
+    const dailyUsageRes = await pool.query(
+      `SELECT date::text AS date, bytes_total, source, confidence,
+              service_line_id, starlink_identifier,
+              billing_period_start::text AS billing_period_start,
+              billing_period_end::text AS billing_period_end,
+              scraped_at, uploaded_at
+       FROM site_usage_totals_daily
        WHERE site_id = $1
        ORDER BY date DESC
        LIMIT 1`,
@@ -614,6 +685,7 @@ router.get('/sites/:id', async (req, res, next) => {
       signal,
       weather,
       weather_predictor: weatherPredictor,
+      starlink_usage_daily: mapDailyUsageRow(dailyUsageRes.rows[0]),
       online_laptops: parseInt(laptopsRes.rows[0].online),
       total_laptops: parseInt(laptopsRes.rows[0].total),
       online_intune_laptops: parseInt(laptopsRes.rows[0].online_intune),
@@ -1366,7 +1438,7 @@ router.get('/sites/:id/usage', async (req, res, next) => {
     const { rows } = await pool.query(
       `WITH month_grid AS (
          SELECT (date_trunc('month', CURRENT_DATE) - (g.n || ' months')::interval)::date AS month
-         FROM generate_series($2 - 1, 0, -1) AS g(n)
+         FROM generate_series($2::int - 1, 0, -1) AS g(n)
        ),
        managed AS (
          SELECT date_trunc('month', date)::date AS month,
@@ -1378,11 +1450,24 @@ router.get('/sites/:id/usage', async (req, res, next) => {
          ) u
          GROUP BY 1
        ),
-       totals AS (
+       monthly_totals AS (
          SELECT month,
                 bytes_total / (1024.0 * 1024.0) AS total_mb
          FROM site_usage_totals_monthly
          WHERE site_id = $1
+       ),
+       daily_totals AS (
+         SELECT date_trunc('month', date)::date AS month,
+                SUM(bytes_total) / (1024.0 * 1024.0) AS total_mb
+         FROM site_usage_totals_daily
+         WHERE site_id = $1
+         GROUP BY 1
+       ),
+       totals AS (
+         SELECT COALESCE(m.month, d.month) AS month,
+                COALESCE(m.total_mb, d.total_mb) AS total_mb
+         FROM monthly_totals m
+         FULL OUTER JOIN daily_totals d ON d.month = m.month
        )
        SELECT mg.month,
               ROUND(COALESCE(m.managed_mb, 0)::numeric, 2) AS managed_mb,
@@ -1405,6 +1490,359 @@ router.get('/sites/:id/usage', async (req, res, next) => {
       unmanaged_est_mb: r.unmanaged_est_mb == null ? null : Number(r.unmanaged_est_mb),
       confidence: r.total_mb == null ? 'managed_only' : 'estimated_unmanaged',
     })));
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/sites/:id/usage/daily ───────────────────────────────────────────
+// Returns daily Starlink portal totals with managed-device usage and residual.
+router.get('/sites/:id/usage/daily', async (req, res, next) => {
+  try {
+    const siteId = Number(req.params.id);
+    const days = Math.max(1, Math.min(Number(req.query.days || 31), 366));
+    if (!Number.isInteger(siteId) || siteId <= 0) {
+      return res.status(400).json({ error: 'Invalid site id' });
+    }
+
+    const { rows } = await pool.query(
+      `WITH day_grid AS (
+         SELECT (CURRENT_DATE - (g.n || ' days')::interval)::date AS date
+         FROM generate_series($2::int - 1, 0, -1) AS g(n)
+       ),
+       managed AS (
+         SELECT date,
+                SUM(bytes_down + bytes_up) / (1024.0 * 1024.0) AS managed_mb
+         FROM (
+           SELECT date, bytes_down, bytes_up FROM data_usage WHERE site_id = $1
+           UNION ALL
+           SELECT date, bytes_down, bytes_up FROM data_usage_archive WHERE site_id = $1
+         ) u
+         GROUP BY date
+       ),
+       totals AS (
+         SELECT date, bytes_total, source, confidence,
+                service_line_id, starlink_identifier,
+                billing_period_start::text AS billing_period_start,
+                billing_period_end::text AS billing_period_end,
+                scraped_at, uploaded_at
+         FROM site_usage_totals_daily
+         WHERE site_id = $1
+       )
+       SELECT dg.date::text AS date,
+              ROUND(COALESCE(m.managed_mb, 0)::numeric, 2) AS managed_mb,
+              ROUND((t.bytes_total / (1024.0 * 1024.0))::numeric, 2) AS total_mb,
+              CASE
+                WHEN t.bytes_total IS NULL THEN NULL
+                ELSE ROUND(GREATEST((t.bytes_total / (1024.0 * 1024.0)) - COALESCE(m.managed_mb, 0), 0)::numeric, 2)
+              END AS unattributed_mb,
+              t.bytes_total,
+              t.source,
+              t.confidence,
+              t.service_line_id,
+              t.starlink_identifier,
+              t.billing_period_start,
+              t.billing_period_end,
+              t.scraped_at,
+              t.uploaded_at
+       FROM day_grid dg
+       LEFT JOIN managed m ON m.date = dg.date
+       LEFT JOIN totals t ON t.date = dg.date
+       ORDER BY dg.date ASC`,
+      [siteId, days]
+    );
+
+    res.json(rows.map(r => ({
+      date: r.date,
+      managed_mb: Number(r.managed_mb || 0),
+      total_mb: r.total_mb == null ? null : Number(r.total_mb),
+      unattributed_mb: r.unattributed_mb == null ? null : Number(r.unattributed_mb),
+      bytes_total: r.bytes_total == null ? null : Number(r.bytes_total),
+      source: r.source || null,
+      confidence: r.confidence || (r.bytes_total == null ? 'missing' : 'portal_total'),
+      service_line_id: r.service_line_id || null,
+      starlink_identifier: r.starlink_identifier || null,
+      billing_period_start: r.billing_period_start || null,
+      billing_period_end: r.billing_period_end || null,
+      scraped_at: r.scraped_at || null,
+      uploaded_at: r.uploaded_at || null,
+    })));
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/usage/daily-import (admin only) ────────────────────────────────
+// Body: { date: "YYYY-MM-DD", entries: [{ site_id, bytes_total|mb_total|gb_total }] }
+router.post('/usage/daily-import', requireAdmin, async (req, res, next) => {
+  try {
+    const { entries, source } = req.body || {};
+    const defaultDate = parseDateOnly(req.body?.date);
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({ error: 'entries[] is required' });
+    }
+
+    const client = await pool.connect();
+    let imported = 0;
+    try {
+      await client.query('BEGIN');
+      for (const entry of entries) {
+        const siteId = Number(entry.site_id);
+        const date = parseDateOnly(entry.date) || defaultDate;
+        const bytes = bytesFromUsageEntry(entry);
+        if (!Number.isInteger(siteId) || siteId <= 0 || !date || bytes == null) continue;
+
+        await client.query(
+          `INSERT INTO site_usage_totals_daily
+             (site_id, date, bytes_total, source, confidence, service_line_id,
+              starlink_identifier, billing_period_start, billing_period_end,
+              scraped_at, uploaded_by, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::timestamptz, NOW()), $11, $12)
+           ON CONFLICT (site_id, date)
+           DO UPDATE SET
+             bytes_total = EXCLUDED.bytes_total,
+             source = EXCLUDED.source,
+             confidence = EXCLUDED.confidence,
+             service_line_id = COALESCE(EXCLUDED.service_line_id, site_usage_totals_daily.service_line_id),
+             starlink_identifier = COALESCE(EXCLUDED.starlink_identifier, site_usage_totals_daily.starlink_identifier),
+             billing_period_start = COALESCE(EXCLUDED.billing_period_start, site_usage_totals_daily.billing_period_start),
+             billing_period_end = COALESCE(EXCLUDED.billing_period_end, site_usage_totals_daily.billing_period_end),
+             scraped_at = COALESCE(EXCLUDED.scraped_at, site_usage_totals_daily.scraped_at),
+             uploaded_by = EXCLUDED.uploaded_by,
+             uploaded_at = NOW(),
+             metadata = EXCLUDED.metadata`,
+          [
+            siteId,
+            date,
+            bytes,
+            entry.source || source || 'starlink_portal_scraper',
+            entry.confidence || 'portal_total',
+            entry.service_line_id || null,
+            entry.starlink_identifier || entry.starlink_sn || entry.kit_id || null,
+            parseDateOnly(entry.billing_period_start),
+            parseDateOnly(entry.billing_period_end),
+            entry.scraped_at || null,
+            req.user?.email || null,
+            safeMetadata(entry.metadata),
+          ]
+        );
+        imported += 1;
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    res.json({ ok: true, imported });
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/usage/portal-snapshots (admin only) ────────────────────────────
+// Accepts cumulative Starlink portal readings and derives daily totals once a
+// prior snapshot exists for the same site.
+router.post('/usage/portal-snapshots', requireAdmin, async (req, res, next) => {
+  try {
+    const { entries, source } = req.body || {};
+    const defaultDate = parseDateOnly(req.body?.snapshot_date || req.body?.date);
+    const defaultDailyDate = parseDateOnly(req.body?.daily_date);
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({ error: 'entries[] is required' });
+    }
+
+    const client = await pool.connect();
+    const results = [];
+    let importedSnapshots = 0;
+    let importedDailyTotals = 0;
+    try {
+      await client.query('BEGIN');
+      for (const entry of entries) {
+        const siteId = Number(entry.site_id);
+        const snapshotDate = parseDateOnly(entry.snapshot_date || entry.date) || defaultDate;
+        const dailyDate = parseDateOnly(entry.daily_date) || defaultDailyDate || snapshotDate;
+        const cumulativeBytes = bytesFromUsageEntry(entry, 'bytes_used_cumulative');
+        const entrySource = entry.source || source || 'starlink_portal_scraper';
+        if (!Number.isInteger(siteId) || siteId <= 0 || !snapshotDate || !dailyDate || cumulativeBytes == null) {
+          results.push({ site_id: entry.site_id, imported: false, reason: 'invalid_entry' });
+          continue;
+        }
+
+        const previousRes = await client.query(
+          `SELECT snapshot_date::text AS snapshot_date, bytes_used_cumulative
+           FROM starlink_portal_usage_snapshots
+           WHERE site_id = $1
+             AND source = $2
+             AND snapshot_date < $3::date
+           ORDER BY snapshot_date DESC
+           LIMIT 1`,
+          [siteId, entrySource, snapshotDate]
+        );
+
+        await client.query(
+          `INSERT INTO starlink_portal_usage_snapshots
+             (site_id, snapshot_date, bytes_used_cumulative, source, service_line_id,
+              starlink_identifier, billing_period_start, billing_period_end,
+              collected_at, uploaded_by, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::timestamptz, NOW()), $10, $11)
+           ON CONFLICT (site_id, snapshot_date, source)
+           DO UPDATE SET
+             bytes_used_cumulative = EXCLUDED.bytes_used_cumulative,
+             service_line_id = COALESCE(EXCLUDED.service_line_id, starlink_portal_usage_snapshots.service_line_id),
+             starlink_identifier = COALESCE(EXCLUDED.starlink_identifier, starlink_portal_usage_snapshots.starlink_identifier),
+             billing_period_start = COALESCE(EXCLUDED.billing_period_start, starlink_portal_usage_snapshots.billing_period_start),
+             billing_period_end = COALESCE(EXCLUDED.billing_period_end, starlink_portal_usage_snapshots.billing_period_end),
+             collected_at = EXCLUDED.collected_at,
+             uploaded_by = EXCLUDED.uploaded_by,
+             metadata = EXCLUDED.metadata`,
+          [
+            siteId,
+            snapshotDate,
+            cumulativeBytes,
+            entrySource,
+            entry.service_line_id || null,
+            entry.starlink_identifier || entry.starlink_sn || entry.kit_id || null,
+            parseDateOnly(entry.billing_period_start),
+            parseDateOnly(entry.billing_period_end),
+            entry.collected_at || entry.scraped_at || null,
+            req.user?.email || null,
+            safeMetadata(entry.metadata),
+          ]
+        );
+        importedSnapshots += 1;
+
+        const previous = previousRes.rows[0];
+        if (!previous) {
+          results.push({ site_id: siteId, snapshot_date: snapshotDate, imported: true, daily_total: false, reason: 'needs_previous_snapshot' });
+          continue;
+        }
+
+        const prevBytes = Number(previous.bytes_used_cumulative);
+        const reset = cumulativeBytes < prevBytes;
+        const dailyBytes = reset ? cumulativeBytes : cumulativeBytes - prevBytes;
+        const confidence = reset ? 'cycle_reset_estimate' : 'derived_from_snapshot';
+
+        await client.query(
+          `INSERT INTO site_usage_totals_daily
+             (site_id, date, bytes_total, source, confidence, service_line_id,
+              starlink_identifier, billing_period_start, billing_period_end,
+              scraped_at, uploaded_by, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::timestamptz, NOW()), $11, $12)
+           ON CONFLICT (site_id, date)
+           DO UPDATE SET
+             bytes_total = EXCLUDED.bytes_total,
+             source = EXCLUDED.source,
+             confidence = EXCLUDED.confidence,
+             service_line_id = COALESCE(EXCLUDED.service_line_id, site_usage_totals_daily.service_line_id),
+             starlink_identifier = COALESCE(EXCLUDED.starlink_identifier, site_usage_totals_daily.starlink_identifier),
+             billing_period_start = COALESCE(EXCLUDED.billing_period_start, site_usage_totals_daily.billing_period_start),
+             billing_period_end = COALESCE(EXCLUDED.billing_period_end, site_usage_totals_daily.billing_period_end),
+             scraped_at = COALESCE(EXCLUDED.scraped_at, site_usage_totals_daily.scraped_at),
+             uploaded_by = EXCLUDED.uploaded_by,
+             uploaded_at = NOW(),
+             metadata = EXCLUDED.metadata`,
+          [
+            siteId,
+            dailyDate,
+            dailyBytes,
+            entrySource,
+            confidence,
+            entry.service_line_id || null,
+            entry.starlink_identifier || entry.starlink_sn || entry.kit_id || null,
+            parseDateOnly(entry.billing_period_start),
+            parseDateOnly(entry.billing_period_end),
+            entry.collected_at || entry.scraped_at || null,
+            req.user?.email || null,
+            {
+              ...safeMetadata(entry.metadata),
+              snapshot_date: snapshotDate,
+              previous_snapshot_date: previous.snapshot_date,
+              previous_bytes_used_cumulative: prevBytes,
+              counter_reset_detected: reset,
+            },
+          ]
+        );
+        importedDailyTotals += 1;
+        results.push({
+          site_id: siteId,
+          snapshot_date: snapshotDate,
+          daily_date: dailyDate,
+          imported: true,
+          daily_total: true,
+          bytes_total: dailyBytes,
+          confidence,
+        });
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    res.json({
+      ok: true,
+      imported_snapshots: importedSnapshots,
+      imported_daily_totals: importedDailyTotals,
+      results,
+    });
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/usage/portal-runs (admin only) ─────────────────────────────────
+// Scraper heartbeat/audit upsert. The Playwright worker can call this at start
+// and finish so Starfleet can report stale or failed portal collection.
+router.post('/usage/portal-runs', requireAdmin, async (req, res, next) => {
+  try {
+    const {
+      run_id, status, started_at, finished_at, sites_seen, sites_imported,
+      error, report_sent_at, metadata,
+    } = req.body || {};
+    if (!run_id || !['running', 'success', 'partial', 'failed'].includes(status)) {
+      return res.status(400).json({ error: 'run_id and valid status are required' });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO starlink_portal_scraper_runs
+         (run_id, status, started_at, finished_at, sites_seen, sites_imported,
+          error, report_sent_at, metadata)
+       VALUES ($1, $2, COALESCE($3::timestamptz, NOW()), $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (run_id)
+       DO UPDATE SET
+         status = EXCLUDED.status,
+         finished_at = COALESCE(EXCLUDED.finished_at, starlink_portal_scraper_runs.finished_at),
+         sites_seen = EXCLUDED.sites_seen,
+         sites_imported = EXCLUDED.sites_imported,
+         error = EXCLUDED.error,
+         report_sent_at = COALESCE(EXCLUDED.report_sent_at, starlink_portal_scraper_runs.report_sent_at),
+         metadata = EXCLUDED.metadata
+       RETURNING *`,
+      [
+        run_id,
+        status,
+        started_at || null,
+        finished_at || null,
+        Number.isInteger(Number(sites_seen)) ? Number(sites_seen) : 0,
+        Number.isInteger(Number(sites_imported)) ? Number(sites_imported) : 0,
+        error || null,
+        report_sent_at || null,
+        safeMetadata(metadata),
+      ]
+    );
+
+    res.json({ ok: true, run: rows[0] });
+  } catch (err) { next(err); }
+});
+
+router.get('/usage/portal-runs', requireAdmin, async (req, res, next) => {
+  try {
+    const limit = Math.max(1, Math.min(Number(req.query.limit || 30), 100));
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM starlink_portal_scraper_runs
+       ORDER BY started_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+    res.json(rows);
   } catch (err) { next(err); }
 });
 
@@ -1482,6 +1920,7 @@ function toCSV(rows, fallbackHeaders = []) {
 const SIGNAL_HEADERS  = ['recorded_at','site_id','device_id','snr','ping_drop_pct','obstruction_pct','pop_latency_ms','reporter_count','confidence'];
 const LATENCY_HEADERS = ['recorded_at','site_id','device_id','p50_ms','p95_ms','spread_ms','is_outlier'];
 const MONTHLY_TOTAL_HEADERS = ['site_id','month','bytes_total','source','uploaded_by','uploaded_at'];
+const DAILY_TOTAL_HEADERS = ['site_id','date','bytes_total','source','confidence','service_line_id','starlink_identifier','billing_period_start','billing_period_end','scraped_at','uploaded_by','uploaded_at'];
 const USAGE_ARCHIVE_HEADERS = ['date','site_id','device_id','bytes_down','bytes_up','archived_at'];
 
 // GET /api/export/signal?site_id=X&from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -1547,6 +1986,28 @@ router.get('/export/site-usage-monthly', requireAdmin, async (req, res, next) =>
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="site_usage_monthly_${from}_${to}.csv"`);
     res.send(toCSV(rows, MONTHLY_TOTAL_HEADERS));
+  } catch (err) { next(err); }
+});
+
+// GET /api/export/site-usage-daily?from=YYYY-MM-DD&to=YYYY-MM-DD
+router.get('/export/site-usage-daily', requireAdmin, async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+    if (!from || !to) {
+      return res.status(400).json({ error: 'from and to are required' });
+    }
+    const { rows } = await pool.query(
+      `SELECT site_id, date, bytes_total, source, confidence, service_line_id,
+              starlink_identifier, billing_period_start, billing_period_end,
+              scraped_at, uploaded_by, uploaded_at
+       FROM site_usage_totals_daily
+       WHERE date >= $1::date AND date <= $2::date
+       ORDER BY date ASC, site_id ASC`,
+      [from, to]
+    );
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="site_usage_daily_${from}_${to}.csv"`);
+    res.send(toCSV(rows, DAILY_TOTAL_HEADERS));
   } catch (err) { next(err); }
 });
 

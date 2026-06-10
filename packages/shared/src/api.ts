@@ -1,7 +1,9 @@
 import type {
-  Site, SiteDetail, DailyScore, LatencyReading, Device, UsageHistoryPoint, TriggerType,
-  SiteNote, SiteBiweeklyUsage, CreateSiteInput, UpdateSiteInput, Alert, AlertStatus, Student,
-  SpaceWeatherReading,
+  Site, SiteDetail, DailyScore, LatencyReading, Device, UsageHistoryPoint,
+  DailyUsageHistoryPoint, DailyUsageImportEntry, PortalSnapshotImportEntry,
+  PortalSnapshotImportResult, PortalScraperRun, PortalScraperRunInput, TriggerType,
+  SiteNote, SiteBiweeklyUsage, CreateSiteInput, UpdateSiteInput, Alert, AlertStatus,
+  Student, SpaceWeatherReading,
 } from './types';
 
 export class PermissionError extends Error {
@@ -96,6 +98,11 @@ export class StarfleetApi {
   /** GET /api/sites/:id/usage — monthly usage graph points (managed + estimated unmanaged) */
   getUsageHistory(siteId: number, months = 6): Promise<UsageHistoryPoint[]> {
     return this.request<UsageHistoryPoint[]>(`/api/sites/${siteId}/usage?months=${months}`);
+  }
+
+  /** GET /api/sites/:id/usage/daily — daily portal totals plus managed/residual usage */
+  getDailyUsageHistory(siteId: number, days = 31): Promise<DailyUsageHistoryPoint[]> {
+    return this.request<DailyUsageHistoryPoint[]>(`/api/sites/${siteId}/usage/daily?days=${days}`);
   }
 
   // ── Devices ────────────────────────────────────────────────────────────────
@@ -197,6 +204,53 @@ export class StarfleetApi {
     });
   }
 
+  /** POST /api/usage/daily-import — admin only, direct daily Starlink portal totals */
+  importDailyUsage(
+    date: string,
+    entries: DailyUsageImportEntry[],
+    source = 'starlink_portal_scraper',
+  ): Promise<{ ok: boolean; imported: number }> {
+    return this.request<{ ok: boolean; imported: number }>('/api/usage/daily-import', {
+      method: 'POST',
+      body: JSON.stringify({ date, entries, source }),
+    });
+  }
+
+  /** POST /api/usage/portal-snapshots — admin only, cumulative portal readings */
+  importPortalSnapshots(
+    snapshotDate: string,
+    entries: PortalSnapshotImportEntry[],
+    source = 'starlink_portal_scraper',
+  ): Promise<{
+    ok: boolean;
+    imported_snapshots: number;
+    imported_daily_totals: number;
+    results: PortalSnapshotImportResult[];
+  }> {
+    return this.request<{
+      ok: boolean;
+      imported_snapshots: number;
+      imported_daily_totals: number;
+      results: PortalSnapshotImportResult[];
+    }>('/api/usage/portal-snapshots', {
+      method: 'POST',
+      body: JSON.stringify({ snapshot_date: snapshotDate, entries, source }),
+    });
+  }
+
+  /** POST /api/usage/portal-runs — admin only, record scraper start/finish status */
+  recordPortalRun(run: PortalScraperRunInput): Promise<{ ok: boolean; run: PortalScraperRun }> {
+    return this.request<{ ok: boolean; run: PortalScraperRun }>('/api/usage/portal-runs', {
+      method: 'POST',
+      body: JSON.stringify(run),
+    });
+  }
+
+  /** GET /api/usage/portal-runs — admin only, latest scraper audit rows */
+  getPortalRuns(limit = 30): Promise<PortalScraperRun[]> {
+    return this.request<PortalScraperRun[]>(`/api/usage/portal-runs?limit=${limit}`);
+  }
+
   // ── CSV Export (admin only) ────────────────────────────────────────────────
 
   /**
@@ -221,6 +275,11 @@ export class StarfleetApi {
   /** GET /api/export/site-usage-monthly — admin only, raw monthly portal totals */
   exportSiteUsageMonthlyCsv(from: string, to: string): Promise<string> {
     return this.requestText(`/api/export/site-usage-monthly?from=${from}&to=${to}`);
+  }
+
+  /** GET /api/export/site-usage-daily — admin only, raw daily portal totals */
+  exportSiteUsageDailyCsv(from: string, to: string): Promise<string> {
+    return this.requestText(`/api/export/site-usage-daily?from=${from}&to=${to}`);
   }
 
   // ── Site mutations (admin only) ────────────────────────────────────────────
