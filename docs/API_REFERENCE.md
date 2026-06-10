@@ -73,9 +73,9 @@ Device status defaults:
 | `POST` | `/api/trigger/site` | Admin | Trigger one Intune remediation action for all Intune-managed devices at a site |
 | `POST` | `/api/site-changes/:id/ack` | Admin | Acknowledge one site-change event |
 | `POST` | `/api/usage/monthly-import` | Admin | Import monthly Starlink portal totals |
-| `POST` | `/api/usage/daily-import` | Admin | Import direct daily Starlink portal totals |
-| `POST` | `/api/usage/portal-snapshots` | Admin | Import cumulative portal readings and derive daily totals |
-| `POST` | `/api/usage/portal-runs` | Admin | Record Playwright portal scraper run status |
+| `POST` | `/api/usage/daily-import` | Admin or `starlink_collector` | Import direct daily Starlink portal totals |
+| `POST` | `/api/usage/portal-snapshots` | Admin or `starlink_collector` | Import cumulative portal readings and derive daily totals |
+| `POST` | `/api/usage/portal-runs` | Admin or `starlink_collector` | Record Playwright portal scraper run status and alert admins on failures |
 | `GET` | `/api/usage/portal-runs?limit=N` | Admin | Read recent Playwright portal scraper runs |
 
 Supported trigger types are `location_refresh`, `data_pull`, `diagnostics`,

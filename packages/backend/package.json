@@ -7,13 +7,15 @@
     "start": "node migrate.js && node server.js",
     "migrate": "node migrate.js",
     "test:telemetry": "node --test test/starlinkTelemetry.test.js",
+    "test:starlink-usage": "node --test test/starlinkPortalUsage.test.js",
     "dev": "node --watch server.js",
     "agent:token": "node scripts/generate_agent_token.js",
     "intune:check": "node scripts/check_intune_data.js",
     "devices:duplicates": "node scripts/check_device_duplicates.js",
     "devices:dedupe": "node scripts/dedupe_devices_by_serial.js",
     "weather:check": "node scripts/check_weather_data.js",
-    "starlink:portal:usage": "node scripts/starlink_portal_usage_worker.js"
+    "starlink:portal:usage": "node scripts/starlink_portal_usage_worker.js",
+    "starlink:token": "node scripts/generate_starlink_collector_token.js"
   },
   "dependencies": {
     "@google-cloud/cloud-sql-connector": "^1.11.0",
@@ -22,9 +24,11 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^7.3.1",
+    "google-auth-library": "^10.6.2",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.14",
+    "playwright": "^1.54.2",
     "pg": "^8.12.0",
     "satellite.js": "^5.0.0",
     "ws": "^8.18.0"

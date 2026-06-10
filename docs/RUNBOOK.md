@@ -129,3 +129,25 @@ GET /api/sites/:id/usage?months=6
 
 Admin CSV exports are available for signal, latency, monthly usage totals, and
 archived usage under `/api/export/*`.
+
+## Daily Starlink portal usage worker
+
+The always-on Windows Server 2019 / WSL2 worker is documented in
+`docs/STARLINK_PORTAL_USAGE_WORKER.md`. It uses a persistent Playwright profile,
+Gmail API domain-wide delegation for `support@icircles.rw` OTP email, and the
+least-privilege `starlink_collector` JWT.
+
+Quick checks:
+
+```bash
+npm run starlink:token --workspace=packages/backend -- 180d
+npm run starlink:portal:usage --workspace=packages/backend -- --check-auth
+curl "https://api.starfleet.icircles.rw/api/usage/portal-runs?limit=20" \
+  -H "Authorization: Bearer <ADMIN_DASHBOARD_JWT>"
+```
+
+If Starlink asks for OTP during scheduled collection, the worker reads it via
+Gmail API; do not scrape Gmail UI. If Starlink asks for a password, refresh the
+persistent browser profile manually. Failed run statuses trigger best-effort
+admin email alerts and appear in the Monday 17:00 Africa/Kigali weekly usage
+report.

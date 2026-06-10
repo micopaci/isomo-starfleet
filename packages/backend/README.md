@@ -76,6 +76,7 @@ See `docs/API_REFERENCE.md` for endpoint-level details.
 | Weather correlation | `services/weatherCorrelation.js` | Open-Meteo rainfall/cloud readings |
 | Watchdog | `services/watchdog.js` | Stale-device WebSocket broadcast |
 | Weekly digest | `services/weeklyDigest.js` | Email summary |
+| Starlink usage report | `services/weeklyStarlinkUsageReport.js` | Monday 17:00 Kigali portal-usage email |
 | Ingest dedup prune | `services/ingestDedup.js` | Old payload-id cleanup |
 | Usage archive | `services/usageArchive.js` | Older usage rollup/archive |
 | Graph sync | `services/graph.js` | Microsoft Intune managed-device sync |
@@ -87,9 +88,11 @@ curl https://api.starfleet.icircles.rw/health
 npm run migrate --workspace=packages/backend
 npm run intune:check --workspace=packages/backend
 npm run weather:check --workspace=packages/backend
+npm run starlink:token --workspace=packages/backend -- 180d
 npm run starlink:portal:usage --workspace=packages/backend -- --help
 ```
 
-See `docs/STARLINK_PORTAL_USAGE_WORKER.md` for always-on server setup.
+See `docs/STARLINK_PORTAL_USAGE_WORKER.md` for always-on server setup, Gmail
+API OTP configuration, scheduling, and recovery.
 
 Do not commit `.env`, generated JWTs, or token-bearing Intune artifacts.

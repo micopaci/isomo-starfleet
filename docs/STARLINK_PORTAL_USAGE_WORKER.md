@@ -38,8 +38,7 @@ Create `packages/backend/.env.portal` on the server:
 
 ```text
 STARFLEET_API_URL=https://api.starfleet.icircles.rw
-STARFLEET_ADMIN_EMAIL=<dashboard-admin-email>
-STARFLEET_ADMIN_PASSWORD=<dashboard-admin-password>
+STARFLEET_COLLECTOR_TOKEN=<starlink_collector JWT>
 
 STARLINK_PORTAL_EMAIL=support@icircles.rw
 STARLINK_PORTAL_PROFILE_DIR=/srv/starfleet/starlink-browser-profile
@@ -48,10 +47,41 @@ STARLINK_PORTAL_USAGE_MODE=snapshot
 STARLINK_PORTAL_DAILY_DATE_BACKDAYS=1
 STARLINK_PORTAL_ADAPTER=/srv/starfleet/starlink_portal_usage_adapter.js
 STARLINK_SITE_MAP_FILE=/srv/starfleet/starlink-site-map.json
+STARLINK_GMAIL_DWD_KEY_FILE=/etc/starfleet/starlink-gmail-dwd.json
+STARLINK_GMAIL_OTP_QUERY=newer_than:15m (from:starlink.com OR from:noreply@starlink.com OR Starlink) (code OR verification OR login)
 ```
 
-Use `STARFLEET_ADMIN_TOKEN` instead of email/password if you prefer issuing a
-long-lived admin token for this job.
+Generate the least-privilege collector token from the backend environment:
+
+```bash
+npm run starlink:token --workspace=packages/backend -- 180d
+```
+
+`STARFLEET_ADMIN_TOKEN` still works for manual admin testing, but production
+schedulers should use `STARFLEET_COLLECTOR_TOKEN`. Do not put dashboard admin
+passwords in `.env.portal`.
+
+## Gmail API OTP Setup
+
+Starlink sends OTP/MFA email to `support@icircles.rw`. The worker reads that OTP
+through the Gmail API; it must not scrape Gmail UI.
+
+1. Create a dedicated Google Cloud service account.
+2. Enable Google Workspace domain-wide delegation for the service account.
+3. In Google Workspace Admin, authorize only:
+
+```text
+https://www.googleapis.com/auth/gmail.readonly
+```
+
+4. Store the JSON key outside the repo, for example
+   `/etc/starfleet/starlink-gmail-dwd.json`.
+5. Keep `STARLINK_PORTAL_EMAIL=support@icircles.rw`. The worker rejects other
+   impersonation targets.
+
+Use Gmail readonly unless a future approved workflow needs to mark OTP messages
+processed. Never store raw Starlink passwords or OTP secrets in code, `.env`,
+logs, screenshots, or docs.
 
 ## First Login And MFA
 
@@ -62,10 +92,14 @@ npm run starlink:portal:usage --workspace=packages/backend -- --check-auth
 ```
 
 Sign in as `support@icircles.rw`, complete Starlink OTP/MFA, then press Enter in
-the terminal. The browser profile remains on disk and future headless runs reuse
-that authenticated session.
+the terminal. If Gmail DWD is configured and Starlink shows an OTP field, the
+worker will attempt to fill the code via Gmail API. The browser profile remains
+on disk and future headless runs reuse that authenticated session.
 
 If Starlink forces OTP again later, rerun `--check-auth`.
+
+If Starlink asks for a password, stop and refresh the profile manually. The
+worker intentionally does not accept or store raw Starlink passwords.
 
 ## Adapter Calibration
 
@@ -145,3 +179,21 @@ wsl.exe -d Ubuntu -- bash -lc "cd '/mnt/c/Path/To/starlink-fleet-monitor' && npm
 
 The dashboard will show the latest imported `Portal usage` value per Starlink
 site as soon as the job posts data.
+
+## Weekly Usage Report
+
+Enable the Monday 17:00 Africa/Kigali weekly report:
+
+```text
+STARLINK_USAGE_REPORT_ENABLED=true
+STARLINK_USAGE_REPORT_TO=ops@icircles.rw
+STARLINK_USAGE_REPORT_FROM=starfleet@icircles.rw
+SMTP_HOST=...
+SMTP_PORT=587
+SMTP_USER=...
+SMTP_PASS=...
+```
+
+The report summarizes previous-week usage by school/site, daily breakdown,
+highest-usage sites, failed/missing collection days, counter resets, and
+unattributed residual usage after subtracting Starfleet managed endpoint usage.
