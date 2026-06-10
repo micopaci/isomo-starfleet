@@ -148,7 +148,7 @@ Good signs:
 
 ```text
 install_source = intune_remediation
-agent_version = 1.2.0
+agent_version = 1.3.0
 queue count = 0
 last_heartbeat.txt updated after Intune ran
 test.ps1 reports GPS or Starlink ID/UUID
