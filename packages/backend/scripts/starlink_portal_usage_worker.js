@@ -9,6 +9,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { normalizePortalEntries } = require('../services/starlinkPortalUsage');
 
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
@@ -18,6 +19,8 @@ const args = new Set(process.argv.slice(2));
 
 const DEFAULT_PORTAL_URL = 'https://www.starlink.com/account/home';
 const DEFAULT_API_URL = 'https://api.starfleet.icircles.rw';
+const SUPPORT_EMAIL = 'support@icircles.rw';
+const GMAIL_READONLY_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 
 function showHelp() {
   console.log(`
@@ -34,12 +37,13 @@ Modes:
 
 Required for imports:
   STARFLEET_API_URL=https://api.starfleet.icircles.rw
-  STARFLEET_ADMIN_TOKEN=<dashboard admin JWT>
-    or STARFLEET_ADMIN_EMAIL + STARFLEET_ADMIN_PASSWORD
+  STARFLEET_COLLECTOR_TOKEN=<starlink_collector JWT>
+    or STARFLEET_ADMIN_TOKEN=<dashboard admin JWT>
 
 Required for portal scraping:
   STARLINK_PORTAL_ADAPTER=/absolute/path/to/adapter.js
   STARLINK_PORTAL_PROFILE_DIR=/srv/starfleet/starlink-browser-profile
+  STARLINK_GMAIL_DWD_KEY_FILE=/etc/starfleet/starlink-gmail-dwd.json
 
 Optional:
   STARLINK_PORTAL_EMAIL=support@icircles.rw
@@ -95,15 +99,16 @@ function loadSiteMap() {
   return {};
 }
 
-function normalizeEntries(raw) {
-  const entries = Array.isArray(raw) ? raw : raw.entries;
-  if (!Array.isArray(entries)) {
-    throw new Error('Usage extraction must return an array or { entries: [...] }');
+function portalEmail() {
+  const email = (process.env.STARLINK_PORTAL_EMAIL || SUPPORT_EMAIL).toLowerCase();
+  if (email !== SUPPORT_EMAIL) {
+    throw new Error(`STARLINK_PORTAL_EMAIL must be ${SUPPORT_EMAIL}; Gmail delegation is intentionally restricted.`);
   }
-  return entries.map(entry => ({
-    ...entry,
-    site_id: Number(entry.site_id),
-  })).filter(entry => Number.isInteger(entry.site_id) && entry.site_id > 0);
+  return email;
+}
+
+function normalizeEntries(raw) {
+  return normalizePortalEntries(raw, loadSiteMap());
 }
 
 async function requestJson(apiUrl, pathName, options = {}) {
@@ -128,6 +133,7 @@ async function requestJson(apiUrl, pathName, options = {}) {
 }
 
 async function getAdminToken(apiUrl) {
+  if (process.env.STARFLEET_COLLECTOR_TOKEN) return process.env.STARFLEET_COLLECTOR_TOKEN;
   if (process.env.STARFLEET_ADMIN_TOKEN) return process.env.STARFLEET_ADMIN_TOKEN;
 
   const email = requireEnv('STARFLEET_ADMIN_EMAIL');
@@ -138,6 +144,169 @@ async function getAdminToken(apiUrl) {
   });
   if (!login.token) throw new Error('/auth/login did not return a token');
   return login.token;
+}
+
+function loadGmailServiceAccount() {
+  if (process.env.STARLINK_GMAIL_DWD_KEY_FILE) {
+    return readJsonFile(process.env.STARLINK_GMAIL_DWD_KEY_FILE);
+  }
+  if (process.env.STARLINK_GMAIL_DWD_CLIENT_EMAIL && process.env.STARLINK_GMAIL_DWD_PRIVATE_KEY) {
+    return {
+      client_email: process.env.STARLINK_GMAIL_DWD_CLIENT_EMAIL,
+      private_key: process.env.STARLINK_GMAIL_DWD_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    };
+  }
+  throw new Error('STARLINK_GMAIL_DWD_KEY_FILE or STARLINK_GMAIL_DWD_CLIENT_EMAIL/STARLINK_GMAIL_DWD_PRIVATE_KEY is required when Starlink requests OTP.');
+}
+
+async function getGmailAccessToken() {
+  let JWT;
+  try {
+    ({ JWT } = require('google-auth-library'));
+  } catch {
+    throw new Error('google-auth-library is required for Gmail API OTP retrieval.');
+  }
+
+  const key = loadGmailServiceAccount();
+  const client = new JWT({
+    email: key.client_email,
+    key: key.private_key,
+    scopes: [GMAIL_READONLY_SCOPE],
+    subject: SUPPORT_EMAIL,
+  });
+  const result = await client.authorize();
+  return result.access_token;
+}
+
+async function gmailFetch(pathName) {
+  const token = await getGmailAccessToken();
+  const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/${encodeURIComponent(SUPPORT_EMAIL)}${pathName}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const text = await res.text();
+  const body = text ? JSON.parse(text) : {};
+  if (!res.ok) {
+    throw new Error(`Gmail API failed with HTTP ${res.status}: ${body.error?.message || text}`);
+  }
+  return body;
+}
+
+function base64UrlDecode(value) {
+  if (!value) return '';
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+  return Buffer.from(padded, 'base64').toString('utf8');
+}
+
+function collectMessageText(payload) {
+  if (!payload) return '';
+  const chunks = [];
+  const walk = (part) => {
+    if (!part) return;
+    if (part.body?.data && /^text\/(plain|html)$/i.test(part.mimeType || '')) {
+      chunks.push(base64UrlDecode(part.body.data).replace(/<[^>]*>/g, ' '));
+    }
+    for (const child of part.parts || []) walk(child);
+  };
+  walk(payload);
+  return chunks.join('\n');
+}
+
+function extractOtp(text) {
+  const source = String(text || '');
+  const match = source.match(/(?:code|verification|login|one-time)[^\d]{0,80}(\d{6,8})\b/i)
+    || source.match(/\b(\d{6})\b/);
+  return match ? match[1] : null;
+}
+
+async function fetchLatestOtp(sinceMs) {
+  const query = encodeURIComponent(process.env.STARLINK_GMAIL_OTP_QUERY
+    || 'newer_than:15m (from:starlink.com OR from:noreply@starlink.com OR Starlink) (code OR verification OR login)');
+  const list = await gmailFetch(`/messages?q=${query}&maxResults=10`);
+  for (const message of list.messages || []) {
+    const full = await gmailFetch(`/messages/${message.id}?format=full`);
+    const internalDate = Number(full.internalDate || 0);
+    if (internalDate && internalDate < sinceMs - 60_000) continue;
+    const headers = (full.payload?.headers || []).map(h => `${h.name}: ${h.value}`).join('\n');
+    const otp = extractOtp(`${full.snippet || ''}\n${headers}\n${collectMessageText(full.payload)}`);
+    if (otp) return otp;
+  }
+  return null;
+}
+
+async function waitForOtp(sinceMs) {
+  const timeoutMs = Number(process.env.STARLINK_OTP_TIMEOUT_MS || 180000);
+  const pollMs = Number(process.env.STARLINK_OTP_POLL_MS || 5000);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const otp = await fetchLatestOtp(sinceMs);
+    if (otp) return otp;
+    await new Promise(resolve => setTimeout(resolve, pollMs));
+  }
+  throw new Error('Timed out waiting for Starlink OTP email via Gmail API.');
+}
+
+async function visibleLocator(page, selectors) {
+  for (const selector of selectors.filter(Boolean)) {
+    const locator = page.locator(selector).first();
+    if (await locator.count().catch(() => 0)) {
+      if (await locator.isVisible().catch(() => false)) return locator;
+    }
+  }
+  return null;
+}
+
+async function clickFirstVisible(page, selectors) {
+  const locator = await visibleLocator(page, selectors);
+  if (!locator) return false;
+  await locator.click();
+  return true;
+}
+
+async function ensurePortalLogin(page, startedAtMs) {
+  const passwordInput = await visibleLocator(page, ['input[type="password"]']);
+  if (passwordInput) {
+    throw new Error('Starlink requested a password. This worker never accepts or stores raw Starlink passwords; refresh the persistent browser profile manually.');
+  }
+
+  const emailInput = await visibleLocator(page, [
+    process.env.STARLINK_EMAIL_SELECTOR,
+    'input[type="email"]',
+    'input[name="email"]',
+    'input[autocomplete="email"]',
+  ]);
+  if (emailInput) {
+    await emailInput.fill(portalEmail());
+    const clicked = await clickFirstVisible(page, [
+      process.env.STARLINK_EMAIL_SUBMIT_SELECTOR,
+      'button[type="submit"]',
+      'button:has-text("Continue")',
+      'button:has-text("Sign in")',
+      'button:has-text("Log in")',
+    ]);
+    if (!clicked) await emailInput.press('Enter');
+    await page.waitForLoadState('networkidle', { timeout: Number(process.env.STARLINK_NAVIGATION_TIMEOUT_MS || 45000) }).catch(() => {});
+  }
+
+  const otpInput = await visibleLocator(page, [
+    process.env.STARLINK_OTP_SELECTOR,
+    'input[autocomplete="one-time-code"]',
+    'input[name*="otp" i]',
+    'input[name*="code" i]',
+    'input[inputmode="numeric"]',
+  ]);
+  if (otpInput) {
+    const otp = await waitForOtp(startedAtMs);
+    await otpInput.fill(otp);
+    const clicked = await clickFirstVisible(page, [
+      process.env.STARLINK_OTP_SUBMIT_SELECTOR,
+      'button[type="submit"]',
+      'button:has-text("Verify")',
+      'button:has-text("Continue")',
+      'button:has-text("Submit")',
+    ]);
+    if (!clicked) await otpInput.press('Enter');
+    await page.waitForLoadState('networkidle', { timeout: Number(process.env.STARLINK_NAVIGATION_TIMEOUT_MS || 45000) }).catch(() => {});
+  }
 }
 
 async function postAuthed(apiUrl, token, pathName, body) {
@@ -159,6 +328,8 @@ function loadPlaywright() {
 }
 
 async function collectFromPortal() {
+  const startedAtMs = Date.now();
+  portalEmail();
   const adapterPath = process.env.STARLINK_PORTAL_ADAPTER;
   if (!adapterPath) {
     throw new Error('STARLINK_PORTAL_ADAPTER is required for --run. Use --check-auth first, then add a calibrated adapter.');
@@ -182,6 +353,7 @@ async function collectFromPortal() {
   try {
     const page = context.pages()[0] || await context.newPage();
     await page.goto(process.env.STARLINK_PORTAL_URL || DEFAULT_PORTAL_URL, { waitUntil: 'domcontentloaded' });
+    await ensurePortalLogin(page, startedAtMs);
     const rawEntries = await adapter.extractStarlinkUsage({
       page,
       context,
@@ -196,6 +368,8 @@ async function collectFromPortal() {
 }
 
 async function checkAuth() {
+  const startedAtMs = Date.now();
+  portalEmail();
   const { chromium } = loadPlaywright();
   const profileDir = process.env.STARLINK_PORTAL_PROFILE_DIR
     || path.resolve(__dirname, '../.starlink-browser-profile');
@@ -206,7 +380,14 @@ async function checkAuth() {
   const page = context.pages()[0] || await context.newPage();
   await page.goto(process.env.STARLINK_PORTAL_URL || DEFAULT_PORTAL_URL, { waitUntil: 'domcontentloaded' });
   console.log('Portal browser opened.');
-  console.log('Sign in as support@icircles.rw, complete OTP/MFA, then press Enter here to save the browser profile.');
+  console.log('Sign in as support@icircles.rw. If an OTP prompt appears and Gmail DWD is configured, the worker will fill it via Gmail API.');
+  try {
+    await ensurePortalLogin(page, startedAtMs);
+  } catch (err) {
+    console.warn(`Automatic login helper did not complete: ${err.message}`);
+    console.warn('Complete login manually in the Starlink portal window if needed; do not scrape Gmail UI.');
+  }
+  console.log('Press Enter here after the portal session is authenticated to save the browser profile.');
   await new Promise(resolve => process.stdin.once('data', resolve));
   await context.close();
 }
@@ -257,6 +438,9 @@ async function main() {
     const entries = file ? normalizeEntries(readJsonFile(file)) : await collectFromPortal();
     const snapshotDate = todayKigali();
     const dailyDate = dateKigali(dailyDateBackdays * -1);
+    if (!entries.length) {
+      throw new Error('No mapped Starlink usage entries were extracted. Portal layout or site mapping may need recalibration.');
+    }
 
     if (dryRun) {
       console.log(JSON.stringify({ ok: true, dry_run: true, mode, snapshot_date: snapshotDate, daily_date: dailyDate, entries }, null, 2));

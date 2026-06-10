@@ -24,6 +24,7 @@ const { scheduleOrbitalCron }       = require('./services/orbitalSync');
 const { scheduleWeatherCron }       = require('./services/weatherCorrelation');
 const { scheduleWatchdog }          = require('./services/watchdog');
 const { scheduleWeeklyDigest }      = require('./services/weeklyDigest');
+const { scheduleWeeklyStarlinkUsageReport } = require('./services/weeklyStarlinkUsageReport');
 const { scheduleIngestDedupPrune }  = require('./services/ingestDedup');
 const { scheduleUsageArchive }      = require('./services/usageArchive');
 const { scheduleOsintCorrelator, runCorrelationCycle } = require('./services/osintCorrelator');
@@ -565,6 +566,7 @@ async function startServer() {
     scheduleWeatherCron();                   // Open-Meteo rainfall sync daily @ 01:00
     scheduleWatchdog();                      // Stale device check every 10 min
     scheduleWeeklyDigest();                  // Email digest Mondays @ 08:00 Kigali
+    scheduleWeeklyStarlinkUsageReport();     // Starlink usage report Mondays @ 17:00 Kigali
     scheduleIngestDedupPrune();              // Cleanup dedupe keys (default 7d retention)
     scheduleUsageArchive();                  // Move data_usage older than 30d to archive
     scheduleOsintCorrelator();               // OSINT anomaly correlation every 15 min

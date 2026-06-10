@@ -14,6 +14,8 @@ const pool    = require('../db');
 const { requireAdmin }   = require('../middleware/auth');
 const { currentSignal }  = require('../services/cache');
 const { classifyAttribution, activeAlertNames } = require('../services/starlinkTelemetry');
+const { computeSnapshotDailyTotal } = require('../services/starlinkPortalUsage');
+const { sendEmail } = require('../services/notifier');
 const graphClient        = require('../services/graph');
 const { checkCoverageGap, getVisibleSatellites } = require('../services/orbitalSync');
 const {
@@ -26,6 +28,13 @@ const {
 } = require('../services/deviceStatus');
 
 const router = express.Router();
+
+function requireAdminOrStarlinkCollector(req, res, next) {
+  if (!req.user || !['admin', 'starlink_collector'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden — admin or starlink_collector role required' });
+  }
+  next();
+}
 
 const DEVICE_SEEN_EXPR = deviceSeenExpr('d');
 const DEVICE_STATUS_CASE = deviceStatusCase('d');
@@ -72,6 +81,14 @@ function bytesFromUsageEntry(entry = {}, field = 'bytes_total') {
 function safeMetadata(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return value;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function mapDailyUsageRow(row) {
@@ -1568,9 +1585,9 @@ router.get('/sites/:id/usage/daily', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── POST /api/usage/daily-import (admin only) ────────────────────────────────
+// ── POST /api/usage/daily-import (admin/collector) ───────────────────────────
 // Body: { date: "YYYY-MM-DD", entries: [{ site_id, bytes_total|mb_total|gb_total }] }
-router.post('/usage/daily-import', requireAdmin, async (req, res, next) => {
+router.post('/usage/daily-import', requireAdminOrStarlinkCollector, async (req, res, next) => {
   try {
     const { entries, source } = req.body || {};
     const defaultDate = parseDateOnly(req.body?.date);
@@ -1636,10 +1653,10 @@ router.post('/usage/daily-import', requireAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── POST /api/usage/portal-snapshots (admin only) ────────────────────────────
+// ── POST /api/usage/portal-snapshots (admin/collector) ───────────────────────
 // Accepts cumulative Starlink portal readings and derives daily totals once a
 // prior snapshot exists for the same site.
-router.post('/usage/portal-snapshots', requireAdmin, async (req, res, next) => {
+router.post('/usage/portal-snapshots', requireAdminOrStarlinkCollector, async (req, res, next) => {
   try {
     const { entries, source } = req.body || {};
     const defaultDate = parseDateOnly(req.body?.snapshot_date || req.body?.date);
@@ -1715,9 +1732,9 @@ router.post('/usage/portal-snapshots', requireAdmin, async (req, res, next) => {
         }
 
         const prevBytes = Number(previous.bytes_used_cumulative);
-        const reset = cumulativeBytes < prevBytes;
-        const dailyBytes = reset ? cumulativeBytes : cumulativeBytes - prevBytes;
-        const confidence = reset ? 'cycle_reset_estimate' : 'derived_from_snapshot';
+        const delta = computeSnapshotDailyTotal(cumulativeBytes, prevBytes);
+        const dailyBytes = delta.bytes_total;
+        const confidence = delta.confidence;
 
         await client.query(
           `INSERT INTO site_usage_totals_daily
@@ -1755,7 +1772,7 @@ router.post('/usage/portal-snapshots', requireAdmin, async (req, res, next) => {
               snapshot_date: snapshotDate,
               previous_snapshot_date: previous.snapshot_date,
               previous_bytes_used_cumulative: prevBytes,
-              counter_reset_detected: reset,
+              counter_reset_detected: delta.counter_reset_detected,
             },
           ]
         );
@@ -1787,10 +1804,10 @@ router.post('/usage/portal-snapshots', requireAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── POST /api/usage/portal-runs (admin only) ─────────────────────────────────
+// ── POST /api/usage/portal-runs (admin/collector) ────────────────────────────
 // Scraper heartbeat/audit upsert. The Playwright worker can call this at start
 // and finish so Starfleet can report stale or failed portal collection.
-router.post('/usage/portal-runs', requireAdmin, async (req, res, next) => {
+router.post('/usage/portal-runs', requireAdminOrStarlinkCollector, async (req, res, next) => {
   try {
     const {
       run_id, status, started_at, finished_at, sites_seen, sites_imported,
@@ -1828,7 +1845,34 @@ router.post('/usage/portal-runs', requireAdmin, async (req, res, next) => {
       ]
     );
 
-    res.json({ ok: true, run: rows[0] });
+    const run = rows[0];
+    if (run.status === 'failed' && !run.report_sent_at) {
+      try {
+        await sendEmail({
+          subject: '[Starfleet] Starlink portal collector failed',
+          text: `Starlink portal collector run ${run.run_id} failed.\n\nError: ${run.error || 'unknown'}\nStarted: ${run.started_at}\nFinished: ${run.finished_at || 'unknown'}`,
+          html: `
+            <h3>Starlink portal collector failed</h3>
+            <p><strong>Run:</strong> ${escapeHtml(run.run_id)}</p>
+            <p><strong>Error:</strong> ${escapeHtml(run.error || 'unknown')}</p>
+            <p><strong>Started:</strong> ${escapeHtml(run.started_at)}</p>
+            <p><strong>Finished:</strong> ${escapeHtml(run.finished_at || 'unknown')}</p>
+          `,
+        });
+        const marked = await pool.query(
+          `UPDATE starlink_portal_scraper_runs
+           SET report_sent_at = NOW()
+           WHERE run_id = $1
+           RETURNING *`,
+          [run.run_id]
+        );
+        if (marked.rows[0]) Object.assign(run, marked.rows[0]);
+      } catch (notifyErr) {
+        console.error('[StarlinkPortal] Failed to send collector failure alert:', notifyErr.message);
+      }
+    }
+
+    res.json({ ok: true, run });
   } catch (err) { next(err); }
 });
 
