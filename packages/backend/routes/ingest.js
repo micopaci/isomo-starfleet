@@ -68,6 +68,15 @@ function asJsonOrNull(value) {
   return value;
 }
 
+function normalizeSiteIdForDb(siteId) {
+  const n = Number(siteId);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function isRealSiteId(siteId) {
+  return normalizeSiteIdForDb(siteId) !== null;
+}
+
 /**
  * Maps agent device_sn (BIOS) to database windows_sn.
  * Updates OS and Model metadata on every check-in.
@@ -75,6 +84,7 @@ function asJsonOrNull(value) {
 async function autoRegisterDevice(client, device_sn, site_id, hostname, metadata = {}) {
   const { os, model, manufacturer } = metadata;
   const serialNormalized = normalizeSerial(device_sn);
+  const dbSiteId = normalizeSiteIdForDb(site_id);
 
   const existing = await client.query(
     `SELECT id
@@ -107,7 +117,7 @@ async function autoRegisterDevice(client, device_sn, site_id, hostname, metadata
            manufacturer = COALESCE($8, manufacturer)
        WHERE id = $7
        RETURNING id`,
-      [device_sn, site_id, hostname || null, os || null, model || null, serialNormalized, existing.rows[0].id, manufacturer || null]
+      [device_sn, dbSiteId, hostname || null, os || null, model || null, serialNormalized, existing.rows[0].id, manufacturer || null]
     );
     return result.rows[0].id;
   }
@@ -127,7 +137,7 @@ async function autoRegisterDevice(client, device_sn, site_id, hostname, metadata
        manufacturer = COALESCE(EXCLUDED.manufacturer, devices.manufacturer),
        serial_normalized = COALESCE(EXCLUDED.serial_normalized, devices.serial_normalized)
      RETURNING id`,
-    [device_sn, site_id, hostname || null, os || null, model || null, manufacturer || null, serialNormalized]
+    [device_sn, dbSiteId, hostname || null, os || null, model || null, manufacturer || null, serialNormalized]
   );
   return result.rows[0].id;
 }
@@ -148,7 +158,7 @@ function enforceAgentSiteScope(req, res, postedSiteId) {
 
 async function getCanonicalSiteId(client, device_id, fallbackSiteId) {
   const r = await client.query(`SELECT site_id FROM devices WHERE id = $1`, [device_id]);
-  return r.rows[0]?.site_id ?? fallbackSiteId;
+  return normalizeSiteIdForDb(r.rows[0]?.site_id) ?? normalizeSiteIdForDb(fallbackSiteId);
 }
 
 async function markIngestSuccess(client, device_id, timestampIso) {
@@ -373,6 +383,10 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
       const site_id = await resolveAndMaybeNotify(
         client, device_id, lat ?? null, lon ?? null, fallbackSiteId
       );
+      if (!isRealSiteId(site_id)) {
+        await markIngestSuccess(client, device_id, timestamp_utc || new Date().toISOString());
+        return res.status(202).json({ ok: true, skipped: 'site_unresolved' });
+      }
 
       const window = new Date(Date.now() - 10 * 60 * 1000).toISOString();
       const reportersRes = await client.query(
@@ -472,6 +486,10 @@ router.post('/latency', latencyLimiter, async (req, res, next) => {
         return res.status(200).json({ ok: true, duplicate: true });
       }
       const canonicalSiteId = await getCanonicalSiteId(client, device_id, site_id);
+      if (!isRealSiteId(canonicalSiteId)) {
+        await markIngestSuccess(client, device_id, timestamp_utc || new Date().toISOString());
+        return res.status(202).json({ ok: true, skipped: 'site_unresolved' });
+      }
 
       const window15 = new Date(Date.now() - 15 * 60 * 1000).toISOString();
       const medRes = await client.query(
@@ -575,6 +593,10 @@ router.post('/usage', usageLimiter, async (req, res, next) => {
         return res.status(200).json({ ok: true, duplicate: true });
       }
       const canonicalSiteId = await getCanonicalSiteId(client, device_id, site_id);
+      if (!isRealSiteId(canonicalSiteId)) {
+        await markIngestSuccess(client, device_id, new Date().toISOString());
+        return res.status(202).json({ ok: true, skipped: 'site_unresolved' });
+      }
 
       if (counter_reset_detected === true) {
         await markIngestSuccess(client, device_id, new Date().toISOString());

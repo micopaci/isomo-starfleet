@@ -89,7 +89,17 @@ async function ensureRuntimeSchema() {
     `);
     await client.query(`
       ALTER TABLE devices
+      ALTER COLUMN site_id DROP NOT NULL
+    `);
+    await client.query(`
+      UPDATE devices
+      SET site_id = NULL
+      WHERE site_id = 0
+    `);
+    await client.query(`
+      ALTER TABLE devices
       ADD COLUMN IF NOT EXISTS model TEXT,
+      ADD COLUMN IF NOT EXISTS manufacturer TEXT,
       ADD COLUMN IF NOT EXISTS os TEXT,
       ADD COLUMN IF NOT EXISTS os_version TEXT,
       ADD COLUMN IF NOT EXISTS intune_last_sync_at TIMESTAMPTZ,
@@ -253,7 +263,7 @@ async function ensureRuntimeSchema() {
       CREATE TABLE IF NOT EXISTS agent_health_snapshots (
         id                   BIGSERIAL PRIMARY KEY,
         device_id            INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
-        site_id              INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+        site_id              INTEGER REFERENCES sites(id) ON DELETE CASCADE,
         recorded_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         queue_depth          INTEGER,
         oldest_queue_age_sec INTEGER,
@@ -263,6 +273,10 @@ async function ensureRuntimeSchema() {
         last_error           TEXT,
         last_success_at      TIMESTAMPTZ
       )
+    `);
+    await client.query(`
+      ALTER TABLE agent_health_snapshots
+      ALTER COLUMN site_id DROP NOT NULL
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_agent_health_device_recorded_at

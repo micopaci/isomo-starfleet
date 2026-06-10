@@ -5,6 +5,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$script:DiagnosticFailed = $false
 
 function Find-StarlinkUtIdInBytes {
     param([byte[]]$Bytes)
@@ -159,9 +160,23 @@ if ($task) {
 Write-Host "[3/4] Checking latest heartbeat..."
 $lastHeartbeat = Join-Path $DataDir "last_heartbeat.txt"
 if (Test-Path $lastHeartbeat) {
-    Write-Host "PASS: last successful heartbeat: $(Get-Content $lastHeartbeat -Raw)"
+    $lastHeartbeatRaw = (Get-Content $lastHeartbeat -Raw).Trim()
+    try {
+        $lastHeartbeatUtc = ([datetime]$lastHeartbeatRaw).ToUniversalTime()
+        $ageMinutes = [math]::Round(((Get-Date).ToUniversalTime() - $lastHeartbeatUtc).TotalMinutes, 1)
+        if ($ageMinutes -le 30) {
+            Write-Host "PASS: last successful heartbeat: $lastHeartbeatRaw ($ageMinutes minutes ago)"
+        } else {
+            Write-Host "FAIL: last successful heartbeat is stale: $lastHeartbeatRaw ($ageMinutes minutes ago)"
+            $script:DiagnosticFailed = $true
+        }
+    } catch {
+        Write-Host "FAIL: last heartbeat timestamp is unreadable: $lastHeartbeatRaw"
+        $script:DiagnosticFailed = $true
+    }
 } else {
-    Write-Host "WARN: no successful heartbeat recorded yet."
+    Write-Host "FAIL: no successful heartbeat recorded yet."
+    $script:DiagnosticFailed = $true
 }
 
 Write-Host "[4/4] Checking Starlink gRPC-web location access..."
@@ -199,11 +214,17 @@ try {
 
     if ($lat -ge -90 -and $lat -le 90 -and $lon -ge -180 -and $lon -le 180) {
         Write-Host "PASS: Starlink gRPC-web GPS lat=$lat, lon=$lon, azimuth=$azimuth, elevation=$elevation, id=$starlinkId, uuid=$starlinkUuid"
+        if ($script:DiagnosticFailed) {
+            exit 1
+        }
         exit 0
     }
 
     if (-not [string]::IsNullOrWhiteSpace($starlinkUuid)) {
         Write-Host "PASS: Starlink gRPC-web ID id=$starlinkId, uuid=$starlinkUuid; GPS offsets were unavailable."
+        if ($script:DiagnosticFailed) {
+            exit 1
+        }
         exit 0
     }
 
@@ -221,6 +242,9 @@ if ($cmd) {
 
 if (-not (Test-Path $grpcurl)) {
     Write-Host "WARN: grpcurl not found; heartbeat/health/latency still work, Starlink dish metrics are skipped."
+    if ($script:DiagnosticFailed) {
+        exit 1
+    }
     exit 0
 }
 
@@ -235,3 +259,8 @@ try {
 } catch {
     Write-Host "WARN: unable to reach Starlink dish at 192.168.100.1:9200."
 }
+
+if ($script:DiagnosticFailed) {
+    exit 1
+}
+exit 0

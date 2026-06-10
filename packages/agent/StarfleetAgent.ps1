@@ -1666,115 +1666,32 @@ function Invoke-StarlinkGrpc {
     }
 }
 
-function Get-StarlinkSnapshot {
-    param([object]$Config)
+function Convert-StarlinkRawToSnapshot {
+    param(
+        [object]$Raw,
+        [bool]$DishGrpcReachable,
+        [string]$StarlinkPowerVerdict
+    )
 
-    $grpc = Get-GrpcurlCommand -ConfiguredPath $Config.GrpcurlPath
-    if ([string]::IsNullOrWhiteSpace($grpc)) {
-        Write-Log "WARN" "grpcurl not found; attempting built-in gRPC-web fallback at 192.168.100.1."
-        $httpRaw = Get-StarlinkHttpStatus
-        if ($null -ne $httpRaw) {
-            $lat = Find-FirstNumber -Object $httpRaw -Names @("latitude", "lat")
-            $lon = Find-FirstNumber -Object $httpRaw -Names @("longitude", "lon", "lng")
-            $downBps = Find-FirstNumber -Object $httpRaw -Names @("downlinkThroughputBps", "downlink_throughput_bps")
-            $upBps = Find-FirstNumber -Object $httpRaw -Names @("uplinkThroughputBps", "uplink_throughput_bps")
-            $popLatency = Find-FirstNumber -Object $httpRaw -Names @("popPingLatencyMs", "pop_ping_latency_ms", "popLatencyMs", "pop_latency_ms")
-            $snr = Find-FirstNumber -Object $httpRaw -Names @("snr", "downlinkSnr", "downlink_snr")
-            $drop = Find-FirstNumber -Object $httpRaw -Names @("popPingDropRate", "pop_ping_drop_rate", "pingDropRate", "ping_drop_rate")
-            $obstruction = Find-FirstNumber -Object $httpRaw -Names @("fractionObstructed", "fraction_obstructed", "obstructionPct", "obstruction_pct")
-            $starlinkId = Find-FirstString -Object $httpRaw -Names @("starlink_id", "starlinkId", "device_id", "deviceId", "id")
-            $azimuth = Find-FirstNumber -Object $httpRaw -Names @("boresightAzimuthDeg", "boresight_azimuth_deg", "azimuth", "azimuthDeg")
-            $elevation = Find-FirstNumber -Object $httpRaw -Names @("boresightElevationDeg", "boresight_elevation_deg", "elevation", "elevationDeg")
-            $isSnrAboveNoiseFloor = Find-FirstBoolean -Object $httpRaw -Names @("isSnrAboveNoiseFloor", "is_snr_above_noise_floor")
-            $alerts = Find-FirstObject -Object $httpRaw -Names @("alerts")
-            $disablementCode = Find-FirstString -Object $httpRaw -Names @("disablementCode", "disablement_code")
-            $readyStates = Find-FirstObject -Object $httpRaw -Names @("readyStates", "ready_states")
-            $dlRestrictedReason = Find-FirstString -Object $httpRaw -Names @("dlBandwidthRestrictedReason", "dl_bandwidth_restricted_reason")
-            $ulRestrictedReason = Find-FirstString -Object $httpRaw -Names @("ulBandwidthRestrictedReason", "ul_bandwidth_restricted_reason")
-            $dishUptimeS = Find-FirstNumber -Object $httpRaw -Names @("uptimeS", "uptime_s")
-            $dishBootcount = Find-FirstNumber -Object $httpRaw -Names @("bootcount", "bootCount", "boot_count")
-
-            return [pscustomobject]@{
-                Lat = $lat
-                Lon = $lon
-                StarlinkId = $starlinkId
-                StarlinkUuid = Normalize-StarlinkId $starlinkId
-                PopLatencyMs = $popLatency
-                Snr = $snr
-                ObstructionPct = Convert-FractionToPct $obstruction
-                PingDropPct = Convert-FractionToPct $drop
-                DownloadMbps = Convert-BpsToMbps $downBps
-                UploadMbps = Convert-BpsToMbps $upBps
-                AzimuthDeg = $azimuth
-                ElevationDeg = $elevation
-                IsSnrAboveNoiseFloor = $isSnrAboveNoiseFloor
-                Alerts = Convert-ToSignalJsonObject $alerts
-                DisablementCode = Convert-ToSignalText $disablementCode
-                ReadyStates = Convert-ToSignalJsonObject $readyStates
-                DlBandwidthRestrictedReason = Convert-ToSignalText $dlRestrictedReason
-                UlBandwidthRestrictedReason = Convert-ToSignalText $ulRestrictedReason
-                DishUptimeS = Convert-ToNullableInt64 $dishUptimeS
-                DishBootcount = Convert-ToNullableInt $dishBootcount
-                DishGrpcReachable = $true
-                StarlinkPowerVerdict = "reachable"
-            }
-        }
-
-        Write-Log "WARN" "HTTP fallback on 192.168.100.1 unavailable; Starlink dish metrics skipped."
-        return [pscustomobject]@{
-            Lat = $null
-            Lon = $null
-            StarlinkId = $null
-            StarlinkUuid = $null
-            PopLatencyMs = $null
-            Snr = $null
-            ObstructionPct = $null
-            PingDropPct = $null
-            DownloadMbps = $null
-            UploadMbps = $null
-            AzimuthDeg = $null
-            ElevationDeg = $null
-            IsSnrAboveNoiseFloor = $null
-            Alerts = $null
-            DisablementCode = $null
-            ReadyStates = $null
-            DlBandwidthRestrictedReason = $null
-            UlBandwidthRestrictedReason = $null
-            DishUptimeS = $null
-            DishBootcount = $null
-            DishGrpcReachable = $false
-            StarlinkPowerVerdict = "power_outage_suspected"
-        }
-    }
-
-    $locRaw = Invoke-StarlinkGrpc -GrpcurlCommand $grpc -JsonBody '{"get_location":{}}'
-    $statusRaw = Invoke-StarlinkGrpc -GrpcurlCommand $grpc -JsonBody '{"get_status":{}}'
-
-    $lat = Get-NestedValue -Object $locRaw -Path @("getLocation", "lla", "lat")
-    $lon = Get-NestedValue -Object $locRaw -Path @("getLocation", "lla", "lon")
-
-    $popLatency = Find-FirstNumber -Object $statusRaw -Names @("popPingLatencyMs", "pop_ping_latency_ms", "popLatencyMs", "pop_latency_ms")
-    $snr = Find-FirstNumber -Object $statusRaw -Names @("snr", "downlinkSnr", "downlink_snr")
-    $drop = Find-FirstNumber -Object $statusRaw -Names @("popPingDropRate", "pop_ping_drop_rate", "pingDropRate", "ping_drop_rate")
-    $obstruction = Find-FirstNumber -Object $statusRaw -Names @("fractionObstructed", "fraction_obstructed", "obstructionPct", "obstruction_pct")
-    $downBps = Find-FirstNumber -Object $statusRaw -Names @("downlinkThroughputBps", "downlink_throughput_bps")
-    $upBps = Find-FirstNumber -Object $statusRaw -Names @("uplinkThroughputBps", "uplink_throughput_bps")
-    $starlinkId = Find-FirstString -Object @($locRaw, $statusRaw) -Names @("starlink_id", "starlinkId", "device_id", "deviceId", "id")
-    $azimuth = Find-FirstNumber -Object $statusRaw -Names @("boresightAzimuthDeg", "boresight_azimuth_deg", "azimuth", "azimuthDeg")
-    $elevation = Find-FirstNumber -Object $statusRaw -Names @("boresightElevationDeg", "boresight_elevation_deg", "elevation", "elevationDeg")
-    $isSnrAboveNoiseFloor = Find-FirstBoolean -Object $statusRaw -Names @("isSnrAboveNoiseFloor", "is_snr_above_noise_floor")
-    $alerts = Find-FirstObject -Object $statusRaw -Names @("alerts")
-    $disablementCode = Find-FirstString -Object $statusRaw -Names @("disablementCode", "disablement_code")
-    $readyStates = Find-FirstObject -Object $statusRaw -Names @("readyStates", "ready_states")
-    $dlRestrictedReason = Find-FirstString -Object $statusRaw -Names @("dlBandwidthRestrictedReason", "dl_bandwidth_restricted_reason")
-    $ulRestrictedReason = Find-FirstString -Object $statusRaw -Names @("ulBandwidthRestrictedReason", "ul_bandwidth_restricted_reason")
-    $dishUptimeS = Find-FirstNumber -Object $statusRaw -Names @("uptimeS", "uptime_s")
-    $dishBootcount = Find-FirstNumber -Object $statusRaw -Names @("bootcount", "bootCount", "boot_count")
-    $dishGrpcReachable = ($null -ne $statusRaw)
-    $starlinkPowerVerdict = "power_outage_suspected"
-    if ($dishGrpcReachable) {
-        $starlinkPowerVerdict = "reachable"
-    }
+    $lat = Find-FirstNumber -Object $Raw -Names @("latitude", "lat")
+    $lon = Find-FirstNumber -Object $Raw -Names @("longitude", "lon", "lng")
+    $downBps = Find-FirstNumber -Object $Raw -Names @("downlinkThroughputBps", "downlink_throughput_bps")
+    $upBps = Find-FirstNumber -Object $Raw -Names @("uplinkThroughputBps", "uplink_throughput_bps")
+    $popLatency = Find-FirstNumber -Object $Raw -Names @("popPingLatencyMs", "pop_ping_latency_ms", "popLatencyMs", "pop_latency_ms")
+    $snr = Find-FirstNumber -Object $Raw -Names @("snr", "downlinkSnr", "downlink_snr")
+    $drop = Find-FirstNumber -Object $Raw -Names @("popPingDropRate", "pop_ping_drop_rate", "pingDropRate", "ping_drop_rate")
+    $obstruction = Find-FirstNumber -Object $Raw -Names @("fractionObstructed", "fraction_obstructed", "obstructionPct", "obstruction_pct")
+    $starlinkId = Find-FirstString -Object $Raw -Names @("starlink_id", "starlinkId", "device_id", "deviceId", "id")
+    $azimuth = Find-FirstNumber -Object $Raw -Names @("boresightAzimuthDeg", "boresight_azimuth_deg", "azimuth", "azimuthDeg")
+    $elevation = Find-FirstNumber -Object $Raw -Names @("boresightElevationDeg", "boresight_elevation_deg", "elevation", "elevationDeg")
+    $isSnrAboveNoiseFloor = Find-FirstBoolean -Object $Raw -Names @("isSnrAboveNoiseFloor", "is_snr_above_noise_floor")
+    $alerts = Find-FirstObject -Object $Raw -Names @("alerts")
+    $disablementCode = Find-FirstString -Object $Raw -Names @("disablementCode", "disablement_code")
+    $readyStates = Find-FirstObject -Object $Raw -Names @("readyStates", "ready_states")
+    $dlRestrictedReason = Find-FirstString -Object $Raw -Names @("dlBandwidthRestrictedReason", "dl_bandwidth_restricted_reason")
+    $ulRestrictedReason = Find-FirstString -Object $Raw -Names @("ulBandwidthRestrictedReason", "ul_bandwidth_restricted_reason")
+    $dishUptimeS = Find-FirstNumber -Object $Raw -Names @("uptimeS", "uptime_s")
+    $dishBootcount = Find-FirstNumber -Object $Raw -Names @("bootcount", "bootCount", "boot_count")
 
     return [pscustomobject]@{
         Lat = $lat
@@ -1797,9 +1714,41 @@ function Get-StarlinkSnapshot {
         UlBandwidthRestrictedReason = Convert-ToSignalText $ulRestrictedReason
         DishUptimeS = Convert-ToNullableInt64 $dishUptimeS
         DishBootcount = Convert-ToNullableInt $dishBootcount
-        DishGrpcReachable = $dishGrpcReachable
-        StarlinkPowerVerdict = $starlinkPowerVerdict
+        DishGrpcReachable = $DishGrpcReachable
+        StarlinkPowerVerdict = $StarlinkPowerVerdict
     }
+}
+
+function Get-StarlinkSnapshot {
+    param([object]$Config)
+
+    $grpc = Get-GrpcurlCommand -ConfiguredPath $Config.GrpcurlPath
+    if ([string]::IsNullOrWhiteSpace($grpc)) {
+        Write-Log "WARN" "grpcurl not found; attempting built-in gRPC-web fallback at 192.168.100.1."
+        $httpRaw = Get-StarlinkHttpStatus
+        if ($null -ne $httpRaw) {
+            return Convert-StarlinkRawToSnapshot -Raw $httpRaw -DishGrpcReachable $true -StarlinkPowerVerdict "reachable"
+        }
+
+        Write-Log "WARN" "HTTP fallback on 192.168.100.1 unavailable; Starlink dish metrics skipped."
+        return Convert-StarlinkRawToSnapshot -Raw $null -DishGrpcReachable $false -StarlinkPowerVerdict "power_outage_suspected"
+    }
+
+    $locRaw = Invoke-StarlinkGrpc -GrpcurlCommand $grpc -JsonBody '{"get_location":{}}'
+    $statusRaw = Invoke-StarlinkGrpc -GrpcurlCommand $grpc -JsonBody '{"get_status":{}}'
+
+    if ($null -eq $locRaw -and $null -eq $statusRaw) {
+        Write-Log "WARN" "grpcurl returned no usable Starlink payload; attempting built-in gRPC-web fallback at 192.168.100.1."
+        $httpRaw = Get-StarlinkHttpStatus
+        if ($null -ne $httpRaw) {
+            return Convert-StarlinkRawToSnapshot -Raw $httpRaw -DishGrpcReachable $true -StarlinkPowerVerdict "reachable"
+        }
+
+        Write-Log "WARN" "HTTP fallback on 192.168.100.1 unavailable; Starlink dish metrics skipped."
+        return Convert-StarlinkRawToSnapshot -Raw $null -DishGrpcReachable $false -StarlinkPowerVerdict "power_outage_suspected"
+    }
+
+    return Convert-StarlinkRawToSnapshot -Raw @($locRaw, $statusRaw) -DishGrpcReachable $true -StarlinkPowerVerdict "reachable"
 }
 
 function Get-DistanceKm {
