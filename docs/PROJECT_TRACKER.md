@@ -15,7 +15,7 @@ identity, and making the dashboard reflect real site/device health.
 |---|---|---|
 | Backend API | In progress, deployable | Railway backend owns auth, ingest, Graph sync, scoring, weather/orbital intelligence, CSV exports, and WebSocket events |
 | Neon database | In progress, deployable | Migrations include Starlink identity, site master IDs, usage hardening, archive tables, Intune status, and agent health |
-| Windows agent | In progress, test-ready | Agent version 1.2.0 supports gRPC-web fallback, Starlink ID extraction, offline queue, discovery bootstrap, and Intune marker |
+| Windows agent | In progress, test-ready | Agent version 1.3.0 supports gRPC-web fallback, Starlink ID extraction, dish telemetry, offline queue, discovery bootstrap, and Intune marker |
 | Intune deployment | In progress, VM test | Preferred rollout is one remediation package, with discovery remediation for unknown first-boot site |
 | Web dashboard | In progress | Static Vercel/browser dashboard exists and can also be served by backend `/` |
 | Desktop dashboard | In progress | Electron/Vite app has overview, Starlinks, computers, alerts, map, and site detail views |
@@ -41,7 +41,7 @@ identity, and making the dashboard reflect real site/device health.
 |---|---|---|---|
 | M1: Generate real agent token | Site-scoped token for test site 7 is created from production backend | Admin/Codex | Ready |
 | M2: Upload new Intune remediation | Detection uses `packages/agent/detection.ps1`; remediation uses generated `dist/intune/remediation.ps1` with real token | Admin | Ready |
-| M3: Validate VM remediation | VM has install marker, version 1.2.0, scheduled task, fresh heartbeat, queue 0, no `401` | Admin/Codex | Pending |
+| M3: Validate VM remediation | VM has install marker, version 1.3.0, scheduled task, fresh heartbeat, queue 0, no `401` | Admin/Codex | Pending |
 | M4: Confirm platform ingest | Backend receives heartbeat, health, latency, usage, and agent-health from VM | Admin/Codex | Pending |
 | M5: Confirm Starlink site inference | Backend maps Starlink UUID to the correct real site when GPS is unavailable | Admin/Codex | Pending |
 | M6: Expand pilot | Assign remediation to a small school/device group after VM validation | Admin/Ops | Pending |
@@ -111,7 +111,7 @@ identity, and making the dashboard reflect real site/device health.
 | Check | Expected |
 |---|---|
 | Generated remediation has real agent token | `$ApiToken` is not `<PASTE_SITE_AGENT_JWT_HERE>` |
-| Detection script is latest | Requires `install_source.json` and version `1.2.0` |
+| Detection script is latest | Requires `install_source.json` and version `1.3.0` |
 | Legacy Platform Script is unassigned | Only the remediation controls install/update |
 | Assignment is scoped to VM test group | No broad production rollout yet |
 
@@ -133,8 +133,8 @@ Expected:
 | Evidence | Good result |
 |---|---|
 | Install marker | `source = intune_remediation` |
-| Agent version | `agent_version = 1.2.0` |
-| Log startup | `Agent starting version 1.2.0 ... install_source=intune_remediation` |
+| Agent version | `agent_version = 1.3.0` |
+| Log startup | `Agent starting version 1.3.0 ... install_source=intune_remediation` |
 | Auth | No `401 Unauthorized` ingest failures |
 | Queue | `0` after successful replay |
 | Heartbeat | `last_heartbeat.txt` updated after Intune run |
@@ -144,7 +144,7 @@ Expected:
 | Check | Expected |
 |---|---|
 | Device last seen | VM/laptop updates within expected interval |
-| Agent health | Version 1.2.0 and queue depth visible |
+| Agent health | Version 1.3.0 and queue depth visible |
 | Site assignment | Real site is resolved from Starlink UUID/GPS or fallback |
 | Intune metadata | Model, OS, compliance, storage, category, and Intune last sync are populated when Graph sync is configured |
 | Usage | Daily usage appears without duplicate spikes |
@@ -192,7 +192,7 @@ This phase is complete when:
 
 | Criterion | Target |
 |---|---|
-| VM install | VM shows Intune marker and agent version 1.2.0 |
+| VM install | VM shows Intune marker and agent version 1.3.0 |
 | VM ingest | Heartbeat, health, latency, usage, and agent-health ingest without auth failures |
 | Starlink mapping | Starlink UUID resolves the correct site when GPS is unavailable |
 | Dashboard | Operators can see VM/laptop health and site assignment in the platform |
