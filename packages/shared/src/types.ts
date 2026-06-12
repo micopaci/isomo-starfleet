@@ -93,6 +93,7 @@ export interface StarlinkDailyUsage {
 export interface StarlinkTerminal {
   service_line_id: string;
   site_id: number | null;
+  site_name?: string | null;
   nickname: string | null;
   account_id: string | null;
   current_status: 'Online' | 'Offline' | 'Unknown';
@@ -105,6 +106,10 @@ export interface StarlinkTerminal {
     collected_at: string | null;
   } | null;
   latest_ping: StarlinkPingSample | null;
+  usage_trend?: Array<{
+    log_date: string;
+    consumed_gb: number | null;
+  }>;
 }
 
 export interface StarlinkUsageHistoryPoint {
@@ -150,6 +155,11 @@ export interface StarlinkUsageRangeResponse {
     site_id: number | null;
     site_name: string | null;
   }>;
+}
+
+export interface StarlinkTerminalListResponse {
+  days: number;
+  terminals: StarlinkTerminal[];
 }
 
 export interface Device {

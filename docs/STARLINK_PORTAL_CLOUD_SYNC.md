@@ -109,7 +109,12 @@ daily `consumed_gb` records.
 
 ## Dashboard Reads
 
-`GET /api/sites` and `GET /api/sites/:id` include `starlink_terminal`.
+`GET /api/sites` and `GET /api/sites/:id` include `starlink_terminal` when a
+site is linked by `site_id` or can be matched to a Starlink portal nickname.
+
+`GET /api/starlink-terminals?days=45` returns every stored portal terminal with
+current cloud status, latest ping, latest usage, and `usage_trend` for the
+Starlinks table.
 
 `GET /api/sites/:id/starlink-usage` returns:
 

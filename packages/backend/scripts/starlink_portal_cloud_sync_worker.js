@@ -124,19 +124,37 @@ function normalizeNameForMatch(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+function nameAliasesForMatch(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  const aliases = new Set([normalizeNameForMatch(raw)]);
+  if (raw.startsWith('es ')) aliases.add(normalizeNameForMatch(raw.replace(/^es\s+/, 'ecole des sciences ')));
+  if (raw.startsWith('gs ')) aliases.add(normalizeNameForMatch(raw.replace(/^gs\s+/, 'groupe scolaire ')));
+  return [...aliases].filter(Boolean);
+}
+
+function namesLikelyMatch(left, right) {
+  const leftAliases = nameAliasesForMatch(left);
+  const rightAliases = nameAliasesForMatch(right);
+  for (const l of leftAliases) {
+    for (const r of rightAliases) {
+      if (l === r) return true;
+      if (l.length > 5 && r.includes(l)) return true;
+      if (r.length > 5 && l.includes(r)) return true;
+    }
+  }
+  return false;
+}
+
 async function resolveSiteId(client, terminal) {
   if (terminal.site_id != null) return terminal.site_id;
-  const matchKey = normalizeNameForMatch(terminal.nickname);
-  if (!matchKey) return null;
+  if (!terminal.nickname) return null;
   const { rows } = await client.query(
-    `SELECT id
+    `SELECT id, name
      FROM sites
-     WHERE regexp_replace(lower(trim(name)), '[^a-z0-9]+', '', 'g') = $1
-     ORDER BY id
-     LIMIT 1`,
-    [matchKey],
+     ORDER BY id`,
   );
-  return rows[0]?.id || null;
+  const match = rows.find(site => namesLikelyMatch(terminal.nickname, site.name));
+  return match?.id || null;
 }
 
 async function seedConfiguredTerminals(client, inventory) {
