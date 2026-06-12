@@ -955,6 +955,91 @@ body {
   .login-screen { padding: 14px; }
   .login-card { padding: 24px 18px; }
 }
+
+/* ── Triage view ── */
+.vitals {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  margin-bottom: 20px;
+}
+.vitals__item { min-height: 54px; border-right: 1px solid var(--rule); padding: 9px 15px 8px; display: grid; align-content: center; gap: 2px; }
+.vitals__item:last-child { border-right: 0; }
+.vitals__value { font-family: var(--font-mono); font-size: 18px; color: var(--ink); }
+.vitals__value--ok   { color: var(--ok); }
+.vitals__value--warn { color: var(--warn); }
+.vitals__value--bad  { color: var(--bad); }
+.vitals__label { font: 10px var(--font-mono); color: var(--muted); letter-spacing: .11em; text-transform: uppercase; }
+
+.triage-grid { display: grid; grid-template-columns: minmax(0, 1fr) 332px; gap: 20px; align-items: start; }
+.side-stack { display: grid; gap: 14px; }
+
+.work-item {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 170px;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--rule-2);
+}
+.work-item:last-child { border-bottom: 0; }
+.work-item:hover { background: var(--surface-2); }
+.work-item__rank { display: grid; align-content: start; gap: 8px; justify-items: start; }
+.work-item__age { color: var(--muted); font: 11px var(--font-mono); }
+.work-item__site { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
+.work-item__site strong { font: 500 17px var(--font-serif); color: var(--ink); }
+.work-item__site span { color: var(--muted); font-size: 12px; }
+.work-item__problem { margin-top: 4px; color: var(--ink-2); font-size: 13px; }
+.work-item__actions { display: grid; align-content: center; gap: 8px; }
+
+.cause { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; font-family: var(--font-mono); font-size: 11px; }
+.cause span { border: 1px solid var(--rule); padding: 2px 6px; color: var(--ink-2); background: var(--bg); }
+.cause .tone-bad  { color: var(--bad);  border-color: color-mix(in oklch, var(--bad) 52%, var(--rule)); }
+.cause .tone-warn { color: var(--warn); border-color: color-mix(in oklch, var(--warn) 52%, var(--rule)); }
+.cause .tone-ok   { color: var(--ok);   border-color: color-mix(in oklch, var(--ok) 52%, var(--rule)); }
+
+.likely { margin-top: 8px; color: var(--muted); font-size: 12.5px; }
+.likely b { color: var(--accent); font-weight: 600; }
+
+.all-green {
+  margin-top: 14px;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  padding: 11px 13px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.all-green__dot { width: 8px; height: 8px; background: var(--ok); flex: none; }
+.all-green .link { margin-left: auto; white-space: nowrap; }
+
+.feed { display: grid; }
+.feed-row { display: grid; grid-template-columns: 56px 1fr; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--rule-2); }
+.feed-row:last-child { border-bottom: 0; }
+.feed-row__time { font: 11px var(--font-mono); color: var(--muted); }
+.feed-row p { margin: 0; color: var(--ink-2); font-size: 12.5px; }
+.feed-row b { color: var(--ink); font-weight: 600; }
+
+.env-grid { padding: 12px; display: grid; gap: 9px; }
+.env-line { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--rule-2); padding-bottom: 7px; font-size: 12.5px; color: var(--ink-2); }
+.env-line:last-child { border-bottom: 0; padding-bottom: 0; }
+.env-line .mono { color: var(--ink); }
+.env-line .tone-warn { color: var(--warn); }
+.env-line .tone-bad { color: var(--bad); }
+
+@media (max-width: 1120px) {
+  .triage-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .vitals { grid-template-columns: repeat(2, 1fr); }
+  .work-item { grid-template-columns: 1fr; gap: 10px; }
+  .work-item__rank { display: flex; align-items: center; gap: 8px; }
+  .work-item__actions { display: flex; flex-wrap: wrap; }
+  .work-item__actions .btn { flex: 1; min-width: 120px; }
+}
   </style>
 </head>
 <body>
@@ -1526,6 +1611,7 @@ function Search({ value, onChange, placeholder }) {
 }
 
 const Icon = {
+  triage:   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25"><path d="M2 4h12"/><path d="M2 8h8"/><path d="M2 12h5"/><circle cx="12.5" cy="11" r="2.5"/></svg>,
   dish:     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25"><path d="M2 11 Q8 3 14 11"/><path d="M8 11v2.5"/><path d="M5.5 13.5h5"/><circle cx="8" cy="7.5" r="1"/></svg>,
   laptop:   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25"><rect x="2.5" y="3" width="11" height="7.5" rx="0.5"/><path d="M1 12h14"/></svg>,
   user:     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25"><circle cx="8" cy="6" r="2.5"/><path d="M3 13c1-2.5 3-3.5 5-3.5s4 1 5 3.5"/></svg>,
@@ -2045,7 +2131,257 @@ function Campuses({ data }) {
   );
 }
 
-window._VIEWS = { Overview, Starlinks, Computers, Alerts, Campuses, MiniBar, StorageBar, BatteryCell };
+// ── Triage — ranked work queue joining dishes, laptops, alerts, and weather ──
+function buildWorkQueue(data, kp) {
+  const kpIndex = numberOrNull(kp?.k_index);
+  const alertsBySite = new Map();
+  data.ALERTS.filter(a => !a.ack && a.campus != null).forEach(a => {
+    const list = alertsBySite.get(a.campus) || [];
+    list.push(a);
+    alertsBySite.set(a.campus, list);
+  });
+
+  const items = [];
+  data.DISHES.forEach(d => {
+    const rain = numberOrNull(d.rainfall);
+    const cloud = numberOrNull(d.cloudCover);
+    const snr = numberOrNull(d.snr);
+    const obstruction = numberOrNull(d.obstruction);
+    const staleLaptops = (d.totalLaptops || 0) - (d.onlineLaptops || 0);
+    const siteAlerts = alertsBySite.get(d.campus) || [];
+    const wetWeather = (rain != null && rain >= 3) || (kpIndex != null && kpIndex >= 5);
+
+    let severity = null, problem = null, likely = null, primary = null, kind = null;
+    if (d.status === 'offline') {
+      severity = 'critical'; kind = 'link';
+      problem = `Dish unreachable.${d.cloudLastSeen ? ` Last seen in Starlink cloud ${timeAgoStr(d.cloudLastSeen)}.` : ''}${d.totalLaptops ? ` ${d.totalLaptops} laptop${d.totalLaptops === 1 ? '' : 's'} now isolated.` : ''}`;
+      likely = wetWeather
+        ? 'link outage with environmental stress. Reboot is safe after ping fails.'
+        : 'power or link outage at the site. Ping first, reboot if no response.';
+      primary = { label: 'Reboot dish', type: 'reboot_starlink' };
+    } else if (d.status === 'degraded') {
+      severity = (d.score != null && d.score < 40) ? 'critical' : 'warning'; kind = 'link';
+      problem = `Signal quality ${d.score != null ? d.score : 'degraded'}${d.score7d != null ? `, 7-day average ${Math.round(d.score7d)}` : ''}. Dish is online but the link is unstable.`;
+      likely = rain != null && rain >= 3
+        ? 'weather. Monitor for recovery, hold off reboot unless signal keeps falling.'
+        : obstruction != null && obstruction > 5
+          ? 'physical obstruction. Check the dish surroundings before rebooting.'
+          : 'link instability. Run diagnostics before escalation.';
+      primary = { label: 'Diagnostics', type: 'diagnostics' };
+    } else if (d.status === 'online' && d.latency > 200) {
+      severity = 'warning'; kind = 'latency';
+      problem = `Latency is ${d.latency}ms, above the 200ms threshold. Link is up but slow.`;
+      likely = 'satellite pass geometry or congestion. Ping before escalation.';
+      primary = { label: 'Ping dish', type: 'ping_dish' };
+    } else if (d.status === 'online' && d.totalLaptops > 0 && staleLaptops >= Math.max(3, Math.ceil(d.totalLaptops * 0.4))) {
+      severity = 'warning'; kind = 'devices';
+      problem = `${staleLaptops} of ${d.totalLaptops} laptops have not checked in. Dish is healthy — device issue, not network.`;
+      likely = 'laptop cart offline or Windows updates stalled.';
+      primary = { label: 'Push update', type: 'push_update' };
+    } else if (siteAlerts.length) {
+      const top = siteAlerts[0];
+      severity = top.severity === 'critical' ? 'critical' : top.severity === 'warning' ? 'warning' : 'info';
+      kind = 'alert';
+      problem = top.message;
+      likely = null;
+      primary = { label: 'Diagnostics', type: 'diagnostics' };
+    }
+    if (!severity) return;
+
+    const causes = [];
+    causes.push(d.status === 'offline'
+      ? { label: 'link down', tone: 'bad' }
+      : d.status === 'degraded'
+        ? { label: 'link unstable', tone: 'warn' }
+        : { label: 'dish online', tone: 'ok' });
+    if (rain != null) causes.push({ label: `rain ${rain.toFixed(1)}mm`, tone: rain >= 5 ? 'warn' : null });
+    if (kpIndex != null && kpIndex >= 4 && kind !== 'devices') causes.push({ label: `Kp ${kpIndex}${kpIndex >= 5 ? ' storm' : ''}`, tone: kpIndex >= 5 ? 'warn' : null });
+    if (cloud != null && cloud >= 90) causes.push({ label: `cloud ${Math.round(cloud)}%`, tone: null });
+    if (snr != null && snr > 0 && snr < 5) causes.push({ label: `snr ${snr.toFixed(1)}`, tone: 'warn' });
+    if (obstruction != null && obstruction > 0) causes.push({ label: `obs ${obstruction.toFixed(1)}%`, tone: obstruction > 5 ? 'warn' : null });
+    if (d.totalLaptops > 0) causes.push({ label: `laptops ${d.onlineLaptops}/${d.totalLaptops}`, tone: kind === 'devices' ? 'warn' : null });
+    if (d.cloudPingMs != null) causes.push({ label: `ping ${Math.round(d.cloudPingMs)}ms`, tone: d.cloudPingMs > 100 ? 'warn' : null });
+
+    const backendAlert = siteAlerts.find(a => a.backendId) || null;
+    items.push({
+      dish: d, severity, kind, problem, likely, primary, causes,
+      weather: kind !== 'devices' && wetWeather,
+      age: backendAlert ? backendAlert.ts : siteAlerts[0]?.ts || 'now',
+      alert: backendAlert,
+      rank: (severity === 'critical' ? 0 : severity === 'warning' ? 1 : 2),
+      score: d.score ?? 100,
+    });
+  });
+
+  return items.sort((a, b) => a.rank - b.rank || a.score - b.score);
+}
+
+function Triage({ data, kp, onOpenDish, onJump, onAckAlert, ackBusy, onAssignAlert, assignBusy, onPushUpdate, pushBusy, onRunDiagnostics }) {
+  const [filter, setFilter] = uS('open');
+  const [busyKey, setBusyKey] = uS(null);
+  const queue = uM(() => buildWorkQueue(data, kp), [data, kp]);
+  const rows = queue.filter(it => filter === 'critical' ? it.severity === 'critical' : filter === 'weather' ? it.weather : true);
+
+  const kpIndex = numberOrNull(kp?.k_index);
+  const online = data.DISHES.filter(d => d.status === 'online').length;
+  const criticalNow = queue.filter(it => it.severity === 'critical').length;
+  const hourAgo = Date.now() - 3600e3;
+  const devicesLastHour = data.COMPUTERS.filter(c => c.lastSeenTs != null && c.lastSeenTs >= hourAgo).length;
+  const latDishes = data.DISHES.filter(d => d.latency > 0);
+  const avgLatency = latDishes.length ? Math.round(latDishes.reduce((s, d) => s + d.latency, 0) / latDishes.length) : null;
+  const upDishes = data.DISHES.filter(d => d.uptime != null);
+  const fleetUptime = upDishes.length ? (upDishes.reduce((s, d) => s + d.uptime, 0) / upDishes.length).toFixed(1) : null;
+  const queuedSites = new Set(queue.map(it => it.dish.campus));
+  const healthySites = data.DISHES.filter(d => !queuedSites.has(d.campus)).length;
+  const rainySites = data.DISHES.filter(d => numberOrNull(d.rainfall) >= 5).length;
+  const obsDishes = data.DISHES.map(d => numberOrNull(d.obstruction)).filter(v => v != null);
+  const avgObstruction = obsDishes.length ? (obsDishes.reduce((s, v) => s + v, 0) / obsDishes.length).toFixed(1) : null;
+  const cloudDishes = data.DISHES.map(d => numberOrNull(d.cloudCover)).filter(v => v != null);
+  const avgCloud = cloudDishes.length ? Math.round(cloudDishes.reduce((s, v) => s + v, 0) / cloudDishes.length) : null;
+  const feed = data.ALERTS.slice(0, 8);
+
+  async function trigger(item) {
+    const { dish, primary } = item;
+    const key = `${dish.campus}:${primary.type}`;
+    if (busyKey) return;
+    if (primary.type === 'push_update') { onPushUpdate(dish.campus); return; }
+    if (primary.type === 'reboot_starlink' && !confirm(`Reboot the Starlink dish at ${dish.name}? This will interrupt connectivity for ~2 minutes.`)) return;
+    setBusyKey(key);
+    try {
+      const res = await window._API.apiPost('/api/trigger/site', { site_id: dish._siteId || dish.campus, type: primary.type });
+      alert(`${primary.label} queued for ${dish.name} on ${res.count} device${res.count === 1 ? '' : 's'}.`);
+    } catch (err) {
+      alert(`Failed: ${err.message || err}`);
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function ping(item) {
+    const key = `${item.dish.campus}:ping_dish`;
+    if (busyKey) return;
+    setBusyKey(key);
+    try {
+      const res = await window._API.apiPost('/api/trigger/site', { site_id: item.dish._siteId || item.dish.campus, type: 'ping_dish' });
+      alert(`Dish ping queued for ${item.dish.name} on ${res.count} device${res.count === 1 ? '' : 's'}.`);
+    } catch (err) {
+      alert(`Failed: ${err.message || err}`);
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  return (
+    <div className="view">
+      <div className="vitals" aria-label="Fleet vital signs">
+        <div className="vitals__item"><div className={`vitals__value ${online === data.DISHES.length ? 'vitals__value--ok' : ''}`}>{online}/{data.DISHES.length}</div><div className="vitals__label">sites working</div></div>
+        <div className="vitals__item"><div className={`vitals__value ${criticalNow ? 'vitals__value--bad' : 'vitals__value--ok'}`}>{criticalNow}</div><div className="vitals__label">critical now</div></div>
+        <div className="vitals__item"><div className="vitals__value">{devicesLastHour}/{data.COMPUTERS.length}</div><div className="vitals__label">devices last hour</div></div>
+        <div className="vitals__item"><div className={`vitals__value ${kpIndex == null ? '' : kpIndex >= 5 ? 'vitals__value--bad' : kpIndex >= 4 ? 'vitals__value--warn' : 'vitals__value--ok'}`}>{kpIndex == null ? '—' : `Kp ${kpIndex}`}</div><div className="vitals__label">environment risk</div></div>
+      </div>
+
+      <div className="view__header">
+        <div>
+          <h1 className="view__title">{queue.length ? `${queue.length} thing${queue.length === 1 ? '' : 's'} need${queue.length === 1 ? 's' : ''} a human.` : 'All clear. Nothing needs a human.'}</h1>
+          <p className="view__lede">Ranked by operational risk. Each item joins site connectivity, laptops, alerts, and environmental cause in one row.</p>
+        </div>
+        <div className="view__actions">
+          <Segmented value={filter} onChange={setFilter} options={[
+            { id: 'open', label: 'Open', count: queue.length },
+            { id: 'critical', label: 'Critical', count: queue.filter(it => it.severity === 'critical').length },
+            { id: 'weather', label: 'Weather', count: queue.filter(it => it.weather).length },
+          ]} />
+          {onRunDiagnostics && <button className="btn btn--primary" onClick={onRunDiagnostics}>Run sweep</button>}
+        </div>
+      </div>
+
+      <div className="triage-grid">
+        <div>
+          <section className="panel panel--flush" aria-label="Prioritized worklist">
+            <header className="panel__header"><h2 className="panel__title">Work queue</h2><span className="muted mono">sorted by impact, then signal</span></header>
+            <div>
+              {rows.map(item => {
+                const d = item.dish;
+                const busy = busyKey && busyKey.startsWith(`${d.campus}:`);
+                return (
+                  <article className="work-item" key={`${d.campus}-${item.kind}`}>
+                    <div className="work-item__rank">
+                      <span className={`sev sev--${item.severity}`}>{item.severity === 'critical' ? 'P1' : item.severity === 'warning' ? 'P2' : 'P3'}</span>
+                      <span className="work-item__age">{item.age}</span>
+                    </div>
+                    <div>
+                      <div className="work-item__site"><strong>{d.name}</strong><span>{campusName(data, d.campus) !== d.name ? campusName(data, d.campus) : ''}</span></div>
+                      <div className="work-item__problem">{item.problem}</div>
+                      <div className="cause">
+                        {item.causes.map((c, i) => <span key={i} className={c.tone ? `tone-${c.tone}` : ''}>{c.label}</span>)}
+                      </div>
+                      {item.likely && <div className="likely"><b>Probable cause:</b> {item.likely}</div>}
+                    </div>
+                    <div className="work-item__actions">
+                      <button className="btn btn--sm btn--primary" disabled={!!busy || (item.primary.type === 'push_update' && pushBusy)} onClick={() => trigger(item)}>
+                        {busy && busyKey.endsWith(item.primary.type) ? 'Queuing…' : item.primary.label}
+                      </button>
+                      {item.primary.type !== 'ping_dish' && (
+                        <button className="btn btn--sm" disabled={!!busy} onClick={() => ping(item)}>
+                          {busy && busyKey.endsWith('ping_dish') ? 'Queuing…' : 'Ping dish'}
+                        </button>
+                      )}
+                      <button className="btn btn--sm" onClick={() => onOpenDish(d)}>Open site</button>
+                      {item.alert && (
+                        <button className="btn btn--sm" disabled={ackBusy === item.alert.id} onClick={() => onAckAlert(item.alert)}>
+                          {ackBusy === item.alert.id ? 'Saving…' : 'Ack'}
+                        </button>
+                      )}
+                      {item.alert && (
+                        <button className="btn btn--sm" disabled={assignBusy === item.alert.id} onClick={() => onAssignAlert(item.alert)}>
+                          {assignBusy === item.alert.id ? 'Saving…' : item.alert.assignee ? 'Reassign' : 'Assign'}
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+              {rows.length === 0 && <div className="empty">Nothing in the queue. Inbox zero.</div>}
+            </div>
+          </section>
+
+          <div className="all-green">
+            <span className="all-green__dot" />
+            <span><b>{healthySites} site{healthySites === 1 ? '' : 's'} healthy</b>, {devicesLastHour} laptops checked in{avgLatency != null ? `, avg latency ${avgLatency}ms` : ''}{fleetUptime != null ? `, uptime ${fleetUptime}%` : ''}</span>
+            <button className="link" onClick={() => onJump('starlinks')}>Show all sites {Icon.arrow}</button>
+          </div>
+        </div>
+
+        <aside className="side-stack">
+          <section className="panel panel--flush">
+            <header className="panel__header"><h2 className="panel__title">What changed</h2><span className="muted mono">latest alerts</span></header>
+            <div className="feed">
+              {feed.map(a => (
+                <div className="feed-row" key={a.id}>
+                  <span className="feed-row__time">{a.ts}</span>
+                  <p><b>{a.siteName || campusName(data, a.campus)}</b> — {a.title || a.message}</p>
+                </div>
+              ))}
+              {feed.length === 0 && <div className="empty">No recent events.</div>}
+            </div>
+          </section>
+
+          <section className="panel panel--flush">
+            <header className="panel__header"><h2 className="panel__title">Environment</h2><span className="muted mono">fleet-wide</span></header>
+            <div className="env-grid">
+              <div className="env-line"><span>Geomagnetic Kp</span><span className={`mono ${kpIndex == null ? '' : kpIndex >= 5 ? 'tone-bad' : kpIndex >= 4 ? 'tone-warn' : ''}`}>{kpIndex == null ? '—' : `${kpIndex}${kpIndex >= 5 ? ' storm' : ''}`}</span></div>
+              <div className="env-line"><span>Sites with rain over 5mm</span><span className={`mono ${rainySites ? 'tone-warn' : ''}`}>{rainySites}</span></div>
+              <div className="env-line"><span>Avg obstruction</span><span className="mono">{avgObstruction != null ? `${avgObstruction}%` : '—'}</span></div>
+              <div className="env-line"><span>Avg cloud cover</span><span className="mono">{avgCloud != null ? `${avgCloud}%` : '—'}</span></div>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+window._VIEWS = { Overview, Starlinks, Computers, Alerts, Campuses, Triage, MiniBar, StorageBar, BatteryCell };
   </script>
 
   <!-- ── Drawer ── -->
@@ -2764,14 +3100,14 @@ window._MapView = MapView;
   <script type="text/babel">
 const { useState: aUS, useEffect: aUE } = React;
 const { Icon: AppIcon, usePersisted } = window._SF;
-const { Overview, Starlinks, Computers, Alerts, Campuses } = window._VIEWS;
+const { Overview, Starlinks, Computers, Alerts, Campuses, Triage } = window._VIEWS;
 const DishDetail = window._DishDetail;
 const MapView = window._MapView;
 
 const TWEAK_DEFAULTS = {
   theme: 'dark', accent: 'signal', typePairing: 'serif-sans',
   density: 'dense', sidebar: 'wide', monochromeStatus: true,
-  landingTab: 'overview', showTopPulse: true,
+  landingTab: 'triage', showTopPulse: true,
 };
 const ACCENTS = {
   signal:     { light:'#24825f', dark:'#34b483', soft_l:'#d7eadf', soft_d:'#15382a', ink_l:'#0e3d2b', ink_d:'#10241b' },
@@ -2883,7 +3219,15 @@ function App() {
   const [pushError, setPushError] = aUS(null);
   const [tweaks, setTweaks] = usePersisted('starfleet.tweaks', TWEAK_DEFAULTS);
   const [tweaksOpen, setTweaksOpen] = aUS(false);
-  const [tab, setTab] = usePersisted('starfleet.tab', tweaks.landingTab || 'overview');
+  const [tab, setTab] = usePersisted('starfleet.tab', tweaks.landingTab || 'triage');
+
+  // One-time switch to the new Triage home for users with a persisted tab
+  aUE(() => {
+    if (!localStorage.getItem('sf_triage_intro')) {
+      localStorage.setItem('sf_triage_intro', '1');
+      setTab('triage');
+    }
+  }, []);
   const [campus, setCampus] = aUS('all');
   const [dish, setDish] = aUS(null);
   const [alertRows, setAlertRows] = aUS([]);
@@ -3071,7 +3415,7 @@ function App() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       const shortcuts = {
-        o: 'overview', s: 'starlinks', c: 'computers',
+        t: 'triage', o: 'overview', s: 'starlinks', c: 'computers',
         a: 'alerts', p: 'campuses', m: 'map',
       };
       if (shortcuts[k]) { e.preventDefault(); setTab(shortcuts[k]); return; }
@@ -3116,6 +3460,7 @@ function App() {
         <div>
           <div className="side__section-label side__label">Operations</div>
           <nav className="nav">
+            <NavItem icon={AppIcon.triage}   label="Triage"    active={tab==='triage'}    onClick={()=>setTab('triage')}    count={openAlertCount||'—'} />
             <NavItem icon={AppIcon.overview} label="Overview"  active={tab==='overview'}  onClick={()=>setTab('overview')} />
             <NavItem icon={AppIcon.dish}     label="Starlinks" active={tab==='starlinks'} onClick={()=>setTab('starlinks')} count={`${onlineDishes}/${liveData.DISHES.length}`} />
             <NavItem icon={AppIcon.laptop}   label="Computers" active={tab==='computers'} onClick={()=>setTab('computers')} count={liveData.COMPUTERS.length} />
@@ -3204,6 +3549,21 @@ function App() {
           </div>
         )}
 
+        {tab==='triage'    && (
+          <Triage
+            data={liveData}
+            kp={kpData}
+            onOpenDish={setDish}
+            onJump={setTab}
+            onAckAlert={acknowledgeAlert}
+            ackBusy={alertAckBusy}
+            onAssignAlert={assignAlert}
+            assignBusy={alertAssignBusy}
+            onPushUpdate={pushLaptopUpdate}
+            pushBusy={pushBusy}
+            onRunDiagnostics={isAdmin ? runFleetDiagnostics : null}
+          />
+        )}
         {tab==='overview'  && <Overview  data={liveData} ui={tweaks} onOpenDish={setDish} onJump={setTab} onRunDiagnostics={isAdmin ? runFleetDiagnostics : null} />}
         {tab==='starlinks' && <Starlinks data={liveData} filter={{campus}} onOpenDish={setDish} />}
         {tab==='computers' && (
@@ -3222,6 +3582,7 @@ function App() {
       </main>
 
       <nav className="bottom-nav" aria-label="Primary navigation">
+        <BottomNavItem icon={AppIcon.triage} label="Triage" active={tab==='triage'} onClick={()=>setTab('triage')} count={openAlertCount || null} />
         <BottomNavItem icon={AppIcon.overview} label="Overview" active={tab==='overview'} onClick={()=>setTab('overview')} />
         <BottomNavItem icon={AppIcon.dish} label="Starlinks" active={tab==='starlinks'} onClick={()=>setTab('starlinks')} />
         <BottomNavItem icon={AppIcon.laptop} label="Computers" active={tab==='computers'} onClick={()=>setTab('computers')} />
