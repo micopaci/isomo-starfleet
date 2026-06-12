@@ -109,6 +109,57 @@ function mapDailyUsageRow(row) {
   };
 }
 
+function mapStarlinkTerminalRow(row) {
+  if (!row) return null;
+  const consumedGb = row.latest_consumed_gb == null ? null : Number(row.latest_consumed_gb);
+  return {
+    service_line_id: row.service_line_id,
+    site_id: row.site_id == null ? null : Number(row.site_id),
+    nickname: row.nickname || null,
+    account_id: row.account_id || null,
+    current_status: row.current_status || 'Unknown',
+    last_seen_utc: row.last_seen_utc || null,
+    billing_cycle_start: row.billing_cycle_start || null,
+    status_updated_at: row.status_updated_at || null,
+    latest_usage: row.latest_log_date
+      ? {
+          log_date: row.latest_log_date,
+          consumed_gb: consumedGb,
+          collected_at: row.latest_collected_at || null,
+        }
+      : null,
+    latest_ping: row.latest_ping_recorded_at
+      ? {
+          recorded_at: row.latest_ping_recorded_at,
+          current_status: row.latest_ping_status || row.current_status || 'Unknown',
+          is_offline: row.latest_ping_is_offline,
+          ping_latency_ms: row.latest_ping_latency_ms == null ? null : Number(row.latest_ping_latency_ms),
+          ping_drop_pct: row.latest_ping_drop_pct == null ? null : Number(row.latest_ping_drop_pct),
+          last_seen_utc: row.latest_ping_last_seen_utc || null,
+        }
+      : null,
+  };
+}
+
+function dailyUsageFromTerminal(terminal) {
+  const latest = terminal?.latest_usage;
+  if (!latest || latest.consumed_gb == null) return null;
+  const bytes = Math.round(Number(latest.consumed_gb) * 1024 * 1024 * 1024);
+  return {
+    date: latest.log_date,
+    bytes_total: bytes,
+    gb_total: Math.round(Number(latest.consumed_gb) * 100) / 100,
+    source: 'starlink_telemetryagg',
+    confidence: 'portal_total',
+    service_line_id: terminal.service_line_id,
+    starlink_identifier: terminal.nickname || null,
+    billing_period_start: terminal.billing_cycle_start || null,
+    billing_period_end: null,
+    scraped_at: latest.collected_at || null,
+    uploaded_at: latest.collected_at || null,
+  };
+}
+
 function getAgentTokenSignOptions() {
   if (process.env.JWT_PRIVATE_KEY && process.env.JWT_PRIVATE_KEY.startsWith('-----BEGIN')) {
     return { key: process.env.JWT_PRIVATE_KEY, options: { algorithm: 'RS256' } };
@@ -561,6 +612,43 @@ router.get('/sites', async (req, res, next) => {
        WHERE date >= CURRENT_DATE - INTERVAL '45 days'
        ORDER BY site_id, date DESC`
     );
+    const terminalRes = await pool.query(
+      `SELECT DISTINCT ON (st.site_id)
+              st.site_id,
+              st.service_line_id,
+              st.nickname,
+              st.account_id,
+              st.current_status,
+              st.last_seen_utc,
+              st.billing_cycle_start::text AS billing_cycle_start,
+              st.status_updated_at,
+              latest.log_date::text AS latest_log_date,
+              latest.consumed_gb AS latest_consumed_gb,
+              latest.collected_at AS latest_collected_at,
+              latest_ping.recorded_at AS latest_ping_recorded_at,
+              latest_ping.current_status AS latest_ping_status,
+              latest_ping.is_offline AS latest_ping_is_offline,
+              latest_ping.ping_latency_ms AS latest_ping_latency_ms,
+              latest_ping.ping_drop_pct AS latest_ping_drop_pct,
+              latest_ping.last_seen_utc AS latest_ping_last_seen_utc
+       FROM starlink_terminals st
+       LEFT JOIN LATERAL (
+         SELECT log_date, consumed_gb, collected_at
+         FROM starlink_usage_history
+         WHERE service_line_id = st.service_line_id
+         ORDER BY log_date DESC
+         LIMIT 1
+       ) latest ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT recorded_at, current_status, is_offline, ping_latency_ms, ping_drop_pct, last_seen_utc
+         FROM starlink_ping_samples
+         WHERE service_line_id = st.service_line_id
+         ORDER BY recorded_at DESC
+         LIMIT 1
+       ) latest_ping ON TRUE
+       WHERE st.site_id IS NOT NULL
+       ORDER BY st.site_id, st.status_updated_at DESC NULLS LAST, st.updated_at DESC`
+    );
     const uptimeBy  = Object.fromEntries(uptimeRes.rows.map(r => [r.site_id, Number(r.uptime_pct)]));
     const dataBy    = Object.fromEntries(dataRes.rows.map(r => [r.site_id, Number(r.data_mb_today)]));
     const weatherBy = Object.fromEntries(weatherRes.rows.map(r => [r.site_id, {
@@ -569,9 +657,11 @@ router.get('/sites', async (req, res, next) => {
       cloud_cover_pct: r.cloud_cover_pct == null ? null : Number(r.cloud_cover_pct),
     }]));
     const dailyUsageBy = Object.fromEntries(dailyUsageRes.rows.map(r => [r.site_id, mapDailyUsageRow(r)]));
+    const terminalBy = Object.fromEntries(terminalRes.rows.map(r => [r.site_id, mapStarlinkTerminalRow(r)]));
 
     const sites = await Promise.all(sitesRes.rows.map(async (site) => {
       const signal = await getSiteSignal(site.id);
+      const starlinkTerminal = terminalBy[site.id] ?? null;
 
       const laptopsRes = await pool.query(
         `SELECT COUNT(*) AS total,
@@ -607,7 +697,8 @@ router.get('/sites', async (req, res, next) => {
         download_mbps:  signal?.download_mbps ?? null,
         upload_mbps:    signal?.upload_mbps   ?? null,
         data_mb_today:  dataBy[site.id]   ?? 0,
-        starlink_usage_daily: dailyUsageBy[site.id] ?? null,
+        starlink_terminal: starlinkTerminal,
+        starlink_usage_daily: dailyUsageBy[site.id] ?? dailyUsageFromTerminal(starlinkTerminal),
         uptime_pct:     uptimeBy[site.id] ?? null,
         weather:        weatherBy[site.id] ?? null,
         weather_predictor: buildWeatherPredictor(weatherBy[site.id] ?? null),
@@ -647,6 +738,46 @@ router.get('/sites/:id', async (req, res, next) => {
        LIMIT 1`,
       [id]
     );
+    const terminalRes = await pool.query(
+      `SELECT
+              st.site_id,
+              st.service_line_id,
+              st.nickname,
+              st.account_id,
+              st.current_status,
+              st.last_seen_utc,
+              st.billing_cycle_start::text AS billing_cycle_start,
+              st.status_updated_at,
+              latest.log_date::text AS latest_log_date,
+              latest.consumed_gb AS latest_consumed_gb,
+              latest.collected_at AS latest_collected_at,
+              latest_ping.recorded_at AS latest_ping_recorded_at,
+              latest_ping.current_status AS latest_ping_status,
+              latest_ping.is_offline AS latest_ping_is_offline,
+              latest_ping.ping_latency_ms AS latest_ping_latency_ms,
+              latest_ping.ping_drop_pct AS latest_ping_drop_pct,
+              latest_ping.last_seen_utc AS latest_ping_last_seen_utc
+       FROM starlink_terminals st
+       LEFT JOIN LATERAL (
+         SELECT log_date, consumed_gb, collected_at
+         FROM starlink_usage_history
+         WHERE service_line_id = st.service_line_id
+         ORDER BY log_date DESC
+         LIMIT 1
+       ) latest ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT recorded_at, current_status, is_offline, ping_latency_ms, ping_drop_pct, last_seen_utc
+         FROM starlink_ping_samples
+         WHERE service_line_id = st.service_line_id
+         ORDER BY recorded_at DESC
+         LIMIT 1
+       ) latest_ping ON TRUE
+       WHERE st.site_id = $1
+       ORDER BY st.status_updated_at DESC NULLS LAST, st.updated_at DESC
+       LIMIT 1`,
+      [id]
+    );
+    const starlinkTerminal = mapStarlinkTerminalRow(terminalRes.rows[0]);
     const weather = weatherRes.rows[0]
       ? {
           date: weatherRes.rows[0].date,
@@ -702,7 +833,8 @@ router.get('/sites/:id', async (req, res, next) => {
       signal,
       weather,
       weather_predictor: weatherPredictor,
-      starlink_usage_daily: mapDailyUsageRow(dailyUsageRes.rows[0]),
+      starlink_terminal: starlinkTerminal,
+      starlink_usage_daily: mapDailyUsageRow(dailyUsageRes.rows[0]) ?? dailyUsageFromTerminal(starlinkTerminal),
       online_laptops: parseInt(laptopsRes.rows[0].online),
       total_laptops: parseInt(laptopsRes.rows[0].total),
       online_intune_laptops: parseInt(laptopsRes.rows[0].online_intune),
@@ -715,6 +847,217 @@ router.get('/sites/:id', async (req, res, next) => {
       upload_mbps: signal?.upload_mbps ?? null,
       devices: devicesRes.rows,
     });
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/sites/:id/starlink-usage ────────────────────────────────────────
+// Returns direct Starlink telemetryagg daily usage for the linked service line.
+router.get('/sites/:id/starlink-usage', async (req, res, next) => {
+  try {
+    const siteId = Number(req.params.id);
+    const days = Math.max(1, Math.min(Number(req.query.days || 62), 366));
+    if (!Number.isInteger(siteId) || siteId <= 0) {
+      return res.status(400).json({ error: 'Invalid site id' });
+    }
+
+    const terminalRes = await pool.query(
+      `SELECT
+              st.site_id,
+              st.service_line_id,
+              st.nickname,
+              st.account_id,
+              st.current_status,
+              st.last_seen_utc,
+              st.billing_cycle_start::text AS billing_cycle_start,
+              st.status_updated_at,
+              latest.log_date::text AS latest_log_date,
+              latest.consumed_gb AS latest_consumed_gb,
+              latest.collected_at AS latest_collected_at,
+              latest_ping.recorded_at AS latest_ping_recorded_at,
+              latest_ping.current_status AS latest_ping_status,
+              latest_ping.is_offline AS latest_ping_is_offline,
+              latest_ping.ping_latency_ms AS latest_ping_latency_ms,
+              latest_ping.ping_drop_pct AS latest_ping_drop_pct,
+              latest_ping.last_seen_utc AS latest_ping_last_seen_utc
+       FROM starlink_terminals st
+       LEFT JOIN LATERAL (
+         SELECT log_date, consumed_gb, collected_at
+         FROM starlink_usage_history
+         WHERE service_line_id = st.service_line_id
+         ORDER BY log_date DESC
+         LIMIT 1
+       ) latest ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT recorded_at, current_status, is_offline, ping_latency_ms, ping_drop_pct, last_seen_utc
+         FROM starlink_ping_samples
+         WHERE service_line_id = st.service_line_id
+         ORDER BY recorded_at DESC
+         LIMIT 1
+       ) latest_ping ON TRUE
+       WHERE st.site_id = $1
+       ORDER BY st.status_updated_at DESC NULLS LAST, st.updated_at DESC
+       LIMIT 1`,
+      [siteId]
+    );
+    const terminal = mapStarlinkTerminalRow(terminalRes.rows[0]);
+    if (!terminal) {
+      return res.json({ terminal: null, active_billing_cycle_start: null, history: [] });
+    }
+
+    const requestedStart = parseDateOnly(req.query.from);
+    const activeStart = requestedStart || terminal.billing_cycle_start || null;
+    const params = [terminal.service_line_id];
+    const windowWhere = activeStart
+      ? `AND log_date >= $2::date`
+      : `AND log_date >= CURRENT_DATE - ($2::int * INTERVAL '1 day')`;
+    params.push(activeStart || days);
+
+    const { rows } = await pool.query(
+      `SELECT log_date::text AS log_date,
+              consumed_gb,
+              account_id,
+              billing_cycle_start::text AS billing_cycle_start,
+              collected_at,
+              metadata
+       FROM starlink_usage_history
+       WHERE service_line_id = $1
+         ${windowWhere}
+         AND log_date <= CURRENT_DATE
+       ORDER BY log_date ASC`,
+      params
+    );
+
+    res.json({
+      terminal,
+      active_billing_cycle_start: activeStart,
+      history: rows.map(row => ({
+        log_date: row.log_date,
+        consumed_gb: row.consumed_gb == null ? null : Number(row.consumed_gb),
+        account_id: row.account_id || null,
+        billing_cycle_start: row.billing_cycle_start || null,
+        collected_at: row.collected_at || null,
+        metadata: row.metadata || {},
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/starlink-usage?from=YYYY-MM-DD&to=YYYY-MM-DD[&service_line_id=X]
+// Returns direct Starlink telemetryagg usage by date for one service line or all.
+router.get('/starlink-usage', async (req, res, next) => {
+  try {
+    const from = parseDateOnly(req.query.from) || parseDateOnly(req.query.start);
+    const to = parseDateOnly(req.query.to) || parseDateOnly(req.query.end);
+    const serviceLineId = req.query.service_line_id || req.query.serviceLineId || null;
+    if (!from || !to) {
+      return res.status(400).json({ error: 'from and to are required as YYYY-MM-DD' });
+    }
+
+    const params = [from, to];
+    let serviceFilter = '';
+    if (serviceLineId) {
+      params.push(String(serviceLineId));
+      serviceFilter = `AND h.service_line_id = $${params.length}`;
+    }
+
+    const { rows } = await pool.query(
+      `SELECT h.log_date::text AS log_date,
+              h.service_line_id,
+              h.consumed_gb,
+              h.account_id,
+              h.billing_cycle_start::text AS billing_cycle_start,
+              h.collected_at,
+              st.nickname,
+              st.site_id,
+              s.name AS site_name
+       FROM starlink_usage_history h
+       JOIN starlink_terminals st ON st.service_line_id = h.service_line_id
+       LEFT JOIN sites s ON s.id = st.site_id
+       WHERE h.log_date >= $1::date
+         AND h.log_date <= $2::date
+         ${serviceFilter}
+       ORDER BY h.log_date ASC, COALESCE(s.name, st.nickname, h.service_line_id) ASC`,
+      params
+    );
+
+    res.json({
+      from,
+      to,
+      service_line_id: serviceLineId,
+      rows: rows.map(row => ({
+        log_date: row.log_date,
+        service_line_id: row.service_line_id,
+        nickname: row.nickname || null,
+        site_id: row.site_id == null ? null : Number(row.site_id),
+        site_name: row.site_name || null,
+        consumed_gb: row.consumed_gb == null ? null : Number(row.consumed_gb),
+        account_id: row.account_id || null,
+        billing_cycle_start: row.billing_cycle_start || null,
+        collected_at: row.collected_at || null,
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
+function mapPingSampleRow(row) {
+  return {
+    recorded_at: row.recorded_at,
+    service_line_id: row.service_line_id,
+    site_id: row.site_id == null ? null : Number(row.site_id),
+    current_status: row.current_status || 'Unknown',
+    is_offline: row.is_offline,
+    ping_latency_ms: row.ping_latency_ms == null ? null : Number(row.ping_latency_ms),
+    ping_drop_pct: row.ping_drop_pct == null ? null : Number(row.ping_drop_pct),
+    last_seen_utc: row.last_seen_utc || null,
+  };
+}
+
+async function getPingSamples({ serviceLineId, siteId, hours }) {
+  const params = [];
+  let where = '';
+  if (serviceLineId) {
+    params.push(String(serviceLineId));
+    where = `service_line_id = $${params.length}`;
+  } else {
+    params.push(Number(siteId));
+    where = `site_id = $${params.length}`;
+  }
+  params.push(hours);
+  const { rows } = await pool.query(
+    `SELECT recorded_at, service_line_id, site_id, current_status, is_offline,
+            ping_latency_ms, ping_drop_pct, last_seen_utc
+     FROM starlink_ping_samples
+     WHERE ${where}
+       AND recorded_at >= NOW() - ($${params.length}::int * INTERVAL '1 hour')
+     ORDER BY recorded_at ASC`,
+    params
+  );
+  return rows.map(mapPingSampleRow);
+}
+
+// ── GET /api/sites/:id/starlink-ping?hours=24 ────────────────────────────────
+router.get('/sites/:id/starlink-ping', async (req, res, next) => {
+  try {
+    const siteId = Number(req.params.id);
+    const hours = Math.max(1, Math.min(Number(req.query.hours || 24), 168));
+    if (!Number.isInteger(siteId) || siteId <= 0) {
+      return res.status(400).json({ error: 'Invalid site id' });
+    }
+    const samples = await getPingSamples({ siteId, hours });
+    res.json({ site_id: siteId, hours, samples });
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/starlink-terminals/:serviceLineId/ping?hours=24 ────────────────
+router.get('/starlink-terminals/:serviceLineId/ping', async (req, res, next) => {
+  try {
+    const serviceLineId = String(req.params.serviceLineId || '').trim();
+    const hours = Math.max(1, Math.min(Number(req.query.hours || 24), 168));
+    if (!serviceLineId) {
+      return res.status(400).json({ error: 'serviceLineId is required' });
+    }
+    const samples = await getPingSamples({ serviceLineId, hours });
+    res.json({ service_line_id: serviceLineId, hours, samples });
   } catch (err) { next(err); }
 });
 

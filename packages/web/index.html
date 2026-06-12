@@ -305,7 +305,7 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 .table-scroll .tbl { min-width: 720px; }
-.table-scroll .tbl--data { min-width: 980px; }
+.table-scroll .tbl--data { min-width: 1120px; }
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl th {
   text-align: left;
@@ -540,6 +540,12 @@ body {
 .drawer-list li:last-child { border-bottom: 0; }
 .chart { background: var(--surface); border: 1px solid var(--rule); padding: 12px 14px; }
 .chart svg { width: 100%; height: 64px; color: var(--accent); }
+.chart--usage svg { height: 118px; color: var(--accent); }
+.usage-bars__bar { fill: currentColor; opacity: .86; }
+.usage-bars__bar--muted { opacity: .22; }
+.usage-bars__grid { stroke: var(--rule-2); stroke-width: 1; }
+.usage-bars__label { fill: var(--muted); font-family: var(--font-mono); font-size: 10px; }
+.usage-bars__total { font-family: var(--font-serif); font-size: 20px; color: var(--ink); }
 .chart__axis { display: flex; justify-content: space-between; font-size: 10px; margin-top: 6px; }
 .drawer__foot { display: flex; gap: 8px; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--rule); }
 
@@ -1126,6 +1132,12 @@ function formatMbps(value) {
   return `${n >= 100 ? n.toFixed(0) : n.toFixed(1)} Mb`;
 }
 
+function formatPingMs(value) {
+  const n = numberOrNull(value);
+  if (n == null) return '—';
+  return `${Math.round(n)}ms`;
+}
+
 function formatDataUsage(usage) {
   if (!usage) return '—';
   const gb = firstNumber(usage.gb_total, usage.gbTotal);
@@ -1139,6 +1151,13 @@ function formatDataUsage(usage) {
 function formatShortDate(value) {
   if (!value) return '';
   return String(value).slice(0, 10);
+}
+
+function formatGb(value) {
+  const n = numberOrNull(value);
+  if (n == null) return '—';
+  if (n >= 1024) return `${(n / 1024).toFixed(2)} TB`;
+  return `${n >= 100 ? n.toFixed(0) : n.toFixed(1)} GB`;
 }
 
 function normalizeWeatherPredictor(site, weather) {
@@ -1177,8 +1196,15 @@ function mapSites(sites) {
     const weather = s.weather || null;
     const weatherPredictor = normalizeWeatherPredictor(s, weather);
     const starlinkUsageDaily = s.starlink_usage_daily || s.starlinkUsageDaily || null;
+    const cloudTerminal = s.starlink_terminal || s.starlinkTerminal || null;
+    const latestCloudPing = cloudTerminal?.latest_ping || cloudTerminal?.latestPing || null;
     const starlinkUsageBytes = firstNumber(starlinkUsageDaily?.bytes_total, starlinkUsageDaily?.bytesTotal);
-    const starlinkUsageGb = firstNumber(starlinkUsageDaily?.gb_total, starlinkUsageDaily?.gbTotal);
+    const starlinkUsageGb = firstNumber(
+      starlinkUsageDaily?.gb_total,
+      starlinkUsageDaily?.gbTotal,
+      cloudTerminal?.latest_usage?.consumed_gb,
+      cloudTerminal?.latestUsage?.consumedGb,
+    );
     return {
       _siteId:      s.id,
       id:           s.starlink_sn || `DISH-${s.id}`,
@@ -1187,6 +1213,15 @@ function mapSites(sites) {
       sku:          'Starlink',
       installed:    null,
       status:       st === 'dark' ? 'offline' : st,
+      cloudTerminal,
+      cloudStatus:   cloudTerminal?.current_status || cloudTerminal?.currentStatus || 'Unknown',
+      cloudLastSeen: cloudTerminal?.last_seen_utc || cloudTerminal?.lastSeenUtc || null,
+      latestCloudPing,
+      cloudPingMs: firstNumber(latestCloudPing?.ping_latency_ms, latestCloudPing?.pingLatencyMs),
+      cloudPingDropPct: firstNumber(latestCloudPing?.ping_drop_pct, latestCloudPing?.pingDropPct),
+      serviceLineId: cloudTerminal?.service_line_id || cloudTerminal?.serviceLineId || starlinkUsageDaily?.service_line_id || null,
+      accountId:     cloudTerminal?.account_id || cloudTerminal?.accountId || null,
+      billingCycleStart: cloudTerminal?.billing_cycle_start || cloudTerminal?.billingCycleStart || starlinkUsageDaily?.billing_period_start || null,
       latency:      sig?.pop_latency_ms ?? 0,
       snr:          sig?.snr          ?? 0,
       obstruction:  sig?.obstruction_pct ?? 0,
@@ -1350,6 +1385,20 @@ function StatusChip({ status }) {
   const tone = STATUS_TONE[status] || 'mute';
   return <span className={`chip chip--${tone}`}><StatusDot status={status} />{STATUS_LABEL[status] || status}</span>;
 }
+function CloudStatusChip({ terminal, compact = false }) {
+  const raw = terminal?.current_status || terminal?.currentStatus || 'Unknown';
+  const status = raw === 'Online' || raw === 'Offline' ? raw : 'Unknown';
+  const tone = status === 'Online' ? 'ok' : status === 'Offline' ? 'bad' : 'mute';
+  const dotStatus = status === 'Online' ? 'online' : status === 'Offline' ? 'offline' : 'standby';
+  const lastSeen = terminal?.last_seen_utc || terminal?.lastSeenUtc || null;
+  const title = lastSeen ? `Starlink cloud last connected ${formatShortDate(lastSeen)}` : 'Starlink cloud status';
+  return (
+    <span className={`chip chip--${tone}`} title={title}>
+      <StatusDot status={dotStatus} />
+      {compact ? status : `Cloud ${status}`}
+    </span>
+  );
+}
 
 function Stat({ label, value, sub, trend, tone }) {
   return (
@@ -1413,13 +1462,13 @@ function usePersisted(key, initial) {
   return [v, setV];
 }
 
-window._SF = { Sparkline, StatusDot, StatusChip, Stat, Segmented, Search, Icon, STATUS_LABEL, STATUS_TONE, campusName, usePersisted };
+window._SF = { Sparkline, StatusDot, StatusChip, CloudStatusChip, Stat, Segmented, Search, Icon, STATUS_LABEL, STATUS_TONE, campusName, usePersisted };
   </script>
 
   <!-- ── Views ── -->
   <script type="text/babel">
 const { useState: uS, useMemo: uM } = React;
-const { StatusDot, StatusChip, Stat, Segmented, Search, Icon, campusName, Sparkline } = window._SF;
+const { StatusDot, StatusChip, CloudStatusChip, Stat, Segmented, Search, Icon, campusName, Sparkline } = window._SF;
 
 function compareSortValues(a, b, dir = 'asc') {
   const aMissing = a == null || a === '';
@@ -1667,13 +1716,17 @@ function Starlinks({ data, filter, onOpenDish }) {
       <section className="panel panel--flush">
         <div className="table-scroll">
           <table className="tbl tbl--data">
-            <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th className="num">Portal usage</th><th className="num">Down</th><th className="num">Up</th><th className="num">Latency</th><th className="num">Obstruct.</th><th>Weather warning</th><th className="num">Uptime 30d</th><th>Throughput</th><th></th></tr></thead>
+            <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th>Cloud</th><th className="num">Portal usage</th><th className="num">Down</th><th className="num">Up</th><th className="num">Latency</th><th className="num">Obstruct.</th><th>Weather warning</th><th className="num">Uptime 30d</th><th>Throughput</th><th></th></tr></thead>
             <tbody>
               {rows.map(d => (
                 <tr key={d.id} onClick={()=>onOpenDish(d)} className="tbl__row--click">
-                  <td><div className="cell-primary">{d.name}</div><div className="cell-mono">{d.id} · {d.sku}</div></td>
+                  <td><div className="cell-primary">{d.name}</div><div className="cell-mono">{d.id}{d.serviceLineId ? ` · ${d.serviceLineId}` : ` · ${d.sku}`}</div></td>
                   <td>{campusName(data,d.campus)}</td>
                   <td><StatusChip status={d.status} /></td>
+                  <td>
+                    <CloudStatusChip terminal={d.cloudTerminal} compact />
+                    {d.cloudLastSeen && <div className="cell-mono">{timeAgoStr(d.cloudLastSeen)}</div>}
+                  </td>
                   <td className="num mono">
                     <div>{formatDataUsage(d.starlinkUsageDaily)}</div>
                     {d.starlinkUsageDate && <div className="cell-mono">{formatShortDate(d.starlinkUsageDate)}</div>}
@@ -1884,18 +1937,126 @@ window._VIEWS = { Overview, Starlinks, Computers, Alerts, Campuses, MiniBar, Sto
   <!-- ── Drawer ── -->
   <script type="text/babel">
 const { useEffect: dUE, useState: dUS } = React;
-const { StatusDot: SDot, StatusChip: SChip, Stat: StatC, Icon: Ic, campusName: cName, Sparkline: Spk } = window._SF;
+const { StatusDot: SDot, StatusChip: SChip, CloudStatusChip: CChip, Stat: StatC, Icon: Ic, campusName: cName, Sparkline: Spk } = window._SF;
+
+function UsageBars({ rows, loading, error }) {
+  if (loading) return <div className="chart chart--usage muted">Loading usage…</div>;
+  if (error) return <div className="chart chart--usage muted">{error}</div>;
+  const points = (rows || []).filter(r => numberOrNull(r.consumed_gb) != null);
+  if (!points.length) return <div className="chart chart--usage muted">No Starlink cloud usage history yet.</div>;
+
+  const width = 520;
+  const height = 118;
+  const pad = { top: 10, right: 8, bottom: 20, left: 34 };
+  const chartW = width - pad.left - pad.right;
+  const chartH = height - pad.top - pad.bottom;
+  const max = Math.max(1, ...points.map(p => Number(p.consumed_gb || 0)));
+  const slot = chartW / points.length;
+  const barW = Math.max(3, Math.min(18, slot * 0.68));
+  const total = points.reduce((sum, p) => sum + Number(p.consumed_gb || 0), 0);
+  const first = points[0]?.log_date || '';
+  const last = points[points.length - 1]?.log_date || '';
+
+  return (
+    <div className="chart chart--usage">
+      <div className="usage-bars__total">{formatGb(total)} <span className="muted" style={{fontFamily:'var(--font-mono)',fontSize:11}}>cycle total</span></div>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Daily Starlink usage">
+        {[0, .5, 1].map(t => {
+          const y = pad.top + chartH - chartH * t;
+          return <line key={t} className="usage-bars__grid" x1={pad.left} x2={width - pad.right} y1={y} y2={y} />;
+        })}
+        <text className="usage-bars__label" x="4" y={pad.top + 4}>{formatGb(max)}</text>
+        <text className="usage-bars__label" x="4" y={pad.top + chartH}>{formatGb(0)}</text>
+        {points.map((p, i) => {
+          const gb = Number(p.consumed_gb || 0);
+          const h = Math.max(1, (gb / max) * chartH);
+          const x = pad.left + i * slot + (slot - barW) / 2;
+          const y = pad.top + chartH - h;
+          return (
+            <rect
+              key={`${p.log_date}-${i}`}
+              className={`usage-bars__bar ${gb === 0 ? 'usage-bars__bar--muted' : ''}`}
+              x={x}
+              y={y}
+              width={barW}
+              height={h}
+            >
+              <title>{p.log_date}: {formatGb(gb)}</title>
+            </rect>
+          );
+        })}
+      </svg>
+      <div className="chart__axis mono muted"><span>{formatShortDate(first)}</span><span>{points.length} days</span><span>{formatShortDate(last)}</span></div>
+    </div>
+  );
+}
+
+function PortalPingChart({ samples, loading, error }) {
+  if (loading) return <div className="chart chart--usage muted">Loading cloud ping…</div>;
+  if (error) return <div className="chart chart--usage muted">{error}</div>;
+  const points = (samples || [])
+    .filter(row => numberOrNull(row.ping_latency_ms) != null)
+    .map(row => Number(row.ping_latency_ms));
+  if (!points.length) return <div className="chart chart--usage muted">No Starlink cloud ping samples yet.</div>;
+  const latest = points[points.length - 1];
+  const avg = points.reduce((sum, p) => sum + p, 0) / points.length;
+  const offlineCount = (samples || []).filter(row => row.current_status === 'Offline' || row.is_offline === true).length;
+  return (
+    <div className="chart chart--usage">
+      <div className="usage-bars__total">
+        {formatPingMs(latest)}
+        <span className="muted" style={{fontFamily:'var(--font-mono)',fontSize:11}}> latest · avg {formatPingMs(avg)} · {offlineCount} offline samples</span>
+      </div>
+      <Spk points={points} height={96} width={520} />
+      <div className="chart__axis mono muted"><span>−24h</span><span>{points.length} samples</span><span>now</span></div>
+    </div>
+  );
+}
 
 function DishDetail({ dish, data, onClose }) {
   const [busyAction, setBusy] = dUS(null);
+  const [usagePayload, setUsagePayload] = dUS(null);
+  const [usageLoading, setUsageLoading] = dUS(false);
+  const [usageError, setUsageError] = dUS(null);
+  const [pingPayload, setPingPayload] = dUS(null);
+  const [pingLoading, setPingLoading] = dUS(false);
+  const [pingError, setPingError] = dUS(null);
+  const activeSiteId = dish ? (dish._siteId || dish.campus) : null;
   dUE(() => {
     if (!dish) return;
     const onKey = e => { if (e.key==='Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [dish, onClose]);
+  dUE(() => {
+    if (!activeSiteId) return;
+    let cancelled = false;
+    setUsageLoading(true);
+    setUsageError(null);
+    setUsagePayload(null);
+    window._API.apiFetch(`/api/sites/${activeSiteId}/starlink-usage?days=62`)
+      .then(payload => { if (!cancelled) setUsagePayload(payload); })
+      .catch(err => { if (!cancelled) setUsageError(err.message || 'Usage history unavailable'); })
+      .finally(() => { if (!cancelled) setUsageLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeSiteId]);
+  dUE(() => {
+    if (!activeSiteId) return;
+    let cancelled = false;
+    setPingLoading(true);
+    setPingError(null);
+    setPingPayload(null);
+    window._API.apiFetch(`/api/sites/${activeSiteId}/starlink-ping?hours=24`)
+      .then(payload => { if (!cancelled) setPingPayload(payload); })
+      .catch(err => { if (!cancelled) setPingError(err.message || 'Cloud ping history unavailable'); })
+      .finally(() => { if (!cancelled) setPingLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeSiteId]);
   if (!dish) return null;
-  const siteId = dish._siteId || dish.campus;
+  const siteId = activeSiteId;
+  const cloudTerminal = usagePayload?.terminal || dish.cloudTerminal || null;
+  const usageRows = usagePayload?.history || [];
+  const pingRows = pingPayload?.samples || [];
 
   async function triggerSite(type) {
     if (busyAction) return;
@@ -1919,11 +2080,11 @@ function DishDetail({ dish, data, onClose }) {
           <div>
             <div className="eyebrow">Starlink dish</div>
             <h2 className="drawer__title">{dish.name}</h2>
-            <div className="cell-mono">{dish.id} · {dish.sku}{dish.installed ? ` · installed ${dish.installed}` : ''}</div>
+            <div className="cell-mono">{dish.id}{dish.serviceLineId ? ` · ${dish.serviceLineId}` : ` · ${dish.sku}`}{dish.installed ? ` · installed ${dish.installed}` : ''}</div>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="Close">{Ic.close}</button>
         </header>
-        <div className="drawer__row"><SChip status={dish.status} /><span className="muted">{cName(data,dish.campus)}</span></div>
+        <div className="drawer__row"><SChip status={dish.status} /><CChip terminal={cloudTerminal} /><span className="muted">{cName(data,dish.campus)}</span></div>
         <div className="drawer__grid">
           <StatC label="Download" value={formatMbps(dish.down)} />
           <StatC label="Upload"   value={formatMbps(dish.up)} />
@@ -1931,6 +2092,8 @@ function DishDetail({ dish, data, onClose }) {
           <StatC label="SNR"      value={dish.snr?dish.snr.toFixed(1):'—'} />
           <StatC label="Obstruct." value={dish.obstruction.toFixed(1)+'%'} tone={dish.obstruction>5?'warn':null} />
           <StatC label="Uptime" value={dish.uptime != null ? dish.uptime.toFixed(2)+'%' : '—'} />
+          <StatC label="Cloud last seen" value={cloudTerminal?.last_seen_utc ? timeAgoStr(cloudTerminal.last_seen_utc) : '—'} />
+          <StatC label="Cloud ping" value={formatPingMs(dish.cloudPingMs)} tone={dish.cloudPingMs > 100 ? 'warn' : null} />
           <StatC
             label="Portal usage"
             value={formatDataUsage(dish.starlinkUsageDaily)}
@@ -1944,6 +2107,21 @@ function DishDetail({ dish, data, onClose }) {
           <StatC label="Intune laptops" value={`${dish.onlineIntuneLaptops ?? 0}/${dish.totalIntuneLaptops ?? 0}`} />
           <StatC label="Chromebooks" value={`${dish.onlineChromebooks ?? 0}/${dish.totalChromebooks ?? 0}`} />
         </div>
+        <section className="drawer__section">
+          <h4 className="panel__subtitle">Starlink cloud usage · active cycle</h4>
+          <div className="cell-mono">
+            {compactJoin([
+              cloudTerminal?.service_line_id || dish.serviceLineId,
+              usagePayload?.active_billing_cycle_start ? `cycle ${formatShortDate(usagePayload.active_billing_cycle_start)}` : dish.billingCycleStart ? `cycle ${formatShortDate(dish.billingCycleStart)}` : null,
+            ]) || 'service line not linked'}
+          </div>
+          <UsageBars rows={usageRows} loading={usageLoading} error={usageError} />
+        </section>
+        <section className="drawer__section">
+          <h4 className="panel__subtitle">Starlink cloud ping · 5-minute samples</h4>
+          <div className="cell-mono">offline alert threshold: 16 hours</div>
+          <PortalPingChart samples={pingRows} loading={pingLoading} error={pingError} />
+        </section>
         {dish.weatherPredictor && (
           <section className="drawer__section">
             <h4 className="panel__subtitle">Weather predictor</h4>

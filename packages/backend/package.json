@@ -15,7 +15,9 @@
     "devices:dedupe": "node scripts/dedupe_devices_by_serial.js",
     "weather:check": "node scripts/check_weather_data.js",
     "starlink:portal:usage": "node scripts/starlink_portal_usage_worker.js",
-    "starlink:token": "node scripts/generate_starlink_collector_token.js"
+    "starlink:token": "node scripts/generate_starlink_collector_token.js",
+    "starlink:portal:cloud-sync": "node scripts/starlink_portal_cloud_sync_worker.js",
+    "test:starlink-portal": "node --test test/starlinkPortalCloudSync.test.js"
   },
   "dependencies": {
     "@google-cloud/cloud-sql-connector": "^1.11.0",

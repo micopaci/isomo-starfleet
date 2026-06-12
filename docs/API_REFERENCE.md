@@ -149,6 +149,37 @@ cumulative value is stored with `confidence: "cycle_reset_estimate"`.
 | `GET` | `/api/intel/weather` | User | Latest Open-Meteo rainfall/cloud reading per site |
 | `GET` | `/api/intel/coverage/:site_id` | User | Live SGP4 visible-satellite count for site coordinates |
 
+## Starlink Cloud API
+
+`GET /api/sites` and `GET /api/sites/:id` include `starlink_terminal` when a
+site is linked to a Starlink service line in `starlink_terminals`.
+
+`GET /api/sites/:id/starlink-usage` returns direct Starlink telemetryagg daily
+usage for the linked service line:
+
+```json
+{
+  "terminal": {
+    "service_line_id": "AST-...",
+    "current_status": "Online",
+    "last_seen_utc": "2026-06-12T00:04:12.000Z"
+  },
+  "active_billing_cycle_start": "2026-06-01",
+  "history": [
+    { "log_date": "2026-06-10", "consumed_gb": 27.8 }
+  ]
+}
+```
+
+`GET /api/starlink-usage?from=YYYY-MM-DD&to=YYYY-MM-DD` returns direct cloud
+usage for every stored Starlink terminal in the date range. Add
+`service_line_id=SL-...` to limit it to one terminal.
+
+`GET /api/sites/:id/starlink-ping?hours=24` returns Starlink cloud ping/status
+samples for the linked terminal. `GET /api/starlink-terminals/:serviceLineId/ping`
+returns the same shape for a single service line. The backend worker samples
+every 5 minutes and opens a critical alert after 16 continuous offline hours.
+
 ## CSV Export API
 
 All export routes are admin-only and return `text/csv`.
