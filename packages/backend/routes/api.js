@@ -109,12 +109,54 @@ function mapDailyUsageRow(row) {
   };
 }
 
+function sqlNameKey(expr) {
+  return `regexp_replace(lower(coalesce(${expr}, '')), '[^a-z0-9]+', '', 'g')`;
+}
+
+function sqlSiteAliasKey(siteAlias = 's') {
+  return `regexp_replace(
+    regexp_replace(
+      regexp_replace(lower(coalesce(${siteAlias}.name, '')), '^es[[:space:]]+', 'ecole des sciences ', 'i'),
+      '^gs[[:space:]]+',
+      'groupe scolaire ',
+      'i'
+    ),
+    '[^a-z0-9]+',
+    '',
+    'g'
+  )`;
+}
+
+function sqlTerminalSiteMatch(siteAlias = 's', terminalAlias = 'st') {
+  const siteKey = sqlNameKey(`${siteAlias}.name`);
+  const siteAliasKey = sqlSiteAliasKey(siteAlias);
+  const terminalKey = sqlNameKey(`${terminalAlias}.nickname`);
+  return `(
+    ${terminalKey} <> ''
+    AND (
+      ${terminalKey} = ${siteKey}
+      OR ${terminalKey} = ${siteAliasKey}
+      OR (length(${siteKey}) > 5 AND ${terminalKey} LIKE '%' || ${siteKey} || '%')
+      OR (length(${terminalKey}) > 5 AND ${siteKey} LIKE '%' || ${terminalKey} || '%')
+      OR (length(${siteAliasKey}) > 5 AND ${terminalKey} LIKE '%' || ${siteAliasKey} || '%')
+      OR (length(${terminalKey}) > 5 AND ${siteAliasKey} LIKE '%' || ${terminalKey} || '%')
+    )
+  )`;
+}
+
 function mapStarlinkTerminalRow(row) {
   if (!row) return null;
   const consumedGb = row.latest_consumed_gb == null ? null : Number(row.latest_consumed_gb);
+  const usageTrend = Array.isArray(row.usage_trend)
+    ? row.usage_trend.map(point => ({
+        log_date: point.log_date,
+        consumed_gb: point.consumed_gb == null ? null : Number(point.consumed_gb),
+      })).filter(point => point.log_date)
+    : [];
   return {
     service_line_id: row.service_line_id,
     site_id: row.site_id == null ? null : Number(row.site_id),
+    site_name: row.site_name || null,
     nickname: row.nickname || null,
     account_id: row.account_id || null,
     current_status: row.current_status || 'Unknown',
@@ -136,8 +178,9 @@ function mapStarlinkTerminalRow(row) {
           ping_latency_ms: row.latest_ping_latency_ms == null ? null : Number(row.latest_ping_latency_ms),
           ping_drop_pct: row.latest_ping_drop_pct == null ? null : Number(row.latest_ping_drop_pct),
           last_seen_utc: row.latest_ping_last_seen_utc || null,
-        }
+      }
       : null,
+    usage_trend: usageTrend,
   };
 }
 
@@ -613,8 +656,8 @@ router.get('/sites', async (req, res, next) => {
        ORDER BY site_id, date DESC`
     );
     const terminalRes = await pool.query(
-      `SELECT DISTINCT ON (st.site_id)
-              st.site_id,
+      `SELECT DISTINCT ON (resolved.site_id)
+              resolved.site_id,
               st.service_line_id,
               st.nickname,
               st.account_id,
@@ -622,6 +665,7 @@ router.get('/sites', async (req, res, next) => {
               st.last_seen_utc,
               st.billing_cycle_start::text AS billing_cycle_start,
               st.status_updated_at,
+              resolved.site_name,
               latest.log_date::text AS latest_log_date,
               latest.consumed_gb AS latest_consumed_gb,
               latest.collected_at AS latest_collected_at,
@@ -630,8 +674,17 @@ router.get('/sites', async (req, res, next) => {
               latest_ping.is_offline AS latest_ping_is_offline,
               latest_ping.ping_latency_ms AS latest_ping_latency_ms,
               latest_ping.ping_drop_pct AS latest_ping_drop_pct,
-              latest_ping.last_seen_utc AS latest_ping_last_seen_utc
+              latest_ping.last_seen_utc AS latest_ping_last_seen_utc,
+              usage_trend.usage_trend
        FROM starlink_terminals st
+       LEFT JOIN LATERAL (
+         SELECT s.id AS site_id, s.name AS site_name
+         FROM sites s
+         WHERE s.id = st.site_id
+            OR ${sqlTerminalSiteMatch('s', 'st')}
+         ORDER BY CASE WHEN s.id = st.site_id THEN 0 ELSE 1 END, s.id
+         LIMIT 1
+       ) resolved ON TRUE
        LEFT JOIN LATERAL (
          SELECT log_date, consumed_gb, collected_at
          FROM starlink_usage_history
@@ -646,8 +699,19 @@ router.get('/sites', async (req, res, next) => {
          ORDER BY recorded_at DESC
          LIMIT 1
        ) latest_ping ON TRUE
-       WHERE st.site_id IS NOT NULL
-       ORDER BY st.site_id, st.status_updated_at DESC NULLS LAST, st.updated_at DESC`
+       LEFT JOIN LATERAL (
+         SELECT json_agg(json_build_object('log_date', h.log_date::text, 'consumed_gb', h.consumed_gb) ORDER BY h.log_date ASC) AS usage_trend
+         FROM (
+           SELECT log_date, consumed_gb
+           FROM starlink_usage_history
+           WHERE service_line_id = st.service_line_id
+             AND log_date >= CURRENT_DATE - INTERVAL '45 days'
+             AND log_date <= CURRENT_DATE
+           ORDER BY log_date ASC
+         ) h
+       ) usage_trend ON TRUE
+       WHERE resolved.site_id IS NOT NULL
+       ORDER BY resolved.site_id, st.status_updated_at DESC NULLS LAST, st.updated_at DESC`
     );
     const uptimeBy  = Object.fromEntries(uptimeRes.rows.map(r => [r.site_id, Number(r.uptime_pct)]));
     const dataBy    = Object.fromEntries(dataRes.rows.map(r => [r.site_id, Number(r.data_mb_today)]));
@@ -740,7 +804,7 @@ router.get('/sites/:id', async (req, res, next) => {
     );
     const terminalRes = await pool.query(
       `SELECT
-              st.site_id,
+              resolved.site_id,
               st.service_line_id,
               st.nickname,
               st.account_id,
@@ -748,6 +812,7 @@ router.get('/sites/:id', async (req, res, next) => {
               st.last_seen_utc,
               st.billing_cycle_start::text AS billing_cycle_start,
               st.status_updated_at,
+              resolved.site_name,
               latest.log_date::text AS latest_log_date,
               latest.consumed_gb AS latest_consumed_gb,
               latest.collected_at AS latest_collected_at,
@@ -756,8 +821,17 @@ router.get('/sites/:id', async (req, res, next) => {
               latest_ping.is_offline AS latest_ping_is_offline,
               latest_ping.ping_latency_ms AS latest_ping_latency_ms,
               latest_ping.ping_drop_pct AS latest_ping_drop_pct,
-              latest_ping.last_seen_utc AS latest_ping_last_seen_utc
+              latest_ping.last_seen_utc AS latest_ping_last_seen_utc,
+              usage_trend.usage_trend
        FROM starlink_terminals st
+       LEFT JOIN LATERAL (
+         SELECT s.id AS site_id, s.name AS site_name
+         FROM sites s
+         WHERE s.id = st.site_id
+            OR ${sqlTerminalSiteMatch('s', 'st')}
+         ORDER BY CASE WHEN s.id = st.site_id THEN 0 ELSE 1 END, s.id
+         LIMIT 1
+       ) resolved ON TRUE
        LEFT JOIN LATERAL (
          SELECT log_date, consumed_gb, collected_at
          FROM starlink_usage_history
@@ -772,7 +846,18 @@ router.get('/sites/:id', async (req, res, next) => {
          ORDER BY recorded_at DESC
          LIMIT 1
        ) latest_ping ON TRUE
-       WHERE st.site_id = $1
+       LEFT JOIN LATERAL (
+         SELECT json_agg(json_build_object('log_date', h.log_date::text, 'consumed_gb', h.consumed_gb) ORDER BY h.log_date ASC) AS usage_trend
+         FROM (
+           SELECT log_date, consumed_gb
+           FROM starlink_usage_history
+           WHERE service_line_id = st.service_line_id
+             AND log_date >= CURRENT_DATE - INTERVAL '45 days'
+             AND log_date <= CURRENT_DATE
+           ORDER BY log_date ASC
+         ) h
+       ) usage_trend ON TRUE
+       WHERE resolved.site_id = $1
        ORDER BY st.status_updated_at DESC NULLS LAST, st.updated_at DESC
        LIMIT 1`,
       [id]
@@ -862,7 +947,7 @@ router.get('/sites/:id/starlink-usage', async (req, res, next) => {
 
     const terminalRes = await pool.query(
       `SELECT
-              st.site_id,
+              resolved.site_id,
               st.service_line_id,
               st.nickname,
               st.account_id,
@@ -870,6 +955,7 @@ router.get('/sites/:id/starlink-usage', async (req, res, next) => {
               st.last_seen_utc,
               st.billing_cycle_start::text AS billing_cycle_start,
               st.status_updated_at,
+              resolved.site_name,
               latest.log_date::text AS latest_log_date,
               latest.consumed_gb AS latest_consumed_gb,
               latest.collected_at AS latest_collected_at,
@@ -878,8 +964,17 @@ router.get('/sites/:id/starlink-usage', async (req, res, next) => {
               latest_ping.is_offline AS latest_ping_is_offline,
               latest_ping.ping_latency_ms AS latest_ping_latency_ms,
               latest_ping.ping_drop_pct AS latest_ping_drop_pct,
-              latest_ping.last_seen_utc AS latest_ping_last_seen_utc
+              latest_ping.last_seen_utc AS latest_ping_last_seen_utc,
+              usage_trend.usage_trend
        FROM starlink_terminals st
+       LEFT JOIN LATERAL (
+         SELECT s.id AS site_id, s.name AS site_name
+         FROM sites s
+         WHERE s.id = st.site_id
+            OR ${sqlTerminalSiteMatch('s', 'st')}
+         ORDER BY CASE WHEN s.id = st.site_id THEN 0 ELSE 1 END, s.id
+         LIMIT 1
+       ) resolved ON TRUE
        LEFT JOIN LATERAL (
          SELECT log_date, consumed_gb, collected_at
          FROM starlink_usage_history
@@ -894,7 +989,18 @@ router.get('/sites/:id/starlink-usage', async (req, res, next) => {
          ORDER BY recorded_at DESC
          LIMIT 1
        ) latest_ping ON TRUE
-       WHERE st.site_id = $1
+       LEFT JOIN LATERAL (
+         SELECT json_agg(json_build_object('log_date', h.log_date::text, 'consumed_gb', h.consumed_gb) ORDER BY h.log_date ASC) AS usage_trend
+         FROM (
+           SELECT log_date, consumed_gb
+           FROM starlink_usage_history
+           WHERE service_line_id = st.service_line_id
+             AND log_date >= CURRENT_DATE - INTERVAL '45 days'
+             AND log_date <= CURRENT_DATE
+           ORDER BY log_date ASC
+         ) h
+       ) usage_trend ON TRUE
+       WHERE resolved.site_id = $1
        ORDER BY st.status_updated_at DESC NULLS LAST, st.updated_at DESC
        LIMIT 1`,
       [siteId]
@@ -968,15 +1074,22 @@ router.get('/starlink-usage', async (req, res, next) => {
               h.billing_cycle_start::text AS billing_cycle_start,
               h.collected_at,
               st.nickname,
-              st.site_id,
-              s.name AS site_name
+              resolved.site_id,
+              resolved.site_name
        FROM starlink_usage_history h
        JOIN starlink_terminals st ON st.service_line_id = h.service_line_id
-       LEFT JOIN sites s ON s.id = st.site_id
+       LEFT JOIN LATERAL (
+         SELECT s.id AS site_id, s.name AS site_name
+         FROM sites s
+         WHERE s.id = st.site_id
+            OR ${sqlTerminalSiteMatch('s', 'st')}
+         ORDER BY CASE WHEN s.id = st.site_id THEN 0 ELSE 1 END, s.id
+         LIMIT 1
+       ) resolved ON TRUE
        WHERE h.log_date >= $1::date
          AND h.log_date <= $2::date
          ${serviceFilter}
-       ORDER BY h.log_date ASC, COALESCE(s.name, st.nickname, h.service_line_id) ASC`,
+       ORDER BY h.log_date ASC, COALESCE(resolved.site_name, st.nickname, h.service_line_id) ASC`,
       params
     );
 
@@ -999,6 +1112,77 @@ router.get('/starlink-usage', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── GET /api/starlink-terminals?days=45 ─────────────────────────────────────
+// Returns direct Starlink cloud inventory/status plus a compact data-use trend.
+router.get('/starlink-terminals', async (req, res, next) => {
+  try {
+    const days = Math.max(1, Math.min(Number(req.query.days || 45), 366));
+    const { rows } = await pool.query(
+      `SELECT
+              resolved.site_id,
+              resolved.site_name,
+              st.service_line_id,
+              st.nickname,
+              st.account_id,
+              st.current_status,
+              st.last_seen_utc,
+              st.billing_cycle_start::text AS billing_cycle_start,
+              st.status_updated_at,
+              latest.log_date::text AS latest_log_date,
+              latest.consumed_gb AS latest_consumed_gb,
+              latest.collected_at AS latest_collected_at,
+              latest_ping.recorded_at AS latest_ping_recorded_at,
+              latest_ping.current_status AS latest_ping_status,
+              latest_ping.is_offline AS latest_ping_is_offline,
+              latest_ping.ping_latency_ms AS latest_ping_latency_ms,
+              latest_ping.ping_drop_pct AS latest_ping_drop_pct,
+              latest_ping.last_seen_utc AS latest_ping_last_seen_utc,
+              usage_trend.usage_trend
+       FROM starlink_terminals st
+       LEFT JOIN LATERAL (
+         SELECT s.id AS site_id, s.name AS site_name
+         FROM sites s
+         WHERE s.id = st.site_id
+            OR ${sqlTerminalSiteMatch('s', 'st')}
+         ORDER BY CASE WHEN s.id = st.site_id THEN 0 ELSE 1 END, s.id
+         LIMIT 1
+       ) resolved ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT log_date, consumed_gb, collected_at
+         FROM starlink_usage_history
+         WHERE service_line_id = st.service_line_id
+         ORDER BY log_date DESC
+         LIMIT 1
+       ) latest ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT recorded_at, current_status, is_offline, ping_latency_ms, ping_drop_pct, last_seen_utc
+         FROM starlink_ping_samples
+         WHERE service_line_id = st.service_line_id
+         ORDER BY recorded_at DESC
+         LIMIT 1
+       ) latest_ping ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT json_agg(json_build_object('log_date', h.log_date::text, 'consumed_gb', h.consumed_gb) ORDER BY h.log_date ASC) AS usage_trend
+         FROM (
+           SELECT log_date, consumed_gb
+           FROM starlink_usage_history
+           WHERE service_line_id = st.service_line_id
+             AND log_date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')
+             AND log_date <= CURRENT_DATE
+           ORDER BY log_date ASC
+         ) h
+       ) usage_trend ON TRUE
+       ORDER BY COALESCE(resolved.site_name, st.nickname, st.service_line_id), st.service_line_id`,
+      [days]
+    );
+
+    res.json({
+      days,
+      terminals: rows.map(mapStarlinkTerminalRow),
+    });
+  } catch (err) { next(err); }
+});
+
 function mapPingSampleRow(row) {
   return {
     recorded_at: row.recorded_at,
@@ -1015,21 +1199,32 @@ function mapPingSampleRow(row) {
 async function getPingSamples({ serviceLineId, siteId, hours }) {
   const params = [];
   let where = '';
+  const join = `
+      JOIN starlink_terminals st ON st.service_line_id = p.service_line_id
+      LEFT JOIN LATERAL (
+        SELECT s.id AS site_id
+        FROM sites s
+        WHERE s.id = st.site_id
+           OR ${sqlTerminalSiteMatch('s', 'st')}
+        ORDER BY CASE WHEN s.id = st.site_id THEN 0 ELSE 1 END, s.id
+        LIMIT 1
+      ) resolved ON TRUE`;
   if (serviceLineId) {
     params.push(String(serviceLineId));
-    where = `service_line_id = $${params.length}`;
+    where = `p.service_line_id = $${params.length}`;
   } else {
     params.push(Number(siteId));
-    where = `site_id = $${params.length}`;
+    where = `resolved.site_id = $${params.length}`;
   }
   params.push(hours);
   const { rows } = await pool.query(
-    `SELECT recorded_at, service_line_id, site_id, current_status, is_offline,
-            ping_latency_ms, ping_drop_pct, last_seen_utc
-     FROM starlink_ping_samples
+    `SELECT p.recorded_at, p.service_line_id, COALESCE(p.site_id, resolved.site_id) AS site_id,
+            p.current_status, p.is_offline, p.ping_latency_ms, p.ping_drop_pct, p.last_seen_utc
+     FROM starlink_ping_samples p
+     ${join}
      WHERE ${where}
-       AND recorded_at >= NOW() - ($${params.length}::int * INTERVAL '1 hour')
-     ORDER BY recorded_at ASC`,
+       AND p.recorded_at >= NOW() - ($${params.length}::int * INTERVAL '1 hour')
+     ORDER BY p.recorded_at ASC`,
     params
   );
   return rows.map(mapPingSampleRow);

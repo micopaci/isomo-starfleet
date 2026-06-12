@@ -152,7 +152,11 @@ cumulative value is stored with `confidence: "cycle_reset_estimate"`.
 ## Starlink Cloud API
 
 `GET /api/sites` and `GET /api/sites/:id` include `starlink_terminal` when a
-site is linked to a Starlink service line in `starlink_terminals`.
+site is linked by `site_id` or can be matched to a Starlink portal nickname.
+
+`GET /api/starlink-terminals?days=45` returns all stored Starlink portal
+terminals with current cloud status, latest ping, latest usage, and a compact
+`usage_trend` array for list/table sparklines.
 
 `GET /api/sites/:id/starlink-usage` returns direct Starlink telemetryagg daily
 usage for the linked service line:

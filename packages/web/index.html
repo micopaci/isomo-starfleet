@@ -305,7 +305,7 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 .table-scroll .tbl { min-width: 720px; }
-.table-scroll .tbl--data { min-width: 1120px; }
+.table-scroll .tbl--data { min-width: 1240px; }
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl th {
   text-align: left;
@@ -546,6 +546,10 @@ body {
 .usage-bars__grid { stroke: var(--rule-2); stroke-width: 1; }
 .usage-bars__label { fill: var(--muted); font-family: var(--font-mono); font-size: 10px; }
 .usage-bars__total { font-family: var(--font-serif); font-size: 20px; color: var(--ink); }
+.usage-trend { display: grid; grid-template-columns: minmax(48px, max-content) 92px; align-items: center; gap: 10px; justify-content: end; }
+.usage-trend__value { font-family: var(--font-mono); font-size: 11px; color: var(--ink); white-space: nowrap; }
+.usage-trend__meta { font-family: var(--font-mono); font-size: 10px; color: var(--muted); margin-top: 2px; white-space: nowrap; }
+.usage-trend__empty { color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
 .chart__axis { display: flex; justify-content: space-between; font-size: 10px; margin-top: 6px; }
 .drawer__foot { display: flex; gap: 8px; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--rule); }
 
@@ -1178,8 +1182,65 @@ function normalizeWeatherPredictor(site, weather) {
   };
 }
 
+function normalizeNameKey(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function nameAliases(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  const aliases = new Set([normalizeNameKey(raw)]);
+  if (raw.startsWith('es ')) aliases.add(normalizeNameKey(raw.replace(/^es\s+/, 'ecole des sciences ')));
+  if (raw.startsWith('gs ')) aliases.add(normalizeNameKey(raw.replace(/^gs\s+/, 'groupe scolaire ')));
+  return [...aliases].filter(Boolean);
+}
+
+function namesLikelyMatch(left, right) {
+  const leftAliases = nameAliases(left);
+  const rightAliases = nameAliases(right);
+  for (const l of leftAliases) {
+    for (const r of rightAliases) {
+      if (l === r) return true;
+      if (l.length > 5 && r.includes(l)) return true;
+      if (r.length > 5 && l.includes(r)) return true;
+    }
+  }
+  return false;
+}
+
+function buildCloudTerminalLookup(terminals = []) {
+  const bySite = new Map();
+  const byName = new Map();
+  for (const terminal of terminals || []) {
+    const siteId = terminal.site_id ?? terminal.siteId;
+    if (siteId != null) bySite.set(String(siteId), terminal);
+    for (const alias of nameAliases(terminal.nickname || terminal.site_name || terminal.siteName)) {
+      if (!byName.has(alias)) byName.set(alias, terminal);
+    }
+  }
+  return { bySite, byName, terminals: terminals || [] };
+}
+
+function findCloudTerminalForSite(site, lookup) {
+  const embedded = site.starlink_terminal || site.starlinkTerminal || null;
+  if (embedded) return embedded;
+  const bySite = lookup.bySite.get(String(site.id));
+  if (bySite) return bySite;
+  for (const alias of nameAliases(site.name)) {
+    const byName = lookup.byName.get(alias);
+    if (byName) return byName;
+  }
+  return lookup.terminals.find(t => namesLikelyMatch(site.name, t.nickname || t.site_name || t.siteName)) || null;
+}
+
+function cloudStatusToDishStatus(status) {
+  if (status === 'Online') return 'online';
+  if (status === 'Offline') return 'offline';
+  return null;
+}
+
 // ── Data mapping: real API → view-compatible shape ────────────────────────────
-function mapSites(sites) {
+function mapSites(sites, cloudTerminals = []) {
+  const cloudLookup = buildCloudTerminalLookup(cloudTerminals);
   // Each Site IS a campus (one dish per campus)
   const CAMPUSES = sites.map(s => ({
     id:       s.id,
@@ -1193,11 +1254,35 @@ function mapSites(sites) {
   const DISHES = sites.map(s => {
     const sig = s.signal;
     const st  = siteStatusStr(s);
+    const legacyStatus = st === 'dark' ? 'offline' : st;
     const weather = s.weather || null;
     const weatherPredictor = normalizeWeatherPredictor(s, weather);
-    const starlinkUsageDaily = s.starlink_usage_daily || s.starlinkUsageDaily || null;
-    const cloudTerminal = s.starlink_terminal || s.starlinkTerminal || null;
+    const siteUsageDaily = s.starlink_usage_daily || s.starlinkUsageDaily || null;
+    const cloudTerminal = findCloudTerminalForSite(s, cloudLookup);
+    const cloudStatus = cloudTerminal?.current_status || cloudTerminal?.currentStatus || 'Unknown';
     const latestCloudPing = cloudTerminal?.latest_ping || cloudTerminal?.latestPing || null;
+    const usageTrend = cloudTerminal?.usage_trend || cloudTerminal?.usageTrend || [];
+    const latestCloudUsage = cloudTerminal?.latest_usage || cloudTerminal?.latestUsage || null;
+    const latestTrendUsage = usageTrend.length ? usageTrend[usageTrend.length - 1] : null;
+    const starlinkUsageDaily = siteUsageDaily || (latestCloudUsage?.consumed_gb != null || latestCloudUsage?.consumedGb != null
+      ? {
+          date: latestCloudUsage.log_date || latestCloudUsage.logDate,
+          gb_total: firstNumber(latestCloudUsage.consumed_gb, latestCloudUsage.consumedGb),
+          confidence: 'portal_total',
+          source: 'starlink_telemetryagg',
+          service_line_id: cloudTerminal?.service_line_id || cloudTerminal?.serviceLineId,
+          billing_period_start: cloudTerminal?.billing_cycle_start || cloudTerminal?.billingCycleStart,
+        }
+      : latestTrendUsage
+        ? {
+            date: latestTrendUsage.log_date || latestTrendUsage.logDate,
+            gb_total: firstNumber(latestTrendUsage.consumed_gb, latestTrendUsage.consumedGb),
+            confidence: 'portal_total',
+            source: 'starlink_telemetryagg',
+            service_line_id: cloudTerminal?.service_line_id || cloudTerminal?.serviceLineId,
+            billing_period_start: cloudTerminal?.billing_cycle_start || cloudTerminal?.billingCycleStart,
+          }
+        : null);
     const starlinkUsageBytes = firstNumber(starlinkUsageDaily?.bytes_total, starlinkUsageDaily?.bytesTotal);
     const starlinkUsageGb = firstNumber(
       starlinkUsageDaily?.gb_total,
@@ -1212,9 +1297,10 @@ function mapSites(sites) {
       campus:       s.id,      // integer — matches CAMPUSES[].id
       sku:          'Starlink',
       installed:    null,
-      status:       st === 'dark' ? 'offline' : st,
+      status:       cloudStatusToDishStatus(cloudStatus) || legacyStatus,
+      legacyStatus,
       cloudTerminal,
-      cloudStatus:   cloudTerminal?.current_status || cloudTerminal?.currentStatus || 'Unknown',
+      cloudStatus,
       cloudLastSeen: cloudTerminal?.last_seen_utc || cloudTerminal?.lastSeenUtc || null,
       latestCloudPing,
       cloudPingMs: firstNumber(latestCloudPing?.ping_latency_ms, latestCloudPing?.pingLatencyMs),
@@ -1237,6 +1323,10 @@ function mapSites(sites) {
       starlinkUsageDate: starlinkUsageDaily?.date || null,
       starlinkUsageConfidence: starlinkUsageDaily?.confidence || null,
       starlinkUsageSource: starlinkUsageDaily?.source || null,
+      starlinkUsageTrend: usageTrend.map(row => ({
+        log_date: row.log_date || row.logDate,
+        consumed_gb: firstNumber(row.consumed_gb, row.consumedGb),
+      })).filter(row => row.log_date),
       score:        s.score,
       score7d:      s.score_7day_avg,
       anomaly:      sig?.anomaly       ?? false,
@@ -1468,7 +1558,7 @@ window._SF = { Sparkline, StatusDot, StatusChip, CloudStatusChip, Stat, Segmente
   <!-- ── Views ── -->
   <script type="text/babel">
 const { useState: uS, useMemo: uM } = React;
-const { StatusDot, StatusChip, CloudStatusChip, Stat, Segmented, Search, Icon, campusName, Sparkline } = window._SF;
+const { StatusDot, StatusChip, CloudStatusChip, Stat, Segmented, Search, Icon, STATUS_LABEL, campusName, Sparkline } = window._SF;
 
 function compareSortValues(a, b, dir = 'asc') {
   const aMissing = a == null || a === '';
@@ -1498,6 +1588,27 @@ function SortSelect({ value, onChange, options, label = 'Sort data' }) {
     <select className="sort-select" value={value} onChange={e => onChange(e.target.value)} aria-label={label}>
       {options.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
     </select>
+  );
+}
+
+function UsageTrendCell({ dish }) {
+  const rows = dish.starlinkUsageTrend || [];
+  const points = rows
+    .map(row => numberOrNull(row.consumed_gb))
+    .filter(value => value != null);
+  if (!points.length) return <span className="usage-trend__empty">No data</span>;
+  const latest = points[points.length - 1];
+  const total = points.reduce((sum, point) => sum + point, 0);
+  const latestDate = rows[rows.length - 1]?.log_date || dish.starlinkUsageDate || null;
+  return (
+    <div className="usage-trend">
+      <div>
+        <div className="usage-trend__value">{formatGb(latest)}</div>
+        <div className="usage-trend__meta">{formatGb(total)} · {rows.length}d</div>
+        {latestDate && <div className="usage-trend__meta">{formatShortDate(latestDate)}</div>}
+      </div>
+      <Sparkline points={points} height={28} width={92} />
+    </div>
   );
 }
 
@@ -1716,13 +1827,16 @@ function Starlinks({ data, filter, onOpenDish }) {
       <section className="panel panel--flush">
         <div className="table-scroll">
           <table className="tbl tbl--data">
-            <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th>Cloud</th><th className="num">Portal usage</th><th className="num">Down</th><th className="num">Up</th><th className="num">Latency</th><th className="num">Obstruct.</th><th>Weather warning</th><th className="num">Uptime 30d</th><th>Throughput</th><th></th></tr></thead>
+            <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th>Cloud</th><th className="num">Portal usage</th><th className="num">Down</th><th className="num">Up</th><th className="num">Latency</th><th className="num">Obstruct.</th><th>Weather warning</th><th className="num">Uptime 30d</th><th className="num">Data trend</th><th></th></tr></thead>
             <tbody>
               {rows.map(d => (
                 <tr key={d.id} onClick={()=>onOpenDish(d)} className="tbl__row--click">
                   <td><div className="cell-primary">{d.name}</div><div className="cell-mono">{d.id}{d.serviceLineId ? ` · ${d.serviceLineId}` : ` · ${d.sku}`}</div></td>
                   <td>{campusName(data,d.campus)}</td>
-                  <td><StatusChip status={d.status} /></td>
+                  <td>
+                    <StatusChip status={d.status} />
+                    {d.legacyStatus && d.legacyStatus !== d.status && <div className="cell-mono">agent {STATUS_LABEL[d.legacyStatus] || d.legacyStatus}</div>}
+                  </td>
                   <td>
                     <CloudStatusChip terminal={d.cloudTerminal} compact />
                     {d.cloudLastSeen && <div className="cell-mono">{timeAgoStr(d.cloudLastSeen)}</div>}
@@ -1737,7 +1851,7 @@ function Starlinks({ data, filter, onOpenDish }) {
                   <td className="num mono">{d.obstruction.toFixed(1)}%</td>
                   <td><WeatherCell dish={d} /></td>
                   <td className="num mono">{d.uptime != null ? d.uptime.toFixed(2)+'%' : '—'}</td>
-                  <td><Sparkline points={d.throughputTrend} dim={d.status!=='online'} /></td>
+                  <td className="num"><UsageTrendCell dish={d} /></td>
                   <td className="tbl__chev">{Icon.arrow}</td>
                 </tr>
               ))}
@@ -2760,6 +2874,7 @@ function LoginScreen({ onLogin }) {
 function App() {
   const [authed, setAuthed] = aUS(window._API.isAuthed());
   const [sites,   setSites]   = aUS([]);
+  const [cloudTerminals, setCloudTerminals] = aUS([]);
   const [devices, setDevices] = aUS([]);
   const [loading, setLoading] = aUS(false);
   const [loadErr, setLoadErr] = aUS(null);
@@ -2787,7 +2902,7 @@ function App() {
   });
 
   // Expose logout handler — must be set before loadAll fires
-  window._SF_LOGOUT = () => { setAuthed(false); setSites([]); setDevices([]); setLoadErr(null); };
+  window._SF_LOGOUT = () => { setAuthed(false); setSites([]); setCloudTerminals([]); setDevices([]); setLoadErr(null); };
   aUE(() => {
     return () => { window._SF_LOGOUT = null; };
   }, []);
@@ -2797,14 +2912,16 @@ function App() {
     setLoading(true);
     setLoadErr(null);
     try {
-      const [s, d, kp, alerts, summary] = await Promise.all([
+      const [s, cloud, d, kp, alerts, summary] = await Promise.all([
         window._API.apiFetch('/api/sites'),
+        window._API.apiFetch('/api/starlink-terminals?days=45').catch(() => ({ terminals: [] })),
         window._API.apiFetch('/api/devices').catch(() => []),
         window._API.apiFetch('/api/intel/space-weather').catch(() => []),
         window._API.apiFetch('/api/alerts?status=all&limit=200').catch(() => []),
         window._API.apiFetch('/api/alerts/summary?days=14').catch(() => []),
       ]);
       setSites(s);
+      setCloudTerminals(cloud?.terminals || []);
       setDevices(d);
       setAlertRows(window._MAPPERS.mapBackendAlerts(alerts));
       setAlertSummary(summary || []);
@@ -2967,7 +3084,7 @@ function App() {
   if (!authed) return <LoginScreen onLogin={() => { setAuthed(true); }} />;
 
   // Map real API data to view-compatible shape
-  const { CAMPUSES, DISHES } = window._MAPPERS.mapSites(sites);
+  const { CAMPUSES, DISHES } = window._MAPPERS.mapSites(sites, cloudTerminals);
   const COMPUTERS = window._MAPPERS.mapDevices(devices);
 
   const ALERTS = alertRows.length ? alertRows : window._MAPPERS.buildAlerts(DISHES);
@@ -3048,7 +3165,7 @@ function App() {
             {tweaks.theme==='dark'?AppIcon.sun:AppIcon.moon}
           </button>
           <button className="icon-btn" onClick={()=>setTweaksOpen(o=>!o)} aria-label="Tweaks" title="Tweaks" style={{fontSize:'11px',fontFamily:'var(--font-mono)'}}>SET</button>
-          <button className="icon-btn" title="Sign out" onClick={()=>{ window._API.doLogout(); setAuthed(false); setSites([]); setDevices([]); }} style={{fontSize:'11px',fontFamily:'var(--font-mono)'}}>OFF</button>
+          <button className="icon-btn" title="Sign out" onClick={()=>{ window._API.doLogout(); setAuthed(false); setSites([]); setCloudTerminals([]); setDevices([]); }} style={{fontSize:'11px',fontFamily:'var(--font-mono)'}}>OFF</button>
         </header>
         {loading && sites.length === 0 && (
           <div style={{padding:'60px 28px',textAlign:'center',color:'var(--muted)',fontFamily:'var(--font-mono)',fontSize:12,letterSpacing:'0.08em'}}>
