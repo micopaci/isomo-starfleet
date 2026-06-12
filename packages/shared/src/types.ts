@@ -33,6 +33,8 @@ export interface Site {
   weather_predictor?: WeatherPredictor | null;
   /** Latest Starlink portal daily site total, imported by scraper or manual admin import. */
   starlink_usage_daily?: StarlinkDailyUsage | null;
+  /** Latest direct Starlink cloud status for the service line linked to this site. */
+  starlink_terminal?: StarlinkTerminal | null;
 }
 
 export interface SignalSummary {
@@ -86,6 +88,68 @@ export interface StarlinkDailyUsage {
   billing_period_end: string | null;
   scraped_at: string | null;
   uploaded_at: string | null;
+}
+
+export interface StarlinkTerminal {
+  service_line_id: string;
+  site_id: number | null;
+  nickname: string | null;
+  account_id: string | null;
+  current_status: 'Online' | 'Offline' | 'Unknown';
+  last_seen_utc: string | null;
+  billing_cycle_start: string | null;
+  status_updated_at: string | null;
+  latest_usage: {
+    log_date: string;
+    consumed_gb: number | null;
+    collected_at: string | null;
+  } | null;
+  latest_ping: StarlinkPingSample | null;
+}
+
+export interface StarlinkUsageHistoryPoint {
+  log_date: string;
+  consumed_gb: number | null;
+  account_id: string | null;
+  billing_cycle_start: string | null;
+  collected_at: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface StarlinkUsageHistoryResponse {
+  terminal: StarlinkTerminal | null;
+  active_billing_cycle_start: string | null;
+  history: StarlinkUsageHistoryPoint[];
+}
+
+export interface StarlinkPingSample {
+  recorded_at: string;
+  service_line_id: string;
+  site_id: number | null;
+  current_status: 'Online' | 'Offline' | 'Unknown';
+  is_offline: boolean | null;
+  ping_latency_ms: number | null;
+  ping_drop_pct: number | null;
+  last_seen_utc: string | null;
+}
+
+export interface StarlinkPingHistoryResponse {
+  site_id?: number;
+  service_line_id?: string;
+  hours: number;
+  samples: StarlinkPingSample[];
+}
+
+export interface StarlinkUsageRangeResponse {
+  from: string;
+  to: string;
+  service_line_id: string | null;
+  rows: Array<StarlinkUsageHistoryPoint & {
+    service_line_id: string;
+    nickname: string | null;
+    site_id: number | null;
+    site_name: string | null;
+  }>;
 }
 
 export interface Device {

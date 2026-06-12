@@ -56,6 +56,13 @@ packages/mobile/android/*.keystore
 # Test scripts with credentials
 ingest.sh
 
+# Starlink portal local session and scrape artifacts
+data_usage/auth/state.json
+data_usage/auth/latest_sync.json
+data_usage/auth/ping_samples.jsonl
+data_usage/auth/*.png
+data_usage/auth/debug/
+
 # Local agent / editor config and scratch planning docs
 .claude/
 /Starfleet*.pdf

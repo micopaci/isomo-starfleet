@@ -1,0 +1,257 @@
+{
+    "Amen Mugisha": {
+        "account_id": "ACC-4011560-47995-16",
+        "terminals": [
+            {
+                "service_line": "SL-606903-86751-28",
+                "nickname": "ES Gikonko",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-606976-33865-36",
+                "nickname": "GS Nyange - Standard 2nd",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-606978-36896-45",
+                "nickname": "GS Nyagasambu",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-606979-62252-31",
+                "nickname": "Ecole des sciences Gisenyi",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-8997922-28832-77",
+                "nickname": "ES Mubuga II",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-8997964-58028-83",
+                "nickname": "ES Juru",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-9677223-78421-66",
+                "nickname": "GS Remera Protestant",
+                "status": "Active"
+            }
+        ]
+    },
+    "Benon Mugisha": {
+        "account_id": "ACC-DF-9503269-58369-13",
+        "terminals": [
+            {
+                "service_line": "SL-DF-7448790-88367-79",
+                "nickname": "ES Kirambo",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-7523672-63879-73",
+                "nickname": "SOPEM - Rukomo",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-7523870-41784-64",
+                "nickname": "Fawe Girls(Gahini)",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-7523994-61626-68",
+                "nickname": "GS Muhura",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-7524187-93892-73",
+                "nickname": "ES Rusumo",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-7524418-96351-63",
+                "nickname": "GS Nyange",
+                "status": "Inactive"
+            },
+            {
+                "service_line": "SL-DF-7524715-62082-57",
+                "nickname": "Lycee de Zaza",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-7524861-57937-72",
+                "nickname": "ASYV",
+                "status": "Active"
+            }
+        ]
+    },
+    "Chaste Niwe": {
+        "account_id": "ACC-3049739-23188-22",
+        "terminals": [
+            {
+                "service_line": "AST-2688115-60060-41",
+                "nickname": "ES Mubuga - Gishyita",
+                "status": "Active"
+            },
+            {
+                "service_line": "AST-2688211-29467-54",
+                "nickname": "BROKEN MOTOR",
+                "status": "Inactive"
+            },
+            {
+                "service_line": "SL-583681-51244-24",
+                "nickname": "GS Gihara",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-583967-67893-48",
+                "nickname": "ENDP",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-9515103-35769-62",
+                "nickname": "GS Kinigi  - G3",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-9555466-11575-67",
+                "nickname": "GS Gihundwe",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-9581305-55271-59",
+                "nickname": "St Joseph Nyamasheke",
+                "status": "Active"
+            }
+        ]
+    },
+    "Isomo Circles": {
+        "account_id": "ACC-DF-10883628-35889-65",
+        "terminals": [
+            {
+                "service_line": "SL-DF-9513123-76491-59",
+                "nickname": "Lycee St Jerome Janja",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-9531912-94123-57",
+                "nickname": "GS St Paul Muko",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-9531993-15814-66",
+                "nickname": "PS St Jean Paul II",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-9534598-59446-79",
+                "nickname": "Bridge2Rwanda office - G3",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-9552697-45575-77",
+                "nickname": "GS Rambura filles",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-9558278-42247-71",
+                "nickname": "CIC Muramba",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-9585525-57699-83",
+                "nickname": "GS Gishyita",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-9677424-58058-73",
+                "nickname": "GS Maranyundo",
+                "status": "Active"
+            }
+        ]
+    },
+    "Liliane Umutoni": {
+        "account_id": "ACC-4002603-73895-12",
+        "terminals": [
+            {
+                "service_line": "SL-596751-62929-38",
+                "nickname": "GS St Mathieu - Busasamana",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-596752-17499-41",
+                "nickname": "Inyange Girls School",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-596753-39884-44",
+                "nickname": "GS Mubuga II",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-596754-44030-24",
+                "nickname": "ESc Musanze",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-8980785-88915-84",
+                "nickname": "ES Ruhango",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-8982573-66109-72",
+                "nickname": "GS Mburabuturo",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-9003100-32495-44",
+                "nickname": "ES Sancta Maria Karambo",
+                "status": "Active"
+            }
+        ]
+    },
+    "Thierry Maniragaba": {
+        "account_id": "ACC-DF-9562628-79172-12",
+        "terminals": [
+            {
+                "service_line": "SL-DF-7525127-38768-69",
+                "nickname": "LNDC",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-7525339-20658-63",
+                "nickname": "RLS",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-7525498-69379-82",
+                "nickname": "DEAD",
+                "status": "Inactive"
+            },
+            {
+                "service_line": "SL-DF-7525803-91197-65",
+                "nickname": "PTS St Leon Kabgayi",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-7526684-64875-76",
+                "nickname": "Maranyundo Girls",
+                "status": "Inactive"
+            },
+            {
+                "service_line": "SL-DF-7528027-68665-70",
+                "nickname": "CLA (Standard)",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-8978134-79835-80",
+                "nickname": "Groupe Scolaire Notre Dame du Bon Conseil Byumba",
+                "status": "Active"
+            },
+            {
+                "service_line": "SL-DF-8978160-56336-70",
+                "nickname": "GS Remera - Indangamirwa",
+                "status": "Active"
+            }
+        ]
+    }
+}
