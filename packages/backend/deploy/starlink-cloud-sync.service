@@ -1,0 +1,32 @@
+# Starlink portal cloud sync daemon — systemd unit for the always-on
+# Windows Server 2019 / WSL2 host (or any Linux host with the repo checked out).
+#
+# Polls Starlink cloud status every 5 minutes and pulls daily usage at
+# midnight Africa/Kigali (override with STARLINK_STATUS_INTERVAL_MINUTES /
+# STARLINK_USAGE_CRON / STARLINK_USAGE_TZ in .env.portal).
+#
+# Install (inside WSL2 Ubuntu, requires systemd enabled in /etc/wsl.conf):
+#   sudo cp packages/backend/deploy/starlink-cloud-sync.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now starlink-cloud-sync
+#   journalctl -u starlink-cloud-sync -f
+#
+# Adjust WorkingDirectory and User to match the host checkout before installing.
+
+[Unit]
+Description=Starfleet Starlink portal cloud sync daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=starfleet
+WorkingDirectory=/srv/starfleet/starlink-fleet-monitor/packages/backend
+ExecStart=/usr/bin/node scripts/starlink_portal_cloud_sync_worker.js --daemon
+Restart=always
+RestartSec=30
+# Auth + DB config comes from packages/backend/.env.portal / .env (loaded by the worker).
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

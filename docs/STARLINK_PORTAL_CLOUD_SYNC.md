@@ -85,7 +85,32 @@ Daemon mode runs terminal status immediately and then every
 `STARLINK_STATUS_INTERVAL_MINUTES` minutes, defaulting to 5. Each status cycle
 also inserts one `starlink_ping_samples` row per terminal and opens a critical
 alert if Starlink cloud has kept a terminal offline for more than 16 hours.
-Daily usage runs at 00:05 UTC.
+Daily usage runs on `STARLINK_USAGE_CRON` (default `0 0 * * *`) in
+`STARLINK_USAGE_TZ` (default `Africa/Kigali`), i.e. midnight Kigali time.
+
+## Run It Unattended
+
+Install the daemon as a systemd service on the always-on Windows Server 2019 /
+WSL2 host (the host that already maintains the Starlink auth state):
+
+```bash
+sudo cp packages/backend/deploy/starlink-cloud-sync.service /etc/systemd/system/
+# edit User= and WorkingDirectory= to match the host checkout
+sudo systemctl daemon-reload
+sudo systemctl enable --now starlink-cloud-sync
+journalctl -u starlink-cloud-sync -f
+```
+
+WSL2 needs systemd enabled (`/etc/wsl.conf` → `[boot]\nsystemd=true`) and the
+WSL distro kept alive. If systemd is not an option, register a Windows Task
+Scheduler job that runs at startup:
+
+```text
+wsl.exe -d Ubuntu -- bash -lc "cd /srv/starfleet/starlink-fleet-monitor/packages/backend && node scripts/starlink_portal_cloud_sync_worker.js --daemon >> /srv/starfleet/starlink-cloud-sync.log 2>&1"
+```
+
+Both cadences live inside the daemon — one process covers the 5-minute online
+check and the midnight usage pull.
 
 ## API Endpoints Used
 
