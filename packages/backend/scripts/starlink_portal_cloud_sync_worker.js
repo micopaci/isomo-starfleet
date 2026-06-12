@@ -49,7 +49,8 @@ Required terminal inventory, choose one for first seed:
 
 Daemon schedule:
   STARLINK_STATUS_INTERVAL_MINUTES=5
-  Daily usage sync runs at 00:05 UTC.
+  STARLINK_USAGE_CRON=0 0 * * *        (daily usage sync, default midnight)
+  STARLINK_USAGE_TZ=Africa/Kigali
 
 Optional:
   STARLINK_WEBAGG_BASE_URL=https://starlink.com/api/webagg/v2
@@ -475,6 +476,11 @@ async function runDaemon() {
     argValue('--status-interval-minutes') || process.env.STARLINK_STATUS_INTERVAL_MINUTES,
     5,
   );
+  const usageCron = argValue('--usage-cron') || process.env.STARLINK_USAGE_CRON || '0 0 * * *';
+  const usageTz = process.env.STARLINK_USAGE_TZ || 'Africa/Kigali';
+  if (!cron.validate(usageCron)) {
+    throw new Error(`Invalid STARLINK_USAGE_CRON expression: ${usageCron}`);
+  }
   let statusRunning = false;
   let usageRunning = false;
 
@@ -504,10 +510,10 @@ async function runDaemon() {
     }
   }
 
-  console.log(`[StarlinkCloudSync] daemon started. status_interval=${intervalMinutes}m daily_usage=00:05Z dry_run=${dryRun}`);
+  console.log(`[StarlinkCloudSync] daemon started. status_interval=${intervalMinutes}m usage_cron="${usageCron}" usage_tz=${usageTz} dry_run=${dryRun}`);
   await guardedStatus();
   setInterval(guardedStatus, intervalMinutes * 60 * 1000);
-  cron.schedule('5 0 * * *', guardedUsage, { timezone: 'Etc/UTC' });
+  cron.schedule(usageCron, guardedUsage, { timezone: usageTz });
 
   process.on('SIGINT', async () => {
     console.log('[StarlinkCloudSync] SIGINT received, shutting down.');
