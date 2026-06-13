@@ -41,6 +41,10 @@ python3 auth_generator.py
 python3 capture_api_headers.py
 ```
 
+The capture helper opens visible Chromium by default, which is less fragile on
+macOS. Use `python3 capture_api_headers.py --headless` on the Windows Server /
+Chromium sync host if that path is already stable there.
+
 Then run the worker with:
 
 ```text

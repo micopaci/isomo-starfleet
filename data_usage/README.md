@@ -33,6 +33,14 @@ python3 capture_api_headers.py
 This writes `data_usage/auth/api_headers.json`. The file contains live cookies,
 so it is ignored by git and should stay local to the sync host.
 
+On macOS the capture helper opens visible Chromium by default because Starlink's
+portal can behave differently in headless mode. On the Windows Server/Chromium
+host you can keep using headless mode:
+
+```bash
+python3 capture_api_headers.py --headless
+```
+
 When accounts or terminals change:
 
 ```bash
