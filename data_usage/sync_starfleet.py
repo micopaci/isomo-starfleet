@@ -25,6 +25,7 @@ STATE_FILE = BASE_DIR / "auth" / "state.json"
 FLEET_MAP_FILE = BASE_DIR / "auth" / "fleet_map.json"
 DEFAULT_OUTPUT = BASE_DIR / "auth" / "latest_sync.json"
 DEFAULT_PING_LOG = BASE_DIR / "auth" / "ping_samples.jsonl"
+SERVICE_LINES_URL = "https://starlink.com/api/webagg/v2/accounts/service-lines"
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -132,6 +133,27 @@ def first_number(obj, fields):
     return None
 
 
+def parse_timestamp(value):
+    if not value:
+        return None
+    raw = str(value).replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def latest_timestamp_iso(*values):
+    parsed_values = [parse_timestamp(value) for value in values if value]
+    parsed_values = [value for value in parsed_values if value is not None]
+    if not parsed_values:
+        return None
+    return max(parsed_values).isoformat()
+
+
 def usage_gb_from_point(point):
     direct = number(point)
     if direct is not None:
@@ -156,10 +178,17 @@ def usage_gb_from_point(point):
 
 
 def parse_status_payload(payload, terminal):
-    block = content(payload)
-    terminals = block.get("userTerminals") or []
+    return parse_service_line_status_item(content(payload), terminal)
+
+
+def parse_service_line_status_item(item, terminal):
+    if not isinstance(item, dict):
+        item = {}
+    terminals = item.get("userTerminals") or []
     terminal_data = terminals[0] if terminals else {}
+    routers = terminal_data.get("routers") or []
     is_offline = terminal_data.get("isOffline")
+    service_line_status = item.get("status")
     ping_ms = first_number(terminal_data, [
         "popPingLatencyMs", "pop_ping_latency_ms", "pingLatencyMs",
         "ping_latency_ms", "avgPingLatencyMs", "popLatencyMs",
@@ -168,16 +197,39 @@ def parse_status_payload(payload, terminal):
     drop_rate = first_number(terminal_data, ["pingDropRate", "ping_drop_rate", "packetLossRate"])
     if drop_pct is None and drop_rate is not None:
         drop_pct = drop_rate * 100 if 0 < drop_rate <= 1 else drop_rate
+
+    if is_offline is True:
+        current_status = "Offline"
+    elif is_offline is False:
+        current_status = "Online"
+    elif service_line_status == 0:
+        current_status = "Online"
+    elif service_line_status is not None:
+        current_status = "Offline"
+    else:
+        current_status = "Unknown"
+
+    router_last_connected = [
+        router.get("lastConnected")
+        for router in routers
+        if isinstance(router, dict)
+    ]
+
     return {
         "recorded_at": datetime.now(timezone.utc).isoformat(),
         "account_id": terminal["account_id"],
         "service_line_id": terminal["service_line_id"],
-        "nickname": terminal.get("nickname"),
-        "current_status": "Offline" if is_offline is True else "Online" if is_offline is False else "Unknown",
+        "nickname": item.get("nickname") or terminal.get("nickname"),
+        "current_status": current_status,
         "is_offline": is_offline if isinstance(is_offline, bool) else None,
-        "last_seen_utc": terminal_data.get("lastConnected"),
+        "last_seen_utc": latest_timestamp_iso(
+            terminal_data.get("lastConnected"),
+            *router_last_connected,
+        ),
         "ping_latency_ms": ping_ms,
         "ping_drop_pct": drop_pct,
+        "portal_service_line_status": service_line_status,
+        "portal_status_source": "service-lines",
     }
 
 
@@ -227,6 +279,80 @@ def fetch_json(page, url):
 def fetch_status(page, terminal):
     url = f"https://starlink.com/api/webagg/v2/accounts/service-line/{terminal['service_line_id']}"
     return parse_status_payload(fetch_json(page, url), terminal)
+
+
+def set_account_context(page, account_id):
+    page.context.add_cookies([{
+        "name": "starlink.com.account_number",
+        "value": account_id,
+        "domain": "starlink.com",
+        "path": "/",
+        "httpOnly": False,
+        "secure": True,
+        "sameSite": "Lax",
+    }])
+    page.goto("https://starlink.com/account/subscriptions", wait_until="domcontentloaded")
+    time.sleep(2)
+
+
+def fetch_service_lines_for_account(page, account_id):
+    set_account_context(page, account_id)
+    try:
+        return fetch_json(page, SERVICE_LINES_URL)
+    except RuntimeError as exc:
+        if "failed: 401" not in str(exc) and "failed: 403" not in str(exc):
+            raise
+        page.goto("https://starlink.com/account/subscriptions", wait_until="domcontentloaded")
+        time.sleep(2)
+        return fetch_json(page, SERVICE_LINES_URL)
+
+
+def service_line_results(payload):
+    block = content(payload)
+    results = block.get("results") if isinstance(block, dict) else None
+    return results if isinstance(results, list) else []
+
+
+def unknown_status_row(terminal, error):
+    return {
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "account_id": terminal["account_id"],
+        "service_line_id": terminal["service_line_id"],
+        "nickname": terminal.get("nickname"),
+        "current_status": "Unknown",
+        "is_offline": None,
+        "last_seen_utc": None,
+        "ping_latency_ms": None,
+        "ping_drop_pct": None,
+        "portal_service_line_status": None,
+        "portal_status_source": "service-lines",
+        "error": str(error),
+    }
+
+
+def fetch_status_rows(page, terminals):
+    rows = []
+    terminals_by_account = {}
+    for terminal in terminals:
+        terminals_by_account.setdefault(terminal["account_id"], []).append(terminal)
+
+    for account_id, account_terminals in terminals_by_account.items():
+        payload = fetch_service_lines_for_account(page, account_id)
+        by_service_line = {
+            item.get("serviceLineNumber"): item
+            for item in service_line_results(payload)
+            if isinstance(item, dict) and item.get("serviceLineNumber")
+        }
+        for terminal in account_terminals:
+            item = by_service_line.get(terminal["service_line_id"])
+            if item:
+                rows.append(parse_service_line_status_item(item, terminal))
+                continue
+            try:
+                rows.append(fetch_status(page, terminal))
+            except Exception as exc:
+                rows.append(unknown_status_row(terminal, exc))
+    return rows
 
 
 def fetch_usage(page, terminal, from_date, to_date):
@@ -330,14 +456,13 @@ def main():
             viewport={"width": 1920, "height": 1080},
         )
         page = context.new_page()
-        page.goto("https://starlink.com/", wait_until="domcontentloaded")
+        page.goto("https://starlink.com/account/subscriptions", wait_until="domcontentloaded")
 
         if args.ping_loop:
             print(f"Starting ping loop for {len(terminals)} terminal(s), interval={args.interval_seconds}s. Ctrl-C to stop.")
             try:
                 while True:
-                    for terminal in terminals:
-                        row = fetch_status(page, terminal)
+                    for row in fetch_status_rows(page, terminals):
                         append_jsonl(args.ping_log, row)
                         print(f"{row['recorded_at']} {row['service_line_id']} {row['current_status']} ping={row['ping_latency_ms']}")
                     time.sleep(args.interval_seconds)
@@ -355,11 +480,12 @@ def main():
             "usage": [],
         }
 
-        for terminal in terminals:
-            print(f"Fetching {terminal.get('nickname') or terminal['service_line_id']} [{terminal['service_line_id']}]")
-            if args.status_once:
-                output["status"].append(fetch_status(page, terminal))
-            if args.usage:
+        if args.status_once:
+            output["status"].extend(fetch_status_rows(page, terminals))
+
+        if args.usage:
+            for terminal in terminals:
+                print(f"Fetching {terminal.get('nickname') or terminal['service_line_id']} [{terminal['service_line_id']}]")
                 output["usage"].extend(fetch_usage(page, terminal, args.from_date, args.to_date))
 
         write_json(args.output, output)
