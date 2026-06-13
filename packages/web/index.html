@@ -185,8 +185,8 @@ body {
 .nav__item:hover { background: var(--bg-2); color: var(--ink); }
 .nav__item.is-active {
   background: var(--surface);
-  color: var(--ink);
-  border-left: 1px solid var(--accent);
+  color: var(--accent);
+  border-left: 2px solid var(--accent);
 }
 .nav__item .nav__count { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
 .nav__item.is-active .nav__count { color: var(--accent); }
@@ -260,8 +260,8 @@ body {
   transition: background .12s ease, border-color .12s ease, color .12s ease;
 }
 .btn:hover { background: var(--bg-2); border-color: var(--ink-3); }
-.btn--primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-.btn--primary:hover { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.btn--primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn--primary:hover { filter: brightness(1.08); }
 .btn--sm { padding: 4px 9px; font-size: 11.5px; }
 
 .link {
@@ -737,15 +737,15 @@ body {
 .btn-primary {
   width: 100%;
   padding: 10px 14px;
-  background: var(--ink);
-  color: var(--bg);
-  border: 1px solid var(--ink);
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 1px solid var(--accent);
   font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
-.btn-primary:hover { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.btn-primary:hover { filter: brightness(1.08); }
 .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
 
 /* ——— Density variants ——— */
@@ -955,6 +955,46 @@ body {
   .login-screen { padding: 14px; }
   .login-card { padding: 24px 18px; }
 }
+
+/* ── Starlinks cleanup: weather chip, sortable headers, report modal ── */
+.wx-chip {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  border: 1px solid var(--rule);
+  background: var(--bg);
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+.wx-chip--warn { color: var(--warn); border-color: color-mix(in oklch, var(--warn) 50%, var(--rule)); }
+.wx-chip--bad  { color: var(--bad);  border-color: color-mix(in oklch, var(--bad) 50%, var(--rule)); }
+
+.tbl__sort { cursor: pointer; user-select: none; }
+.tbl__sort:hover { color: var(--ink); }
+.tbl__sort-ind { display: inline-block; width: 10px; margin-left: 3px; color: var(--accent); }
+
+.modal {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  z-index: 60;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+.modal__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--rule); }
+.modal__title { margin: 2px 0 0; font: 500 22px var(--font-serif); }
+.modal__body { padding: 16px 18px; display: grid; gap: 12px; }
+.modal__row { display: flex; gap: 14px; flex-wrap: wrap; }
+.modal__row label { display: grid; gap: 5px; font: 10px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.modal__row input { border: 1px solid var(--rule); background: var(--bg); color: var(--ink); padding: 8px 9px; font-family: var(--font-mono); outline: none; }
+.modal__row input:focus { border-color: var(--accent); }
+.modal__foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--rule); }
 
 /* ── Triage view ── */
 .vitals {
@@ -1857,25 +1897,131 @@ function Overview({ data, ui, onOpenDish, onJump, onRunDiagnostics }) {
   );
 }
 
+function WeatherChip({ dish }) {
+  const wp = dish.weatherPredictor;
+  const rain = numberOrNull(dish.rainfall);
+  const cloud = numberOrNull(dish.cloudCover);
+  if (rain == null && cloud == null) return <span className="muted">—</span>;
+  const level = wp?.level || 'low';
+  const tone = level === 'high' ? 'bad' : level === 'medium' ? 'warn' : '';
+  const parts = [];
+  if (rain != null) parts.push(`${rain.toFixed(1)}mm`);
+  if (cloud != null) parts.push(`${Math.round(cloud)}% cl`);
+  return (
+    <span className={`wx-chip ${tone ? 'wx-chip--' + tone : ''}`} title={wp?.explanation || rainExplanation(rain)}>
+      {parts.join(' · ')}
+    </span>
+  );
+}
+
+function csvEscape(cell) {
+  const s = cell == null ? '' : String(cell);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function downloadCsv(filename, rows) {
+  const csv = rows.map(r => r.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function exportDishesCsv(rows) {
+  const header = ['Dish', 'Service line', 'Status', 'Cloud', 'Usage today (GB)', 'Usage date', 'Uptime 30d (%)', 'Rain (mm)', 'Cloud cover (%)', 'Latency (ms)'];
+  const body = rows.map(d => [
+    d.name, d.serviceLineId || d.id, d.status, d.cloudStatus || '',
+    d.starlinkUsageGb != null ? d.starlinkUsageGb.toFixed(2) : '',
+    d.starlinkUsageDate || '', d.uptime != null ? d.uptime.toFixed(2) : '',
+    numberOrNull(d.rainfall) ?? '', numberOrNull(d.cloudCover) ?? '', d.latency || '',
+  ]);
+  downloadCsv(`starlink-dishes-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...body]);
+}
+
+function UsageReportModal({ onClose }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const monthAgo = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
+  const [from, setFrom] = uS(monthAgo);
+  const [to, setTo] = uS(today);
+  const [busy, setBusy] = uS(false);
+  const [err, setErr] = uS('');
+  async function generate() {
+    setBusy(true); setErr('');
+    try {
+      const res = await window._API.apiFetch(`/api/starlink-usage?from=${from}&to=${to}`);
+      const rows = res.rows || [];
+      if (!rows.length) { setErr('No usage data in that range.'); setBusy(false); return; }
+      const dates = [...new Set(rows.map(r => r.log_date))].sort();
+      const bySite = new Map();
+      for (const r of rows) {
+        const key = r.site_name || r.nickname || r.service_line_id;
+        if (!bySite.has(key)) bySite.set(key, { name: key, sl: r.service_line_id, days: {}, total: 0 });
+        const e = bySite.get(key);
+        const gb = Number(r.consumed_gb) || 0;
+        e.days[r.log_date] = (e.days[r.log_date] || 0) + gb;
+        e.total += gb;
+      }
+      const allSites = [...bySite.values()].sort((a, b) => b.total - a.total);
+      const header = ['Site', 'Service line', ...dates, 'Total GB'];
+      const body = allSites.map(e =>
+        [e.name, e.sl, ...dates.map(d => (e.days[d] != null ? e.days[d].toFixed(2) : '')), e.total.toFixed(2)]);
+      const totalRow = [
+        'All sites', '',
+        ...dates.map(d => allSites.reduce((s, e) => s + (Number(e.days[d]) || 0), 0).toFixed(2)),
+        allSites.reduce((s, e) => s + e.total, 0).toFixed(2),
+      ];
+      downloadCsv(`starlink-usage_${from}_to_${to}.csv`, [header, ...body, totalRow]);
+      onClose();
+    } catch (e) {
+      setErr(e.message || 'Failed to generate report');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <div className="scrim" onClick={onClose} />
+      <div className="modal" role="dialog" aria-label="Usage report">
+        <div className="modal__head">
+          <div><div className="eyebrow">Directors’ export</div><h2 className="modal__title">Usage report</h2></div>
+          <button className="icon-btn" onClick={onClose} aria-label="Close">{Icon.close}</button>
+        </div>
+        <div className="modal__body">
+          <p className="muted">Daily Starlink data usage per site for a date range, downloaded as CSV (one row per school, one column per day, plus totals).</p>
+          <div className="modal__row">
+            <label>From<input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} /></label>
+            <label>To<input type="date" value={to} min={from} max={today} onChange={e => setTo(e.target.value)} /></label>
+          </div>
+          {err && <div className="inline-note inline-note--bad">{err}</div>}
+        </div>
+        <div className="modal__foot">
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn--primary" disabled={busy} onClick={generate}>{busy ? 'Generating…' : 'Download CSV'}</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function Starlinks({ data, filter, onOpenDish }) {
   const [q, setQ] = uS('');
   const [sf, setSf] = uS('all');
-  const [sort, setSort] = uS('name:asc');
+  const [sort, setSort] = uS('usage:desc');
+  const [reportOpen, setReportOpen] = uS(false);
   const filteredRows = data.DISHES.filter(d => {
     if (filter.campus!=='all' && d.campus!==filter.campus) return false;
     if (sf!=='all' && d.status!==sf) return false;
-    if (q && !(`${d.name} ${d.id}`.toLowerCase().includes(q.toLowerCase()))) return false;
+    if (q && !(`${d.name} ${d.id} ${d.serviceLineId || ''}`.toLowerCase().includes(q.toLowerCase()))) return false;
     return true;
   });
   const rows = sortRows(filteredRows, sort, {
     name: d => d.name,
-    campus: d => campusName(data, d.campus),
     status: d => ({ online: 1, degraded: 2, maintenance: 3, standby: 3, offline: 4 })[d.status] ?? 9,
-    latency: d => d.latency || null,
-    obstruction: d => d.obstruction,
-    uptime: d => d.uptime ?? -1,
+    cloud: d => ({ Online: 1, Offline: 2 })[d.cloudStatus] ?? 3,
     usage: d => d.starlinkUsageGb,
+    uptime: d => d.uptime ?? -1,
     rain: d => d.rainfall,
+    latency: d => d.latency || null,
   });
   const counts = {
     all: data.DISHES.length,
@@ -1884,6 +2030,16 @@ function Starlinks({ data, filter, onOpenDish }) {
     offline: data.DISHES.filter(d=>d.status==='offline').length,
     maintenance: data.DISHES.filter(d=>d.status==='maintenance'||d.status==='standby').length,
   };
+  const hasAgentSignal = rows.some(d => d.latency > 0 || numberOrNull(d.down) != null || numberOrNull(d.up) != null);
+  const [sortKey, sortDir] = sort.split(':');
+  const SortTh = ({ k, label, num }) => (
+    <th
+      className={num ? 'num tbl__sort' : 'tbl__sort'}
+      onClick={() => setSort(prev => { const [pk, pd] = prev.split(':'); return `${k}:${pk === k && pd === 'asc' ? 'desc' : 'asc'}`; })}
+    >
+      {label}<span className="tbl__sort-ind">{sortKey === k ? (sortDir === 'asc' ? '↑' : '↓') : ''}</span>
+    </th>
+  );
   return (
     <div className="view">
       <div className="view__header">
@@ -1891,15 +2047,15 @@ function Starlinks({ data, filter, onOpenDish }) {
         <div className="view__actions">
           <Search value={q} onChange={setQ} placeholder="Search dishes…" />
           <SortSelect value={sort} onChange={setSort} options={[
+            {id:'usage:desc',label:'Usage high first'},
             {id:'name:asc',label:'Dish A-Z'},
             {id:'status:asc',label:'Status priority'},
-            {id:'latency:desc',label:'Latency high first'},
-            {id:'obstruction:desc',label:'Obstruction high first'},
-            {id:'usage:desc',label:'Portal usage high first'},
-            {id:'rain:desc',label:'Rain high first'},
+            {id:'cloud:asc',label:'Cloud status'},
             {id:'uptime:asc',label:'Uptime low first'},
+            {id:'rain:desc',label:'Rain high first'},
           ]} />
-          <button className="btn">Export CSV</button>
+          <button className="btn" onClick={()=>exportDishesCsv(rows)}>Export CSV</button>
+          <button className="btn btn--primary" onClick={()=>setReportOpen(true)}>Usage report</button>
         </div>
       </div>
       <div className="tbl-toolbar">
@@ -1913,12 +2069,21 @@ function Starlinks({ data, filter, onOpenDish }) {
       <section className="panel panel--flush">
         <div className="table-scroll">
           <table className="tbl tbl--data">
-            <thead><tr><th>Dish</th><th>Campus</th><th>Status</th><th>Cloud</th><th className="num">Portal usage</th><th className="num">Down</th><th className="num">Up</th><th className="num">Latency</th><th className="num">Obstruct.</th><th>Weather warning</th><th className="num">Uptime 30d</th><th className="num">Data trend</th><th></th></tr></thead>
+            <thead><tr>
+              <SortTh k="name" label="Dish" />
+              <SortTh k="status" label="Status" />
+              <SortTh k="cloud" label="Cloud" />
+              <SortTh k="usage" label="Usage today" num />
+              <th className="num">30-day trend</th>
+              <SortTh k="uptime" label="Uptime 30d" num />
+              <SortTh k="rain" label="Weather" />
+              {hasAgentSignal && <SortTh k="latency" label="Signal" num />}
+              <th></th>
+            </tr></thead>
             <tbody>
               {rows.map(d => (
                 <tr key={d.id} onClick={()=>onOpenDish(d)} className="tbl__row--click">
-                  <td><div className="cell-primary">{d.name}</div><div className="cell-mono">{d.id}{d.serviceLineId ? ` · ${d.serviceLineId}` : ` · ${d.sku}`}</div></td>
-                  <td>{campusName(data,d.campus)}</td>
+                  <td><div className="cell-primary">{d.name}</div><div className="cell-mono">{d.serviceLineId || d.id}</div></td>
                   <td>
                     <StatusChip status={d.status} />
                     {d.legacyStatus && d.legacyStatus !== d.status && <div className="cell-mono">agent {STATUS_LABEL[d.legacyStatus] || d.legacyStatus}</div>}
@@ -1931,13 +2096,15 @@ function Starlinks({ data, filter, onOpenDish }) {
                     <div>{formatDataUsage(d.starlinkUsageDaily)}</div>
                     {d.starlinkUsageDate && <div className="cell-mono">{formatShortDate(d.starlinkUsageDate)}</div>}
                   </td>
-                  <td className="num mono">{formatMbps(d.down)}</td>
-                  <td className="num mono">{formatMbps(d.up)}</td>
-                  <td className="num mono">{d.latency?d.latency+'ms':'—'}</td>
-                  <td className="num mono">{d.obstruction.toFixed(1)}%</td>
-                  <td><WeatherCell dish={d} /></td>
-                  <td className="num mono">{d.uptime != null ? d.uptime.toFixed(2)+'%' : '—'}</td>
                   <td className="num"><UsageTrendCell dish={d} /></td>
+                  <td className="num mono">{d.uptime != null ? d.uptime.toFixed(2)+'%' : '—'}</td>
+                  <td><WeatherChip dish={d} /></td>
+                  {hasAgentSignal && (
+                    <td className="num mono">
+                      {d.latency ? d.latency+'ms' : '—'}
+                      {numberOrNull(d.obstruction) ? <div className="cell-mono">{d.obstruction.toFixed(1)}% obs</div> : null}
+                    </td>
+                  )}
                   <td className="tbl__chev">{Icon.arrow}</td>
                 </tr>
               ))}
@@ -1945,6 +2112,7 @@ function Starlinks({ data, filter, onOpenDish }) {
           </table>
         </div>
       </section>
+      {reportOpen && <UsageReportModal onClose={()=>setReportOpen(false)} />}
     </div>
   );
 }
