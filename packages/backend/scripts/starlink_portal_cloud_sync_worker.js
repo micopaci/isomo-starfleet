@@ -7,7 +7,9 @@
  * cloud APIs and writes authoritative terminal status + daily usage history.
  */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
@@ -55,15 +57,26 @@ Daemon schedule:
 Optional:
   STARLINK_WEBAGG_BASE_URL=https://starlink.com/api/webagg/v2
   STARLINK_TELEMETRYAGG_BASE_URL=https://starlink.com/api/telemetryagg/v1
+  STARLINK_CLOUD_SYNC_SOURCE=auto|python|api  (default: auto)
+  STARLINK_PYTHON_BIN=data_usage/.venv/bin/python
+  STARLINK_SYNC_STARFLEET_SCRIPT=data_usage/sync_starfleet.py
   STARLINK_CLOUD_SYNC_DRY_RUN=true
 `);
+}
+
+function repoRoot() {
+  return path.resolve(__dirname, '../../..');
+}
+
+function dataUsagePath(...segments) {
+  return path.resolve(repoRoot(), 'data_usage', ...segments);
 }
 
 function resolveInputFile(filePath) {
   if (path.isAbsolute(filePath)) return filePath;
   const candidates = [
     path.resolve(process.cwd(), filePath),
-    path.resolve(__dirname, '../../..', filePath),
+    path.resolve(repoRoot(), filePath),
     path.resolve(__dirname, '..', filePath),
   ];
   return candidates.find(candidate => fs.existsSync(candidate)) || candidates[0];
@@ -86,6 +99,179 @@ function asPositiveInteger(value, fallback) {
   return Number.isInteger(n) && n > 0 ? n : fallback;
 }
 
+function normalizeSource(value) {
+  const source = String(value || 'auto').trim().toLowerCase();
+  if (source === 'browser') return 'python';
+  if (['auto', 'api', 'python'].includes(source)) return source;
+  throw new Error(`Invalid STARLINK_CLOUD_SYNC_SOURCE: ${value}. Expected auto, api, or python.`);
+}
+
+function pythonSyncScriptPath() {
+  return resolveInputFile(process.env.STARLINK_SYNC_STARFLEET_SCRIPT || 'data_usage/sync_starfleet.py');
+}
+
+function fleetMapPath() {
+  return resolveInputFile(process.env.STARLINK_TERMINALS_FILE || 'data_usage/auth/fleet_map.json');
+}
+
+function authStatePath() {
+  return resolveInputFile(process.env.STARLINK_PORTAL_AUTH_STATE_FILE || 'data_usage/auth/state.json');
+}
+
+function defaultPythonBin() {
+  const candidates = process.platform === 'win32'
+    ? [
+        dataUsagePath('.venv', 'Scripts', 'python.exe'),
+        dataUsagePath('venv', 'Scripts', 'python.exe'),
+      ]
+    : [
+        dataUsagePath('.venv', 'bin', 'python'),
+        dataUsagePath('venv', 'bin', 'python'),
+      ];
+  return candidates.find(candidate => fs.existsSync(candidate)) || 'python3';
+}
+
+function pythonBin() {
+  return process.env.STARLINK_PYTHON_BIN || process.env.PYTHON || defaultPythonBin();
+}
+
+function pythonBridgeAvailable() {
+  return fs.existsSync(pythonSyncScriptPath()) && fs.existsSync(authStatePath()) && fs.existsSync(fleetMapPath());
+}
+
+function configuredSource() {
+  const requested = normalizeSource(argValue('--source') || process.env.STARLINK_CLOUD_SYNC_SOURCE || 'auto');
+  if (requested !== 'auto') return requested;
+  return pythonBridgeAvailable() ? 'python' : 'api';
+}
+
+function numberOrNull(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function timestampOrNull(value) {
+  if (!value) return null;
+  const dt = new Date(value);
+  return Number.isNaN(dt.getTime()) ? null : dt.toISOString();
+}
+
+function statusFromPythonRow(row) {
+  const current = row.current_status === 'Online' || row.current_status === 'Offline'
+    ? row.current_status
+    : 'Unknown';
+  return {
+    current_status: current,
+    is_offline: typeof row.is_offline === 'boolean'
+      ? row.is_offline
+      : current === 'Offline'
+        ? true
+        : current === 'Online'
+          ? false
+          : null,
+    last_seen_utc: timestampOrNull(row.last_seen_utc),
+    ping_latency_ms: numberOrNull(row.ping_latency_ms),
+    ping_drop_pct: numberOrNull(row.ping_drop_pct),
+    nickname: row.nickname || null,
+    raw_terminal: {
+      source: 'data_usage/sync_starfleet.py',
+      row,
+    },
+  };
+}
+
+function usageHistoryFromPythonRows(rows) {
+  const history = [];
+  let activeBillingCycleStart = null;
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const consumedGb = numberOrNull(row.consumed_gb);
+    if (consumedGb == null || consumedGb < 0) continue;
+    const logDate = String(row.log_date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(logDate)) continue;
+    const billingCycleStart = row.billing_cycle_start
+      ? String(row.billing_cycle_start).slice(0, 10)
+      : null;
+    if (billingCycleStart && (!activeBillingCycleStart || billingCycleStart > activeBillingCycleStart)) {
+      activeBillingCycleStart = billingCycleStart;
+    }
+    history.push({
+      log_date: logDate,
+      consumed_gb: Math.round(consumedGb * 1000) / 1000,
+      billing_cycle_start: billingCycleStart,
+      metadata: {
+        source: 'data_usage/sync_starfleet.py',
+        billing_cycle_index: row.billing_cycle_index,
+        daily_data_index: row.daily_data_index,
+      },
+    });
+  }
+  return { history, active_billing_cycle_start: activeBillingCycleStart };
+}
+
+function pythonAuthErrorFromOutput(output, context) {
+  const match = String(output || '').match(/failed:\s*(401|403)\b/);
+  if (!match) return null;
+  const status = Number(match[1]);
+  return new StarlinkPortalAuthExpiredError(
+    `Starlink portal auth expired with HTTP ${status}`,
+    status,
+    context,
+  );
+}
+
+function runPythonStarfleetSync(mode) {
+  const script = pythonSyncScriptPath();
+  const state = authStatePath();
+  const fleetMap = fleetMapPath();
+
+  if (!fs.existsSync(script)) {
+    throw new Error(`Missing Python Starlink sync script: ${script}`);
+  }
+  if (!fs.existsSync(state)) {
+    throw new Error(`Python Starlink sync requires auth state: ${state}. Run data_usage/auth_generator.py or set STARLINK_CLOUD_SYNC_SOURCE=api to use captured headers.`);
+  }
+  if (!fs.existsSync(fleetMap)) {
+    throw new Error(`Python Starlink sync requires fleet map: ${fleetMap}. Run data_usage/discover_fleet.py first.`);
+  }
+
+  const output = path.join(os.tmpdir(), `starfleet-starlink-${mode}-${process.pid}-${Date.now()}.json`);
+  const args = [
+    script,
+    '--fleet-map',
+    fleetMap,
+    '--state',
+    state,
+    '--output',
+    output,
+  ];
+  if (mode === 'status') args.push('--status-once');
+  if (mode === 'usage') args.push('--usage');
+  if (process.env.STARLINK_PYTHON_SHOW_BROWSER === 'true') args.push('--show-browser');
+
+  const result = spawnSync(pythonBin(), args, {
+    cwd: repoRoot(),
+    encoding: 'utf8',
+    env: process.env,
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  const combinedOutput = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw pythonAuthErrorFromOutput(combinedOutput, { operation: `python_${mode}`, script })
+      || new Error(`Python Starlink ${mode} sync failed with exit ${result.status}: ${combinedOutput}`);
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(output, 'utf8'));
+  } finally {
+    fs.rmSync(output, { force: true });
+  }
+}
+
 function loadTerminalInventoryFromEnv() {
   const raw = process.env.STARLINK_TERMINALS_JSON
     ? JSON.parse(process.env.STARLINK_TERMINALS_JSON)
@@ -97,15 +283,22 @@ function loadTerminalInventoryFromEnv() {
   if (!Array.isArray(entries)) {
     throw new Error('Starlink terminal inventory must be an array or { terminals: [...] }');
   }
+  const includeInactive = process.env.STARLINK_INCLUDE_INACTIVE_TERMINALS === 'true';
   return entries.map(entry => ({
     service_line_id: String(entry.service_line_id || entry.serviceLineId || entry.service_line || '').trim(),
     account_id: String(entry.account_id || entry.accountId || '').trim(),
     nickname: entry.nickname || entry.name || null,
+    status: entry.status || entry.portal_status || entry.portalStatus || null,
     site_id: entry.site_id == null || entry.site_id === ''
       ? null
       : Number(entry.site_id),
     billing_cycle_start: entry.billing_cycle_start || entry.billingCycleStart || null,
-  })).filter(entry => entry.service_line_id && entry.account_id);
+  })).filter(entry => {
+    if (!entry.service_line_id || !entry.account_id) return false;
+    if (includeInactive) return true;
+    const status = String(entry.status || '').trim().toLowerCase();
+    return !status || status === 'active';
+  });
 }
 
 function normalizeTerminalInventory(raw) {
@@ -410,13 +603,53 @@ function createPortalClient() {
   });
 }
 
-async function runStatusCycle({ dryRun = false } = {}) {
-  const client = await pool.connect();
-  const portal = createPortalClient();
+async function runStatusCycleViaPython(client, terminals, { dryRun = false, seeded = 0 } = {}) {
+  const terminalByServiceLine = new Map(terminals.map(terminal => [terminal.service_line_id, terminal]));
+  const payload = runPythonStarfleetSync('status');
+  const rows = Array.isArray(payload.status) ? payload.status : [];
   let updated = 0;
-  try {
-    const { seeded, terminals } = await ensureTerminalInventory(client, { dryRun });
-    for (const terminal of terminals) {
+  let failed = 0;
+
+  for (const row of rows) {
+    const serviceLineId = String(row.service_line_id || '').trim();
+    if (!serviceLineId) {
+      failed += 1;
+      continue;
+    }
+    const terminal = terminalByServiceLine.get(serviceLineId) || {
+      service_line_id: serviceLineId,
+      account_id: row.account_id,
+      nickname: row.nickname,
+      site_id: null,
+    };
+    const status = statusFromPythonRow(row);
+    if (!dryRun) {
+      await upsertTerminalStatus(client, terminal, status);
+      await insertPingSample(client, terminal, status);
+    }
+    updated += 1;
+    console.log(`[StarlinkCloudSync] ${terminal.service_line_id} status=${status.current_status} source=python ping=${status.ping_latency_ms ?? 'unknown'}ms last_seen=${status.last_seen_utc || 'unknown'}`);
+  }
+
+  const alerts = dryRun ? { active_offline_alerts: 0 } : await syncOfflineAlerts(client);
+  return {
+    ok: failed === 0,
+    source: 'python',
+    seeded,
+    terminals: terminals.length,
+    updated,
+    failed,
+    ...alerts,
+  };
+}
+
+async function runStatusCycleViaApi(client, portal, terminals, { dryRun = false, seeded = 0 } = {}) {
+  let updated = 0;
+  let failed = 0;
+  const failures = [];
+
+  for (const terminal of terminals) {
+    try {
       const payload = await portal.getTerminalStatus(terminal.service_line_id);
       const status = parseTerminalStatus(payload);
       if (!dryRun) {
@@ -424,10 +657,41 @@ async function runStatusCycle({ dryRun = false } = {}) {
         await insertPingSample(client, terminal, status);
       }
       updated += 1;
-      console.log(`[StarlinkCloudSync] ${terminal.service_line_id} status=${status.current_status} ping=${status.ping_latency_ms ?? 'unknown'}ms last_seen=${status.last_seen_utc || 'unknown'}`);
+      console.log(`[StarlinkCloudSync] ${terminal.service_line_id} status=${status.current_status} source=api ping=${status.ping_latency_ms ?? 'unknown'}ms last_seen=${status.last_seen_utc || 'unknown'}`);
+    } catch (err) {
+      if (err instanceof StarlinkPortalAuthExpiredError) throw err;
+      failed += 1;
+      failures.push({
+        service_line_id: terminal.service_line_id,
+        error: err.message,
+      });
+      console.warn(`[StarlinkCloudSync] ${terminal.service_line_id} status failed: ${err.message}`);
     }
-    const alerts = dryRun ? { active_offline_alerts: 0 } : await syncOfflineAlerts(client);
-    return { ok: true, seeded, terminals: terminals.length, updated, ...alerts };
+  }
+
+  const alerts = dryRun ? { active_offline_alerts: 0 } : await syncOfflineAlerts(client);
+  return {
+    ok: failed === 0,
+    source: 'api',
+    seeded,
+    terminals: terminals.length,
+    updated,
+    failed,
+    failures: failures.slice(0, 5),
+    ...alerts,
+  };
+}
+
+async function runStatusCycle({ dryRun = false } = {}) {
+  const client = await pool.connect();
+  try {
+    const { seeded, terminals } = await ensureTerminalInventory(client, { dryRun });
+    const source = configuredSource();
+    if (source === 'python') {
+      return await runStatusCycleViaPython(client, terminals, { dryRun, seeded });
+    }
+    const portal = createPortalClient();
+    return await runStatusCycleViaApi(client, portal, terminals, { dryRun, seeded });
   } catch (err) {
     if (err instanceof StarlinkPortalAuthExpiredError && !dryRun) {
       await recordAuthExpiredAlert(client, err, { loop: 'status' }).catch(alertErr => {
@@ -440,22 +704,77 @@ async function runStatusCycle({ dryRun = false } = {}) {
   }
 }
 
-async function runUsageCycle({ dryRun = false } = {}) {
-  const client = await pool.connect();
-  const portal = createPortalClient();
+async function runUsageCycleViaPython(client, terminals, { dryRun = false, seeded = 0 } = {}) {
+  const payload = runPythonStarfleetSync('usage');
+  const rows = Array.isArray(payload.usage) ? payload.usage : [];
+  const rowsByServiceLine = new Map();
+  for (const row of rows) {
+    const serviceLineId = String(row.service_line_id || '').trim();
+    if (!serviceLineId) continue;
+    const existing = rowsByServiceLine.get(serviceLineId) || [];
+    existing.push(row);
+    rowsByServiceLine.set(serviceLineId, existing);
+  }
+
   let records = 0;
   let terminalsSeen = 0;
-  try {
-    const { seeded, terminals } = await ensureTerminalInventory(client, { dryRun });
-    for (const terminal of terminals) {
+  for (const terminal of terminals) {
+    const parsed = usageHistoryFromPythonRows(rowsByServiceLine.get(terminal.service_line_id) || []);
+    if (!dryRun && parsed.history.length) await upsertUsageHistory(client, terminal, parsed);
+    records += parsed.history.length;
+    terminalsSeen += 1;
+    console.log(`[StarlinkCloudSync] ${terminal.service_line_id} usage_records=${parsed.history.length} source=python billing_cycle_start=${parsed.active_billing_cycle_start || 'unknown'}`);
+  }
+
+  return { ok: true, source: 'python', seeded, terminals: terminalsSeen, records };
+}
+
+async function runUsageCycleViaApi(client, portal, terminals, { dryRun = false, seeded = 0 } = {}) {
+  let records = 0;
+  let terminalsSeen = 0;
+  let failed = 0;
+  const failures = [];
+
+  for (const terminal of terminals) {
+    try {
       const payload = await portal.getDataUsage(terminal.account_id, terminal.service_line_id);
       const parsed = parseUsageHistory(payload);
       if (!dryRun) await upsertUsageHistory(client, terminal, parsed);
       records += parsed.history.length;
       terminalsSeen += 1;
-      console.log(`[StarlinkCloudSync] ${terminal.service_line_id} usage_records=${parsed.history.length} billing_cycle_start=${parsed.active_billing_cycle_start || 'unknown'}`);
+      console.log(`[StarlinkCloudSync] ${terminal.service_line_id} usage_records=${parsed.history.length} source=api billing_cycle_start=${parsed.active_billing_cycle_start || 'unknown'}`);
+    } catch (err) {
+      if (err instanceof StarlinkPortalAuthExpiredError) throw err;
+      failed += 1;
+      failures.push({
+        service_line_id: terminal.service_line_id,
+        error: err.message,
+      });
+      console.warn(`[StarlinkCloudSync] ${terminal.service_line_id} usage failed: ${err.message}`);
     }
-    return { ok: true, seeded, terminals: terminalsSeen, records };
+  }
+
+  return {
+    ok: failed === 0,
+    source: 'api',
+    seeded,
+    terminals: terminalsSeen,
+    records,
+    failed,
+    failures: failures.slice(0, 5),
+  };
+}
+
+async function runUsageCycle({ dryRun = false } = {}) {
+  const client = await pool.connect();
+  try {
+    const { seeded, terminals } = await ensureTerminalInventory(client, { dryRun });
+    const source = configuredSource();
+    if (source === 'python') {
+      return await runUsageCycleViaPython(client, terminals, { dryRun, seeded });
+    }
+    const portal = createPortalClient();
+    return await runUsageCycleViaApi(client, portal, terminals, { dryRun, seeded });
   } catch (err) {
     if (err instanceof StarlinkPortalAuthExpiredError && !dryRun) {
       await recordAuthExpiredAlert(client, err, { loop: 'usage' }).catch(alertErr => {

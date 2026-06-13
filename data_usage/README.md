@@ -88,18 +88,37 @@ python3 data_usage/sync_starfleet.py --ping-loop --service-line SL-606903-86751-
 This writes JSONL rows to `data_usage/auth/ping_samples.jsonl`.
 
 For the production dashboard graph and 16-hour offline alert, run the backend
-worker instead:
+worker. It now uses this same `sync_starfleet.py` Chromium flow by default when
+`auth/state.json` and `auth/fleet_map.json` exist, then imports the results into
+Postgres for the dashboard:
 
 ```bash
-STARLINK_PORTAL_AUTH_HEADERS_FILE=data_usage/auth/api_headers.json \
+STARLINK_CLOUD_SYNC_SOURCE=python \
+STARLINK_PORTAL_AUTH_STATE_FILE=data_usage/auth/state.json \
 STARLINK_TERMINALS_FILE=data_usage/auth/fleet_map.json \
 STARLINK_STATUS_INTERVAL_MINUTES=5 \
 npm run starlink:portal:cloud-sync --workspace=packages/backend -- --daemon
 ```
 
-You can use `STARLINK_PORTAL_AUTH_STATE_FILE=data_usage/auth/state.json`
-instead of `STARLINK_PORTAL_AUTH_HEADERS_FILE`, but prefer the captured headers
-when the portal API requires the exact browser cookie/header set.
+`STARLINK_CLOUD_SYNC_SOURCE=auto` is the default. Auto prefers the Python
+Chromium extractor when `data_usage/auth/state.json` is available and falls back
+to direct API headers only when it is not. Force the older header-only path with:
+
+```bash
+STARLINK_CLOUD_SYNC_SOURCE=api \
+STARLINK_PORTAL_AUTH_HEADERS_FILE=data_usage/auth/api_headers.json \
+STARLINK_TERMINALS_FILE=data_usage/auth/fleet_map.json \
+npm run starlink:portal:cloud-sync --workspace=packages/backend -- --status-once
+```
+
+If the sync host has a Python virtualenv, the worker will prefer
+`data_usage/.venv/bin/python` automatically. Override it with
+`STARLINK_PYTHON_BIN=/path/to/python` when needed.
+
+Inactive lines in `fleet_map.json` are skipped by default to match
+`sync_starfleet.py --active-only`. Set
+`STARLINK_INCLUDE_INACTIVE_TERMINALS=true` only when you intentionally want
+cancelled/suspended lines in the backend inventory.
 
 That worker writes:
 
