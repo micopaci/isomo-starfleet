@@ -59,8 +59,18 @@ Optional:
 `);
 }
 
+function resolveInputFile(filePath) {
+  if (path.isAbsolute(filePath)) return filePath;
+  const candidates = [
+    path.resolve(process.cwd(), filePath),
+    path.resolve(__dirname, '../../..', filePath),
+    path.resolve(__dirname, '..', filePath),
+  ];
+  return candidates.find(candidate => fs.existsSync(candidate)) || candidates[0];
+}
+
 function readJsonFile(filePath) {
-  return JSON.parse(fs.readFileSync(path.resolve(filePath), 'utf8'));
+  return JSON.parse(fs.readFileSync(resolveInputFile(filePath), 'utf8'));
 }
 
 function argValue(name) {
@@ -199,10 +209,10 @@ async function loadTerminals(client) {
   return rows;
 }
 
-async function ensureTerminalInventory(client) {
+async function ensureTerminalInventory(client, { dryRun = false } = {}) {
   const inventory = loadTerminalInventoryFromEnv();
-  const seeded = inventory.length ? await seedConfiguredTerminals(client, inventory) : 0;
-  const terminals = await loadTerminals(client);
+  const seeded = inventory.length && !dryRun ? await seedConfiguredTerminals(client, inventory) : 0;
+  const terminals = dryRun && inventory.length ? inventory : await loadTerminals(client);
   if (!terminals.length) {
     throw new Error('No Starlink terminals configured. Seed starlink_terminals with STARLINK_TERMINALS_FILE or STARLINK_TERMINALS_JSON.');
   }
@@ -405,7 +415,7 @@ async function runStatusCycle({ dryRun = false } = {}) {
   const portal = createPortalClient();
   let updated = 0;
   try {
-    const { seeded, terminals } = await ensureTerminalInventory(client);
+    const { seeded, terminals } = await ensureTerminalInventory(client, { dryRun });
     for (const terminal of terminals) {
       const payload = await portal.getTerminalStatus(terminal.service_line_id);
       const status = parseTerminalStatus(payload);
@@ -419,7 +429,7 @@ async function runStatusCycle({ dryRun = false } = {}) {
     const alerts = dryRun ? { active_offline_alerts: 0 } : await syncOfflineAlerts(client);
     return { ok: true, seeded, terminals: terminals.length, updated, ...alerts };
   } catch (err) {
-    if (err instanceof StarlinkPortalAuthExpiredError) {
+    if (err instanceof StarlinkPortalAuthExpiredError && !dryRun) {
       await recordAuthExpiredAlert(client, err, { loop: 'status' }).catch(alertErr => {
         console.error(`[StarlinkCloudSync] Failed to record auth alert: ${alertErr.message}`);
       });
@@ -436,7 +446,7 @@ async function runUsageCycle({ dryRun = false } = {}) {
   let records = 0;
   let terminalsSeen = 0;
   try {
-    const { seeded, terminals } = await ensureTerminalInventory(client);
+    const { seeded, terminals } = await ensureTerminalInventory(client, { dryRun });
     for (const terminal of terminals) {
       const payload = await portal.getDataUsage(terminal.account_id, terminal.service_line_id);
       const parsed = parseUsageHistory(payload);
@@ -447,7 +457,7 @@ async function runUsageCycle({ dryRun = false } = {}) {
     }
     return { ok: true, seeded, terminals: terminalsSeen, records };
   } catch (err) {
-    if (err instanceof StarlinkPortalAuthExpiredError) {
+    if (err instanceof StarlinkPortalAuthExpiredError && !dryRun) {
       await recordAuthExpiredAlert(client, err, { loop: 'usage' }).catch(alertErr => {
         console.error(`[StarlinkCloudSync] Failed to record auth alert: ${alertErr.message}`);
       });

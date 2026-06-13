@@ -33,6 +33,23 @@ STARLINK_PORTAL_AUTHORIZATION=Bearer ...
 `STARLINK_PORTAL_AUTH_STATE_FILE` may be a Playwright-style storage state JSON.
 The worker extracts non-expired `starlink.com` cookies from it.
 
+For the most faithful browser session payload, refresh login and capture headers:
+
+```bash
+cd data_usage
+python3 auth_generator.py
+python3 capture_api_headers.py
+```
+
+Then run the worker with:
+
+```text
+STARLINK_PORTAL_AUTH_HEADERS_FILE=data_usage/auth/api_headers.json
+```
+
+`data_usage/auth/api_headers.json` contains live cookies and must remain local.
+It is ignored by git.
+
 If Starlink returns HTTP 401 or 403, the worker writes/refreshes a critical
 `alert_events` row with active key `starlink-portal-auth:expired` and logs the
 failure. Refresh the external auth file or headers before the next run.
@@ -66,10 +83,13 @@ STARLINK_TERMINALS_JSON=[{"service_line_id":"AST-...","account_id":"ACC-...","si
 ```
 
 `data_usage/auth/fleet_map.json` from `discover_fleet.py` is accepted directly.
+Generated alternates such as `data_usage/auth/fleet_map_ast.json` are also
+usable if they preserve the account/service-line/nickname shape; missing
+terminal `status` is treated as active by the helper CLI.
 After the first seed, the worker loads terminals from `starlink_terminals`.
-If a terminal nickname exactly matches a Starfleet site name after normalization,
-the worker fills `site_id`; otherwise add `site_id` in the JSON or update the
-row in `starlink_terminals`.
+If a terminal nickname matches a Starfleet site name after normalization
+(including common `GS` / `ES` aliases), the worker fills `site_id`; otherwise
+add `site_id` in the JSON or update the row in `starlink_terminals`.
 
 ## Commands
 

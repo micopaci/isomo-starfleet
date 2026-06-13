@@ -7,7 +7,9 @@ Current important files:
 | File | Purpose |
 |---|---|
 | `auth/state.json` | Manual Starlink browser session captured by `auth_generator.py`. Treat as secret. |
+| `auth/api_headers.json` | Exact Starlink API headers captured from the logged-in portal session. Treat as secret. |
 | `auth/fleet_map.json` | Account-to-service-line inventory discovered by `discover_fleet.py`. |
+| `capture_api_headers.py` | Refreshes `auth/api_headers.json` from the current browser storage state. |
 | `sync_starfleet.py` | CLI for ad hoc status, date-range usage, and ping sampling from Starlink cloud APIs. |
 
 ## Future Update Flow
@@ -22,6 +24,15 @@ python3 auth_generator.py
 Log in in the opened browser, complete MFA, then press Enter in the terminal.
 This refreshes `data_usage/auth/state.json`.
 
+After refreshing login, capture the raw API headers used by the portal:
+
+```bash
+python3 capture_api_headers.py
+```
+
+This writes `data_usage/auth/api_headers.json`. The file contains live cookies,
+so it is ignored by git and should stay local to the sync host.
+
 When accounts or terminals change:
 
 ```bash
@@ -30,6 +41,11 @@ python3 discover_fleet.py
 ```
 
 This refreshes `data_usage/auth/fleet_map.json`.
+
+Some discovery/capture flows may also create `auth/fleet_map_ast.json`. That
+file has the same account/service-line shape but may omit portal `status`.
+`sync_starfleet.py` treats missing status as active so date/status queries still
+work with either fleet map.
 
 ## Query Usage For Dates
 
@@ -67,11 +83,15 @@ For the production dashboard graph and 16-hour offline alert, run the backend
 worker instead:
 
 ```bash
-STARLINK_PORTAL_AUTH_STATE_FILE=data_usage/auth/state.json \
+STARLINK_PORTAL_AUTH_HEADERS_FILE=data_usage/auth/api_headers.json \
 STARLINK_TERMINALS_FILE=data_usage/auth/fleet_map.json \
 STARLINK_STATUS_INTERVAL_MINUTES=5 \
 npm run starlink:portal:cloud-sync --workspace=packages/backend -- --daemon
 ```
+
+You can use `STARLINK_PORTAL_AUTH_STATE_FILE=data_usage/auth/state.json`
+instead of `STARLINK_PORTAL_AUTH_HEADERS_FILE`, but prefer the captured headers
+when the portal API requires the exact browser cookie/header set.
 
 That worker writes:
 

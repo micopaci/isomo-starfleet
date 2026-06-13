@@ -96,7 +96,10 @@ def select_terminals(terminals, args):
         target = args.account_id.lower()
         selected = [t for t in selected if t["account_id"].lower() == target]
     if args.active_only:
-        selected = [t for t in selected if (t.get("status") or "").lower() == "active"]
+        selected = [
+            t for t in selected
+            if (t.get("status") or "").strip().lower() in ("", "active")
+        ]
     if args.limit:
         selected = selected[:args.limit]
     return selected
