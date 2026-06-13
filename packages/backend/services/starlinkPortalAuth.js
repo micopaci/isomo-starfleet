@@ -10,8 +10,18 @@ class StarlinkPortalAuthExpiredError extends Error {
   }
 }
 
+function resolveConfigFile(filePath) {
+  if (path.isAbsolute(filePath)) return filePath;
+  const candidates = [
+    path.resolve(process.cwd(), filePath),
+    path.resolve(__dirname, '../../..', filePath),
+    path.resolve(__dirname, '..', filePath),
+  ];
+  return candidates.find(candidate => fs.existsSync(candidate)) || candidates[0];
+}
+
 function readJson(filePath) {
-  const resolved = path.resolve(filePath);
+  const resolved = resolveConfigFile(filePath);
   return JSON.parse(fs.readFileSync(resolved, 'utf8'));
 }
 
