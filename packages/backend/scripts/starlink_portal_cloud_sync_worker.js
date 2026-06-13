@@ -25,7 +25,13 @@ const {
   StarlinkPortalClient,
   parseTerminalStatus,
   parseUsageHistory,
+  todayUtcDate,
 } = require('../services/starlinkPortalCloudSync');
+
+// Online window (days): the portal's real-time isOffline flag is null for these
+// reseller accounts, so we treat a dish as Online when it reported daily usage
+// within this many days. Override with STARLINK_ONLINE_WINDOW_DAYS.
+const ONLINE_WINDOW_DAYS = asPositiveInteger(process.env.STARLINK_ONLINE_WINDOW_DAYS, 2);
 
 const args = new Set(process.argv.slice(2));
 
@@ -643,29 +649,74 @@ async function runStatusCycleViaPython(client, terminals, { dryRun = false, seed
   };
 }
 
+// Group terminals by Starlink account so portal account context is switched
+// once per account instead of per service line.
+function groupTerminalsByAccount(terminals) {
+  const groups = new Map();
+  for (const terminal of terminals) {
+    const key = terminal.account_id || '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(terminal);
+  }
+  return groups;
+}
+
+function usageStatusFromDate(latestLogDate, now = new Date()) {
+  if (!latestLogDate) return null;
+  const today = todayUtcDate(now);
+  const last = String(latestLogDate).slice(0, 10);
+  const diffDays = Math.round(
+    (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${last}T00:00:00Z`)) / 86400000,
+  );
+  if (!Number.isFinite(diffDays)) return null;
+  return diffDays <= ONLINE_WINDOW_DAYS ? 'Online' : 'Offline';
+}
+
+// A row exists for every day the portal recorded telemetry, so the most recent
+// log_date is the freshest "reported" signal even when that day's usage was 0.
+async function latestUsageStatus(client, serviceLineId, now) {
+  const { rows } = await client.query(
+    `SELECT MAX(log_date)::text AS latest
+     FROM starlink_usage_history
+     WHERE service_line_id = $1`,
+    [serviceLineId],
+  );
+  return usageStatusFromDate(rows[0]?.latest, now);
+}
+
 async function runStatusCycleViaApi(client, portal, terminals, { dryRun = false, seeded = 0 } = {}) {
   let updated = 0;
   let failed = 0;
   const failures = [];
 
-  for (const terminal of terminals) {
-    try {
-      const payload = await portal.getTerminalStatus(terminal.service_line_id);
-      const status = parseTerminalStatus(payload);
-      if (!dryRun) {
-        await upsertTerminalStatus(client, terminal, status);
-        await insertPingSample(client, terminal, status);
+  for (const [accountId, group] of groupTerminalsByAccount(terminals)) {
+    await portal.switchAccount(accountId);
+    for (const terminal of group) {
+      try {
+        const payload = await portal.getTerminalStatus(terminal.service_line_id);
+        const status = parseTerminalStatus(payload);
+        // The portal exposes no real-time online flag for these reseller
+        // accounts (isOffline is always null), so fall back to recent
+        // daily-usage activity to decide Online vs Offline.
+        if (status.current_status === 'Unknown') {
+          const usageStatus = await latestUsageStatus(client, terminal.service_line_id);
+          if (usageStatus) status.current_status = usageStatus;
+        }
+        if (!dryRun) {
+          await upsertTerminalStatus(client, terminal, status);
+          await insertPingSample(client, terminal, status);
+        }
+        updated += 1;
+        console.log(`[StarlinkCloudSync] ${terminal.service_line_id} status=${status.current_status} source=api ping=${status.ping_latency_ms ?? 'unknown'}ms last_seen=${status.last_seen_utc || 'unknown'}`);
+      } catch (err) {
+        if (err instanceof StarlinkPortalAuthExpiredError) throw err;
+        failed += 1;
+        failures.push({
+          service_line_id: terminal.service_line_id,
+          error: err.message,
+        });
+        console.warn(`[StarlinkCloudSync] ${terminal.service_line_id} status failed: ${err.message}`);
       }
-      updated += 1;
-      console.log(`[StarlinkCloudSync] ${terminal.service_line_id} status=${status.current_status} source=api ping=${status.ping_latency_ms ?? 'unknown'}ms last_seen=${status.last_seen_utc || 'unknown'}`);
-    } catch (err) {
-      if (err instanceof StarlinkPortalAuthExpiredError) throw err;
-      failed += 1;
-      failures.push({
-        service_line_id: terminal.service_line_id,
-        error: err.message,
-      });
-      console.warn(`[StarlinkCloudSync] ${terminal.service_line_id} status failed: ${err.message}`);
     }
   }
 
@@ -735,22 +786,39 @@ async function runUsageCycleViaApi(client, portal, terminals, { dryRun = false, 
   let failed = 0;
   const failures = [];
 
-  for (const terminal of terminals) {
-    try {
-      const payload = await portal.getDataUsage(terminal.account_id, terminal.service_line_id);
-      const parsed = parseUsageHistory(payload);
-      if (!dryRun) await upsertUsageHistory(client, terminal, parsed);
-      records += parsed.history.length;
-      terminalsSeen += 1;
-      console.log(`[StarlinkCloudSync] ${terminal.service_line_id} usage_records=${parsed.history.length} source=api billing_cycle_start=${parsed.active_billing_cycle_start || 'unknown'}`);
-    } catch (err) {
-      if (err instanceof StarlinkPortalAuthExpiredError) throw err;
-      failed += 1;
-      failures.push({
-        service_line_id: terminal.service_line_id,
-        error: err.message,
-      });
-      console.warn(`[StarlinkCloudSync] ${terminal.service_line_id} usage failed: ${err.message}`);
+  for (const [accountId, group] of groupTerminalsByAccount(terminals)) {
+    await portal.switchAccount(accountId);
+    for (const terminal of group) {
+      try {
+        const payload = await portal.getDataUsage(terminal.account_id, terminal.service_line_id);
+        const parsed = parseUsageHistory(payload);
+        if (!dryRun) {
+          await upsertUsageHistory(client, terminal, parsed);
+          // The usage feed is the most reliable connectivity signal here, so
+          // set the terminal's status from how recently it reported data.
+          const latest = parsed.history.reduce((max, row) => (row.log_date > max ? row.log_date : max), '');
+          const derived = usageStatusFromDate(latest);
+          if (derived) {
+            await client.query(
+              `UPDATE starlink_terminals
+               SET current_status = $2, status_updated_at = NOW(), updated_at = NOW()
+               WHERE service_line_id = $1`,
+              [terminal.service_line_id, derived],
+            );
+          }
+        }
+        records += parsed.history.length;
+        terminalsSeen += 1;
+        console.log(`[StarlinkCloudSync] ${terminal.service_line_id} usage_records=${parsed.history.length} source=api billing_cycle_start=${parsed.active_billing_cycle_start || 'unknown'}`);
+      } catch (err) {
+        if (err instanceof StarlinkPortalAuthExpiredError) throw err;
+        failed += 1;
+        failures.push({
+          service_line_id: terminal.service_line_id,
+          error: err.message,
+        });
+        console.warn(`[StarlinkCloudSync] ${terminal.service_line_id} usage failed: ${err.message}`);
+      }
     }
   }
 
