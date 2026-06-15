@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-contrast="normal">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Starfleet — redesign mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.17.0/dist/tabler-icons.min.css">
+<style>
+  :root{
+    --bg:#f4f5f0; --surface:#ffffff; --surface-2:#fafaf7;
+    --ink:#15140f; --ink-2:#43433c; --ink-3:#6c6c63; --muted:#8a8a80;
+    --rule:#e2e2d8; --rule-2:#eeeee7;
+    --accent:#1c7a52; --accent-soft:#e3f1ea;
+    --ok:#1c7a52; --warn:#9a6a12; --warn-soft:#f6ecd5; --bad:#b23b2e; --bad-soft:#f7e3e0;
+    --font-ui:'Inter',system-ui,sans-serif; --font-serif:'Newsreader',Georgia,serif; --font-mono:'IBM Plex Mono',monospace;
+    font-size:16px;
+  }
+  html[data-theme="dark"]{
+    --bg:#13160f; --surface:#1b1f16; --surface-2:#222619;
+    --ink:#f0f1e8; --ink-2:#c2c4b6; --ink-3:#8d9082; --muted:#6f7265;
+    --rule:#333829; --rule-2:#262a1d;
+    --accent:#3fb27d; --accent-soft:#16321f;
+    --ok:#3fb27d; --warn:#d6a542; --warn-soft:#3a2f12; --bad:#d8584a; --bad-soft:#3a1f1b;
+  }
+  html[data-contrast="high"]{ --ink:#000000; --ink-2:#262620; --ink-3:#46463e; --rule:#cfcfc2; }
+  html[data-theme="dark"][data-contrast="high"]{ --ink:#ffffff; --ink-2:#e2e4d6; --ink-3:#a6a899; --rule:#444a37; }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:1rem;line-height:1.55;-webkit-font-smoothing:antialiased;}
+  .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
+  .muted{color:var(--ink-3);}
+  h1,h2,h3{font-family:var(--font-serif);font-weight:500;margin:0;letter-spacing:-.01em;color:var(--ink);}
+  button{font:inherit;cursor:pointer;color:inherit;}
+  a{color:var(--accent);}
+
+  .top{display:flex;align-items:center;gap:1.1rem;padding:.85rem 1.4rem;background:var(--surface);border-bottom:1px solid var(--rule);position:sticky;top:0;z-index:5;flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:.7rem;}
+  .brand .mark{width:2.1rem;height:2.1rem;display:grid;place-items:center;background:var(--accent);color:#fff;font-family:var(--font-serif);font-size:1.25rem;border-radius:8px;}
+  .brand b{font-size:1.06rem;font-weight:600;display:block;line-height:1.1;}
+  .brand span{font-size:.75rem;color:var(--muted);}
+  .switch{display:inline-flex;background:var(--surface-2);border:1px solid var(--rule);border-radius:10px;padding:3px;}
+  .switch button{border:0;background:transparent;color:var(--ink-2);padding:.5rem 1rem;border-radius:8px;font-weight:500;font-size:.95rem;}
+  .switch button.on{background:var(--accent);color:#fff;}
+  .top .sp{flex:1;}
+  .ctl{display:inline-flex;align-items:center;gap:.5rem;border:1px solid var(--rule);background:var(--surface);border-radius:9px;padding:.5rem .75rem;color:var(--ink-2);font-size:.9rem;}
+  .icon-btn{width:2.5rem;height:2.5rem;display:grid;place-items:center;border:1px solid var(--rule);background:var(--surface);border-radius:9px;color:var(--ink-2);font-size:1.2rem;}
+  .icon-btn:hover{border-color:var(--ink-3);color:var(--ink);}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:1.6rem 1.4rem 4rem;}
+  .view{display:none;} .view.on{display:block;}
+  .page-h{display:flex;justify-content:space-between;align-items:flex-end;gap:1.1rem;margin-bottom:1.4rem;flex-wrap:wrap;}
+  .eyebrow{font:.75rem var(--font-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:.35rem;}
+  h1{font-size:2.15rem;line-height:1.08;}
+  .lede{margin-top:.5rem;color:var(--ink-2);font-size:1rem;max-width:60ch;}
+  .btn{border:1px solid var(--rule);background:var(--surface);color:var(--ink);border-radius:9px;padding:.6rem .95rem;font-size:.95rem;font-weight:500;display:inline-flex;align-items:center;gap:.4rem;}
+  .btn:hover{border-color:var(--ink-3);}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  .vitals{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.9rem;margin-bottom:1.6rem;}
+  .vital{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:1.1rem 1.25rem;}
+  .vital .k{font:.75rem var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+  .vital .v{font-family:var(--font-serif);font-size:2.35rem;font-weight:500;line-height:1.05;margin-top:.4rem;}
+  .vital .s{color:var(--ink-3);font-size:.88rem;margin-top:.25rem;}
+  .v.ok{color:var(--ok);} .v.bad{color:var(--bad);} .v.warn{color:var(--warn);}
+
+  .panel{background:var(--surface);border:1px solid var(--rule);border-radius:14px;margin-bottom:1.4rem;overflow:hidden;}
+  .panel-h{display:flex;justify-content:space-between;align-items:baseline;padding:1rem 1.25rem;border-bottom:1px solid var(--rule);}
+  .panel-h h2{font-size:1.3rem;}
+  .panel-h .meta{color:var(--muted);font:.82rem var(--font-mono);}
+
+  .att{display:flex;gap:1rem;padding:1.1rem 1.25rem;border-bottom:1px solid var(--rule-2);align-items:flex-start;}
+  .att:last-child{border-bottom:0;}
+  .sev{flex:none;width:4.6rem;}
+  .pill{display:inline-block;padding:.25rem .6rem;border-radius:7px;font:.75rem var(--font-mono);font-weight:500;letter-spacing:.04em;}
+  .pill.bad{background:var(--bad-soft);color:var(--bad);} .pill.warn{background:var(--warn-soft);color:var(--warn);}
+  .att .age{display:block;margin-top:.5rem;color:var(--muted);font:.82rem var(--font-mono);}
+  .att .body{flex:1;min-width:0;}
+  .att .site{font-family:var(--font-serif);font-size:1.25rem;font-weight:500;}
+  .att .site small{font-family:var(--font-ui);font-size:.88rem;color:var(--ink-3);font-weight:400;margin-left:.5rem;}
+  .att .prob{margin-top:.3rem;color:var(--ink-2);font-size:.97rem;}
+  .chips{margin-top:.6rem;display:flex;gap:.45rem;flex-wrap:wrap;}
+  .chip{border:1px solid var(--rule);border-radius:7px;padding:.2rem .55rem;font:.82rem var(--font-mono);color:var(--ink-2);background:var(--surface-2);}
+  .chip.bad{color:var(--bad);border-color:var(--bad);background:var(--bad-soft);}
+  .chip.warn{color:var(--warn);border-color:var(--warn);background:var(--warn-soft);}
+  .att .acts{flex:none;display:flex;flex-direction:row;gap:.5rem;align-items:center;flex-wrap:wrap;}
+  .att .acts .btn{justify-content:center;}
+
+  table{width:100%;border-collapse:collapse;}
+  th{text-align:left;padding:.75rem 1.25rem;border-bottom:1px solid var(--rule);color:var(--muted);font:.72rem var(--font-mono);letter-spacing:.08em;text-transform:uppercase;}
+  th.sortable{cursor:pointer;user-select:none;}
+  th.sortable:hover{color:var(--ink-2);}
+  th.sortable::after{content:'';display:inline-block;margin-left:.4rem;border:4px solid transparent;vertical-align:middle;}
+  th.sort-asc::after{border-bottom-color:var(--accent);border-top:0;}
+  th.sort-desc::after{border-top-color:var(--accent);border-bottom:0;}
+  th.num,td.num{text-align:right;}
+  td{padding:.85rem 1.25rem;border-bottom:1px solid var(--rule-2);font-size:.97rem;}
+  tr:last-child td{border-bottom:0;}
+  tr.click{cursor:pointer;} tr.click:hover td{background:var(--surface-2);}
+  .site-name{font-weight:500;}
+  .sub{font:.8rem var(--font-mono);color:var(--ink-3);margin-top:.1rem;}
+  .stat{display:inline-flex;align-items:center;gap:.45rem;font-size:.92rem;font-weight:500;}
+  .dot{width:.55rem;height:.55rem;border-radius:50%;background:var(--muted);flex:none;}
+  .dot.ok{background:var(--ok);} .dot.bad{background:var(--bad);} .dot.warn{background:var(--warn);}
+  .spark{height:2rem;width:7.5rem;}
+  .barwrap{display:flex;align-items:center;gap:.6rem;justify-content:flex-end;}
+  .bartrack{flex:1;max-width:11rem;height:.55rem;border-radius:5px;background:var(--rule-2);overflow:hidden;}
+  .bartrack i{display:block;height:100%;background:var(--accent);border-radius:5px;}
+
+  .grid2{display:grid;grid-template-columns:1.4fr 1fr;gap:1.4rem;}
+  .report-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.9rem;margin-bottom:1.5rem;}
+
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:40;display:none;}
+  .scrim.on{display:block;}
+  .drawer{position:fixed;top:0;right:0;height:100vh;width:min(440px,100vw);background:var(--surface);border-left:1px solid var(--rule);z-index:50;transform:translateX(100%);transition:transform .2s ease;overflow:auto;}
+  .drawer.on{transform:translateX(0);}
+  .drawer-h{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;padding:1.2rem 1.3rem;border-bottom:1px solid var(--rule);}
+  .drawer-h h2{font-size:1.5rem;}
+  .drawer-b{padding:1.2rem 1.3rem;display:grid;gap:1.3rem;}
+  .section-t{font:.72rem var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:.6rem;}
+  .kv{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;}
+  .kv .cell{background:var(--surface-2);border-radius:10px;padding:.7rem .8rem;}
+  .kv .cell .k{font:.7rem var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+  .kv .cell .v{font-family:var(--font-mono);font-size:1.15rem;font-weight:500;margin-top:.2rem;}
+  .row-actions{display:grid;grid-template-columns:1fr 1fr;gap:.55rem;}
+  .note{background:var(--surface-2);border:1px dashed var(--rule);border-radius:10px;padding:.7rem .8rem;color:var(--ink-3);font-size:.9rem;}
+  .usebars{display:flex;align-items:flex-end;gap:3px;height:5rem;}
+  .usebars i{flex:1;background:var(--accent);border-radius:2px 2px 0 0;min-height:2px;}
+
+  .setrow{display:grid;gap:.5rem;}
+  .setrow>label{font:.72rem var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+  .seg{display:flex;border:1px solid var(--rule);border-radius:9px;overflow:hidden;}
+  .seg button{flex:1;border:0;border-right:1px solid var(--rule);background:transparent;padding:.55rem;color:var(--ink-2);font-size:.92rem;}
+  .seg button:last-child{border-right:0;}
+  .seg button.on{background:var(--accent);color:#fff;}
+  .swatches{display:flex;gap:.5rem;}
+  .sw{width:2rem;height:2rem;border-radius:50%;border:2px solid transparent;cursor:pointer;}
+  .sw.on{border-color:var(--ink);}
+
+  @media(max-width:820px){
+    .grid2{grid-template-columns:1fr;}
+    .att{flex-wrap:wrap;}
+    .att .acts{flex-direction:row;width:100%;flex-wrap:wrap;}
+    .att .acts .btn{flex:1;min-width:7.5rem;}
+    .wrap{padding:1.2rem .9rem 3rem;}
+    .hide-sm{display:none;}
+  }
+</style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><div class="mark">S</div><div><b>Starfleet</b><span>Isomo Ops</span></div></div>
+    <div class="switch">
+      <button id="t-ops" class="on" onclick="show('ops')">Operations</button>
+      <button id="t-rep" onclick="show('rep')">Reports</button>
+    </div>
+    <div class="sp"></div>
+    <div class="ctl hide-sm"><i class="ti ti-map-pin"></i> All campuses <i class="ti ti-chevron-down"></i></div>
+    <button class="icon-btn" title="Display settings" onclick="openSet()"><i class="ti ti-adjustments"></i></button>
+    <button class="icon-btn" title="Sign out"><i class="ti ti-logout"></i></button>
+  </header>
+
+  <main class="wrap">
+    <!-- OPERATIONS -->
+    <section id="ops" class="view on">
+      <div class="page-h">
+        <div>
+          <div class="eyebrow">Operations · Kigali 14:32</div>
+          <h1>2 sites need a human.</h1>
+          <div class="lede">Real connectivity issues only — a site appears here when its Starlink is actually down or degraded, not when a laptop is quiet.</div>
+        </div>
+        <button class="btn primary"><i class="ti ti-refresh"></i> Run sweep</button>
+      </div>
+
+      <div class="vitals">
+        <div class="vital"><div class="k">Sites online</div><div class="v ok">40/41</div><div class="s">1 down right now</div></div>
+        <div class="vital"><div class="k">Data today</div><div class="v">4.21 TB</div><div class="s">across the fleet</div></div>
+        <div class="vital"><div class="k">Updates due</div><div class="v warn">66</div><div class="s">of 306 laptops</div></div>
+        <div class="vital"><div class="k">Geomagnetic Kp</div><div class="v">2</div><div class="s">quiet · no storm</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h2>Needs attention</h2><span class="meta">worst first</span></div>
+        <div class="att" onclick="openDish('GS Kinigi')">
+          <div class="sev"><span class="pill bad">Down</span><span class="age">18h</span></div>
+          <div class="body">
+            <div class="site">GS Kinigi <small>Musanze, Northern</small></div>
+            <div class="prob">No Starlink data since 26 May. Dish offline in the cloud portal for 18 hours.</div>
+            <div class="chips"><span class="chip bad">link down</span><span class="chip warn">rain 8.5mm</span><span class="chip">obs 0%</span></div>
+          </div>
+          <div class="acts"><button class="btn primary">Reboot dish</button><button class="btn">Ping</button><button class="btn">Diagnostics</button></div>
+        </div>
+        <div class="att" onclick="openDish('GS St Mathieu')">
+          <div class="sev"><span class="pill bad">Down</span><span class="age">7d</span></div>
+          <div class="body">
+            <div class="site">GS St Mathieu <small>Busasamana, Western</small></div>
+            <div class="prob">No Starlink data since 6 June. Likely an on-site power or hardware issue — needs a field visit.</div>
+            <div class="chips"><span class="chip bad">link down</span><span class="chip">rain 0.2mm</span></div>
+          </div>
+          <div class="acts"><button class="btn primary">Diagnostics</button><button class="btn">Ping</button><button class="btn">Assign</button></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h2>All sites</h2><span class="meta">41 schools · sorted by status</span></div>
+        <table>
+          <thead><tr><th>Site</th><th>Status</th><th class="num">Usage today</th><th class="num hide-sm">30-day trend</th><th class="num hide-sm">Uptime</th></tr></thead>
+          <tbody>
+            <tr class="click" onclick="openDish('GS Kinigi')"><td><div class="site-name">GS Kinigi</div><div class="sub">Musanze</div></td><td><span class="stat"><span class="dot bad"></span>Offline</span></td><td class="num mono">—</td><td class="num hide-sm"><svg class="spark" viewBox="0 0 120 34"><polyline fill="none" stroke="var(--bad)" stroke-width="2" points="0,8 20,10 40,9 60,12 80,28 100,30 120,31"/></svg></td><td class="num mono hide-sm">94.1%</td></tr>
+            <tr class="click" onclick="openDish('ENDP')"><td><div class="site-name">ENDP</div><div class="sub">Butare</div></td><td><span class="stat"><span class="dot ok"></span>Online</span></td><td class="num mono">154.0 GB</td><td class="num hide-sm"><svg class="spark" viewBox="0 0 120 34"><polyline fill="none" stroke="var(--accent)" stroke-width="2" points="0,20 20,14 40,22 60,10 80,16 100,8 120,12"/></svg></td><td class="num mono hide-sm">100%</td></tr>
+            <tr class="click" onclick="openDish('Bridge2Rwanda — Headoffice')"><td><div class="site-name">Bridge2Rwanda — Headoffice</div><div class="sub">Kigali · 26/27 laptops</div></td><td><span class="stat"><span class="dot ok"></span>Online</span></td><td class="num mono">12.2 GB</td><td class="num hide-sm"><svg class="spark" viewBox="0 0 120 34"><polyline fill="none" stroke="var(--accent)" stroke-width="2" points="0,18 20,16 40,20 60,14 80,18 100,12 120,14"/></svg></td><td class="num mono hide-sm">96.3%</td></tr>
+            <tr class="click" onclick="openDish('Ecole des sciences Gisenyi')"><td><div class="site-name">Ecole des sciences Gisenyi</div><div class="sub">Gisenyi</div></td><td><span class="stat"><span class="dot ok"></span>Online</span></td><td class="num mono">62.4 GB</td><td class="num hide-sm"><svg class="spark" viewBox="0 0 120 34"><polyline fill="none" stroke="var(--accent)" stroke-width="2" points="0,22 20,18 40,12 60,16 80,10 100,14 120,9"/></svg></td><td class="num mono hide-sm">99.8%</td></tr>
+            <tr class="click" onclick="openDish('ASYV')"><td><div class="site-name">ASYV</div><div class="sub">Rubona</div></td><td><span class="stat"><span class="dot ok"></span>Online</span></td><td class="num mono">86.4 GB</td><td class="num hide-sm"><svg class="spark" viewBox="0 0 120 34"><polyline fill="none" stroke="var(--accent)" stroke-width="2" points="0,16 20,20 40,14 60,18 80,12 100,16 120,11"/></svg></td><td class="num mono hide-sm">100%</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- REPORTS -->
+    <section id="rep" class="view">
+      <div class="page-h">
+        <div>
+          <div class="eyebrow">Reports · June 2026</div>
+          <h1>Fleet health &amp; data usage.</h1>
+          <div class="lede">Month-to-date connectivity and Starlink consumption per school, ready to export for leadership.</div>
+        </div>
+        <button class="btn primary"><i class="ti ti-download"></i> Download report</button>
+      </div>
+
+      <div class="report-hero">
+        <div class="vital"><div class="k">Fleet uptime</div><div class="v ok">99.2%</div><div class="s">June, 41 sites</div></div>
+        <div class="vital"><div class="k">Data this month</div><div class="v">68.4 TB</div><div class="s">+11% vs May</div></div>
+        <div class="vital"><div class="k">Avg per school</div><div class="v">1.67 TB</div><div class="s">month to date</div></div>
+        <div class="vital"><div class="k">Schools reporting</div><div class="v">40/41</div><div class="s">GS Kinigi offline</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h2>Data usage by school</h2><span class="meta">June 1–13 · top consumers</span></div>
+        <table id="usage-table">
+          <thead><tr><th class="sortable" data-col="name">School</th><th class="num sortable sort-desc" data-col="usage">Month to date</th><th class="sortable" data-col="share">Share of fleet</th></tr></thead>
+          <tbody id="usage-body"></tbody>
+        </table>
+      </div>
+
+      <div class="grid2">
+        <div class="panel" style="margin:0;">
+          <div class="panel-h"><h2>Uptime trend</h2><span class="meta">last 14 days</span></div>
+          <div style="padding:1.25rem;">
+            <svg viewBox="0 0 480 150" style="width:100%;height:150px;">
+              <line x1="0" y1="120" x2="480" y2="120" stroke="var(--rule)"/>
+              <polyline fill="none" stroke="var(--accent)" stroke-width="2.5" points="0,40 36,30 72,46 108,34 144,52 180,28 216,44 252,30 288,60 324,38 360,32 396,42 432,30 468,36"/>
+            </svg>
+            <div class="muted mono" style="display:flex;justify-content:space-between;font-size:.8rem;margin-top:.4rem;"><span>May 31</span><span>Jun 6</span><span>Jun 13</span></div>
+          </div>
+        </div>
+        <div class="panel" style="margin:0;">
+          <div class="panel-h"><h2>Export</h2></div>
+          <div style="padding:1.25rem;display:grid;gap:.9rem;">
+            <div class="muted" style="font-size:.92rem;">Daily usage per school for any date range, as CSV.</div>
+            <div style="display:flex;gap:.6rem;flex-wrap:wrap;">
+              <div class="ctl">From · 2026-05-15</div><div class="ctl">To · 2026-06-13</div>
+            </div>
+            <button class="btn primary" style="justify-self:start;"><i class="ti ti-file-spreadsheet"></i> Generate CSV</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Dish drawer -->
+  <div class="drawer" id="dish">
+    <div class="drawer-h">
+      <div>
+        <div class="eyebrow">Starlink site</div>
+        <h2 id="d-name">—</h2>
+        <div class="sub" id="d-sl">—</div>
+      </div>
+      <button class="icon-btn" onclick="closeAll()" aria-label="Close"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="drawer-b">
+      <div id="d-status" style="display:flex;gap:.5rem;flex-wrap:wrap;"></div>
+      <div>
+        <div class="section-t">Connectivity</div>
+        <div class="kv" id="d-kv"></div>
+      </div>
+      <div id="d-agentnote"></div>
+      <div>
+        <div class="section-t">Starlink data usage · last 30 days</div>
+        <div class="usebars" id="d-bars"></div>
+        <div class="muted mono" style="display:flex;justify-content:space-between;font-size:.8rem;margin-top:.4rem;"><span>30d ago</span><span id="d-today">today</span></div>
+      </div>
+      <div>
+        <div class="section-t">Remediation</div>
+        <div class="row-actions">
+          <button class="btn">Ping dish</button><button class="btn">Diagnostics</button>
+          <button class="btn">Pull data</button><button class="btn primary">Reboot dish</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SET / display settings -->
+  <div class="drawer" id="set">
+    <div class="drawer-h">
+      <div><div class="eyebrow">Display</div><h2>Settings</h2></div>
+      <button class="icon-btn" onclick="closeAll()" aria-label="Close"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="drawer-b">
+      <div class="setrow"><label>Theme</label><div class="seg" data-k="theme"><button data-v="light" class="on">Light</button><button data-v="dark">Dark</button></div></div>
+      <div class="setrow"><label>Accent</label><div class="swatches" id="sw"></div></div>
+      <div class="setrow"><label>Text size</label><div class="seg" data-k="size"><button data-v="16" class="on">Default</button><button data-v="18">Large</button><button data-v="22">Extra-large</button></div></div>
+      <div class="setrow"><label>Body font</label><div class="seg" data-k="font"><button data-v="sans" class="on">Sans</button><button data-v="serif">Serif · Times</button></div></div>
+      <div class="setrow"><label>Contrast</label><div class="seg" data-k="contrast"><button data-v="normal" class="on">Normal</button><button data-v="high">High</button></div></div>
+      <div class="note">Settings preview live and are saved per user. "Extra-large + Serif" gives ~22px Times New Roman.</div>
+    </div>
+  </div>
+  <div class="scrim" id="scrim" onclick="closeAll()"></div>
+
+  <script>
+    const root = document.documentElement;
+
+    /* ── Data-usage table: sortable ── */
+    const USAGE = [
+      {name:'Bridge2Rwanda — Headoffice', tb:7.21, pct:11},
+      {name:'ENDP', tb:6.48, pct:9},
+      {name:'Lycee de St Jerome Janja', tb:3.09, pct:5},
+      {name:'GS Mubuga II', tb:2.94, pct:4},
+      {name:'GS Remera Protestant', tb:2.41, pct:4},
+      {name:'Ecole des sciences Gisenyi', tb:2.18, pct:3},
+    ];
+    const maxTb = Math.max(...USAGE.map(r=>r.tb));
+    let usageSort = {col:'usage', dir:-1};
+    function renderUsage(){
+      const sorted = [...USAGE].sort((a,b)=>{
+        const c = usageSort.col;
+        let va, vb;
+        if(c==='name'){va=a.name.toLowerCase();vb=b.name.toLowerCase();return usageSort.dir*(va<vb?-1:va>vb?1:0);}
+        if(c==='usage'){va=a.tb;vb=b.tb;}
+        else{va=a.pct;vb=b.pct;}
+        return usageSort.dir*(va-vb);
+      });
+      document.getElementById('usage-body').innerHTML = sorted.map(r=>{
+        const w = Math.round(r.tb/maxTb*100);
+        return `<tr class="click"><td><div class="site-name">${r.name}</div></td><td class="num mono">${r.tb.toFixed(2)} TB</td><td><div class="barwrap"><div class="bartrack"><i style="width:${w}%"></i></div><span class="mono muted">${r.pct}%</span></div></td></tr>`;
+      }).join('');
+    }
+    document.querySelectorAll('#usage-table th.sortable').forEach(th=>{
+      th.addEventListener('click', ()=>{
+        const col = th.dataset.col;
+        if(usageSort.col===col) usageSort.dir *= -1;
+        else {usageSort.col=col; usageSort.dir = col==='name'?1:-1;}
+        document.querySelectorAll('#usage-table th.sortable').forEach(h=>h.classList.remove('sort-asc','sort-desc'));
+        th.classList.add(usageSort.dir===1?'sort-asc':'sort-desc');
+        renderUsage();
+      });
+    });
+    renderUsage();
+    function show(v){
+      document.getElementById('ops').classList.toggle('on', v==='ops');
+      document.getElementById('rep').classList.toggle('on', v==='rep');
+      document.getElementById('t-ops').classList.toggle('on', v==='ops');
+      document.getElementById('t-rep').classList.toggle('on', v==='rep');
+      window.scrollTo(0,0);
+    }
+    function closeAll(){ document.querySelectorAll('.drawer').forEach(d=>d.classList.remove('on')); document.getElementById('scrim').classList.remove('on'); }
+    function openSet(){ closeAll(); document.getElementById('set').classList.add('on'); document.getElementById('scrim').classList.add('on'); }
+
+    const DISHES = {
+      'GS Kinigi':{sl:'SL-1 · Musanze, Northern', online:false, cloud:'Offline', usage:'—', last:'26 May', uptime:'94.1%', agent:false,
+        bars:[40,52,38,44,30,48,55,33,41,47,35,28,52,44,30,38,42,26,30,31,8,6,5,4,0,0,0,0,0,0]},
+      'ENDP':{sl:'SL-583967-67893-48 · Butare', online:true, cloud:'Online', usage:'154.0 GB today', last:'just now', uptime:'100%', agent:true,
+        bars:[120,90,140,110,95,160,130,150,118,99,170,120,88,144,100,120,134,128,150,140,110,125,160,90,138,142,118,130,144,154]},
+      'Bridge2Rwanda — Headoffice':{sl:'SL-DF-9534598-59446-79 · Kigali', online:true, cloud:'Online', usage:'12.2 GB today', last:'1h ago', uptime:'96.3%', agent:true,
+        bars:[10,14,9,12,11,13,8,12,15,9,11,13,10,14,12,9,11,13,10,12,14,9,13,11,10,12,9,13,11,12]},
+      'Ecole des sciences Gisenyi':{sl:'SL-606979-62252-31 · Gisenyi', online:true, cloud:'Online', usage:'62.4 GB today', last:'just now', uptime:'99.8%', agent:false,
+        bars:[55,48,60,52,58,62,50,57,49,63,51,59,54,61,48,56,52,60,58,53,62,50,57,49,63,55,59,52,60,62]},
+      'ASYV':{sl:'SL-2 · Rubona', online:true, cloud:'Online', usage:'86.4 GB today', last:'just now', uptime:'100%', agent:true,
+        bars:[80,72,88,76,90,84,79,86,74,92,81,88,77,90,73,86,82,90,85,79,92,80,87,75,90,84,89,82,90,86]},
+      'GS St Mathieu':{sl:'SL-3 · Busasamana, Western', online:false, cloud:'Offline', usage:'—', last:'6 Jun', uptime:'97.2%', agent:false,
+        bars:[44,52,38,49,55,41,47,50,43,58,46,52,40,48,30,28,6,4,0,0,0,0,0,0,0,0,0,0,0,0]}
+    };
+    function openDish(name){
+      const d = DISHES[name]; if(!d) return;
+      closeAll();
+      document.getElementById('d-name').textContent = name;
+      document.getElementById('d-sl').textContent = d.sl;
+      const ok = d.online;
+      document.getElementById('d-status').innerHTML =
+        `<span class="pill ${ok?'':'bad'}" style="${ok?'background:var(--accent-soft);color:var(--accent)':''}">${ok?'Online':'Offline'}</span>`+
+        `<span class="pill ${ok?'':'bad'}" style="${ok?'background:var(--accent-soft);color:var(--accent)':''}">Cloud ${d.cloud}</span>`;
+      const max = Math.max(...d.bars, 1);
+      document.getElementById('d-bars').innerHTML = d.bars.map(v=>`<i style="height:${Math.max(2,Math.round(v/max*100))}%"></i>`).join('');
+      const kv = [['Cloud status', d.cloud],['Last reported', d.last],['Uptime 30d', d.uptime],['Usage', d.usage]];
+      document.getElementById('d-kv').innerHTML = kv.map(([k,v])=>`<div class="cell"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+      document.getElementById('d-agentnote').innerHTML = d.agent
+        ? `<div><div class="section-t">On-site network (agent)</div><div class="kv"><div class="cell"><div class="k">Download</div><div class="v">96 Mbps</div></div><div class="cell"><div class="k">Latency</div><div class="v">38 ms</div></div></div></div>`
+        : `<div class="note">No on-site agent at this school yet — live throughput/latency aren't available. Cloud status &amp; usage above come from Starlink directly.</div>`;
+      document.getElementById('dish').classList.add('on');
+      document.getElementById('scrim').classList.add('on');
+    }
+
+    const ACCENTS = { signal:'#1c7a52', indigo:'#3b5bdb', terracotta:'#b23b2e', ochre:'#9a6a12', plum:'#6d3b8e' };
+    const swEl = document.getElementById('sw');
+    swEl.innerHTML = Object.entries(ACCENTS).map(([k,v],i)=>`<button class="sw ${i===0?'on':''}" data-v="${k}" style="background:${v}" aria-label="${k}"></button>`).join('');
+    swEl.addEventListener('click', e=>{ const b=e.target.closest('.sw'); if(!b) return; swEl.querySelectorAll('.sw').forEach(s=>s.classList.toggle('on',s===b)); root.style.setProperty('--accent', ACCENTS[b.dataset.v]); });
+
+    document.querySelectorAll('.seg[data-k]').forEach(seg=>{
+      seg.addEventListener('click', e=>{
+        const b = e.target.closest('button'); if(!b) return;
+        seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+        const k = seg.dataset.k, v = b.dataset.v;
+        if(k==='theme') root.setAttribute('data-theme', v);
+        if(k==='contrast') root.setAttribute('data-contrast', v);
+        if(k==='size') root.style.fontSize = v+'px';
+        if(k==='font') root.style.setProperty('--font-ui', v==='serif' ? "'Times New Roman', Times, serif" : "'Inter', system-ui, sans-serif");
+      });
+    });
+  </script>
+</body>
+</html>
