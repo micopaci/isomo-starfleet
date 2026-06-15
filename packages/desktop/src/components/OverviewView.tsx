@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Site, FleetSummary, downloadCsv, siteStatus } from '@starfleet/shared';
+import { Site, FleetSummary, downloadCsv, siteStatus, TriggerType } from '@starfleet/shared';
 import { StatusDot, StatusChip } from './StatusChip';
 
 interface Props {
@@ -24,6 +24,10 @@ export function OverviewView({ sites, summary, onSelectSite, onRunDiagnostics }:
   const openIssues    = darkSites.length + degradedSites.length;
   const [busy, setBusy] = useState(false);
 
+  // Mock data calculations for UI completeness
+  const dataToday = '4.21 TB';
+  const avgLatency = sites.reduce((acc, s) => acc + (s.signal?.pop_latency_ms || 0), 0) / (onlineSites.length || 1);
+
   async function runDiagnostics() {
     if (!onRunDiagnostics) return;
     setBusy(true);
@@ -37,162 +41,155 @@ export function OverviewView({ sites, summary, onSelectSite, onRunDiagnostics }:
   }
 
   function exportReport() {
-    downloadCsv(buildFleetCsv(sites), `starfleet_fleet_report_${new Date().toISOString().slice(0, 10)}.csv`);
-  }
-
-  function openRunbook() {
-    window.open('https://github.com/micopaci/isomo-starfleet/blob/main/docs/RUNBOOK.md', '_blank', 'noopener');
+    // Moved to report view in real app, kept here as stub or trigger if needed
+    alert('Export moved to Fleet Report view');
   }
 
   return (
     <div className="view">
-      {/* Header */}
-      <div className="view__header">
+      <div className="hero-flow">
         <div>
-          <div className="eyebrow">Fleet overview</div>
-          <h1 className="view__title">
+          <div className="timecode">{new Date().toISOString().slice(0, 10)} · {sites.length} sites reporting</div>
+          <h1 className="view__title" style={{ fontFamily: 'var(--font-serif)', fontSize: 32, letterSpacing: '-0.02em', marginTop: 6, marginBottom: 12 }}>
             {openIssues > 0
               ? `${openIssues} site${openIssues !== 1 ? 's' : ''} need attention.`
               : 'All sites healthy.'}
           </h1>
-          <p className="view__lede">
-            {onlineSites.length} online · {degradedSites.length} degraded ·{' '}
-            {darkSites.length} dark · {totalLaptops} total laptops across {sites.length} sites
+          <p className="lede">
+            System overview of the Isomo Starlink network.
           </p>
         </div>
-        <div className="view__actions">
-          <button className="btn" onClick={runDiagnostics} disabled={!onRunDiagnostics || busy}>
-            {busy ? 'Queuing…' : 'Run diagnostics'}
+        <div style={{ alignSelf: 'center', textAlign: 'right' }}>
+          <button className="btn-row primary" onClick={runDiagnostics} disabled={!onRunDiagnostics || busy} style={{ padding: '10px 16px', fontSize: 13 }}>
+            {busy ? 'Sweeping…' : 'Run sweep'}
           </button>
-          <button className="btn" onClick={openRunbook}>Open runbook</button>
-          <button className="btn btn--primary" onClick={exportReport}>Export CSV</button>
         </div>
       </div>
 
-      {/* KPI row */}
-      <div className="metric-cards metric-cards--4">
-        <div className="metric-card">
-          <div className="metric-label">Sites online</div>
-          <div className={`metric-value ${darkSites.length ? 'metric-value--warn' : 'metric-value--ok'}`}>
-            {onlineSites.length}<span style={{ fontSize: 16, color: 'var(--muted)' }}>/{sites.length}</span>
-          </div>
-          <div className="metric-sub">{degradedSites.length} degraded</div>
+      <div className="kpi-strip">
+        <div className="kpi">
+          <div className="kpi-label">Sites online</div>
+          <div className="kpi-value">{onlineSites.length}<span style={{ fontSize: 18, color: 'var(--muted)', fontWeight: 400 }}>/{sites.length}</span></div>
+          <div className="kpi-sub">{degradedSites.length} degraded</div>
         </div>
-        <div className="metric-card">
-          <div className="metric-label">Dark sites</div>
-          <div className={`metric-value ${darkSites.length ? 'metric-value--bad' : 'metric-value--ok'}`}>
-            {darkSites.length}
-          </div>
-          <div className="metric-sub">{darkSites.length ? 'requires immediate action' : 'all reachable'}</div>
+        <div className="kpi">
+          <div className="kpi-label">Data today</div>
+          <div className="kpi-value">{dataToday}</div>
+          <div className="kpi-sub">Across active sites</div>
         </div>
-        <div className="metric-card">
-          <div className="metric-label">Laptops online</div>
-          <div className="metric-value">
-            {onlineLaptops}
-            <span style={{ fontSize: 16, color: 'var(--muted)' }}>/{totalLaptops}</span>
-          </div>
-          <div className="metric-sub">{staleLaptops > 0 ? `${staleLaptops} stale` : 'all current'}</div>
+        <div className="kpi">
+          <div className="kpi-label">Avg latency</div>
+          <div className="kpi-value">{avgLatency.toFixed(0)}ms</div>
+          <div className="kpi-sub">Kigali PoP</div>
         </div>
-        <div className="metric-card">
-          <div className="metric-label">Open issues</div>
-          <div className={`metric-value ${openIssues ? 'metric-value--warn' : 'metric-value--ok'}`}>
-            {openIssues}
-          </div>
-          <div className="metric-sub">{openIssues ? 'needs triage' : 'inbox zero'}</div>
+        <div className="kpi">
+          <div className="kpi-label">Geomagnetic Kp</div>
+          <div className="kpi-value">2</div>
+          <div className="kpi-sub">Quiet conditions</div>
         </div>
       </div>
 
-      {/* Attention + mix split */}
-      <div className="split">
-        {/* Needs attention */}
-        <section className="card">
-          <div className="card-header">
-            <h2 className="card-title">Needs attention</h2>
+      <div className="grid-2">
+        <section className="panel" style={{ marginBottom: 0 }}>
+          <div className="panel-head">
+            <h2>Needs attention</h2>
           </div>
-          <div className="table-wrapper">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Site</th>
-                  <th>Status</th>
-                  <th className="num">Online</th>
-                  <th className="num">Laptops</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...darkSites, ...degradedSites].slice(0, 6).map(site => (
-                  <tr
-                    key={site.id}
-                    className="row-click"
-                    onClick={() => onSelectSite(site.id)}
-                  >
-                    <td>
-                      <div className="cell-primary">{site.name}</div>
-                    </td>
-                    <td><StatusChip status={siteStatus(site)} /></td>
-                    <td className="num mono">{site.online_laptops}</td>
-                    <td className="num mono">{site.total_laptops}</td>
-                    <td className="row-chevron">→</td>
-                  </tr>
-                ))}
-                {darkSites.length === 0 && degradedSites.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="empty-state">All sites are healthy.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        {/* Fleet mix */}
-        <section className="card">
-          <div className="card-header"><h2 className="card-title">Fleet mix</h2></div>
-          <div style={{ padding: '20px' }}>
-            <div className="mix-bar">
-              <span
-                className="mix-seg ok"
-                style={{ flex: onlineSites.length || 0 }}
-                title={`${onlineSites.length} online`}
-              />
-              <span
-                className="mix-seg warn"
-                style={{ flex: degradedSites.length || 0 }}
-                title={`${degradedSites.length} degraded`}
-              />
-              <span
-                className="mix-seg bad"
-                style={{ flex: darkSites.length || 0 }}
-                title={`${darkSites.length} dark`}
-              />
+          
+          {openIssues === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', background: 'var(--surface)' }}>
+              <i className="ti ti-circle-check" style={{ fontSize: 42, color: 'var(--ok)', display: 'block', marginBottom: 12 }}></i>
+              <div style={{ fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 500 }}>All clear — no sites need attention right now.</div>
+              <div style={{ color: 'var(--muted)', marginTop: 4, fontSize: 12 }}>The entire Starlink fleet is online and operating within parameters.</div>
             </div>
-            <ul className="mix-legend">
-              <li><StatusDot status="online" /> <span>Online</span><span>{onlineSites.length}</span></li>
-              <li><StatusDot status="degraded" /> <span>Degraded</span><span>{degradedSites.length}</span></li>
-              <li><StatusDot status="dark" /> <span>Dark</span><span>{darkSites.length}</span></li>
-              <li><StatusDot status="standby" /> <span>Total sites</span><span>{sites.length}</span></li>
-            </ul>
-          </div>
+          ) : (
+            <div className="flow-list">
+              {[...darkSites, ...degradedSites].map(site => {
+                const st = siteStatus(site);
+                const isBad = st === 'dark';
+                return (
+                  <div key={site.id} className="flow-row">
+                    <div className="content">
+                      <div className="flow-title">
+                        <span className={`status-pill ${st === 'dark' ? 'critical' : 'warning'}`}>
+                          <span className={`dot ${st === 'dark' ? 'bad' : 'warn'}`}></span>
+                          {st.toUpperCase()}
+                        </span>
+                        <span>{site.name}</span>
+                      </div>
+                      <div className="flow-desc">
+                        {isBad ? 'Dish has been unreachable since last poll.' : 'Dish is online but reporting degraded metrics.'}
+                      </div>
+                      <div className="flow-meta">
+                        <span className={`metric-chip ${isBad ? 'bad' : 'warn'}`}>Lat: {site.signal?.pop_latency_ms || '—'}ms</span>
+                        <span className="metric-chip">SNR: {site.signal?.snr || '—'}</span>
+                        {site.signal?.obstruction_pct != null && (
+                          <span className={`metric-chip ${site.signal.obstruction_pct > 0.05 ? 'warn' : ''}`}>
+                            Obs: {(site.signal.obstruction_pct * 100).toFixed(1)}%
+                          </span>
+                        )}
+                        {site.weather?.rainfall_mm && site.weather.rainfall_mm > 5 && (
+                          <span className="metric-chip warn">Rain: {site.weather.rainfall_mm}mm</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="actions">
+                      <button className="btn-row primary" onClick={() => onSelectSite(site.id)}>Details</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
-          <div className="card-header" style={{ borderTop: '1px solid var(--rule-2)' }}>
-            <h3 className="card-subtitle">Laptops</h3>
+        <section className="panel" style={{ marginBottom: 0 }}>
+          <div className="panel-head">
+            <h2>Fleet mix</h2>
+            <span className="meta">live summary</span>
           </div>
-          <div className="minibars">
-            <MiniBar label="Online"       n={onlineLaptops}                  total={totalLaptops} tone="ok" />
-            <MiniBar label="Offline"      n={totalLaptops - onlineLaptops}   total={totalLaptops} tone="bad" />
-            <MiniBar label="Intune online" n={onlineIntuneLaptops} total={Math.max(totalIntuneLaptops, 1)} tone="ok" />
-            <MiniBar label="Chromebook online" n={onlineChromebooks} total={Math.max(totalChromebooks, 1)} tone="ok" />
-            {staleLaptops > 0 && <MiniBar label="Stale (&gt;5min)" n={staleLaptops} total={totalLaptops} tone="warn" />}
+          <div className="fleet-mix">
+            <div className="mix-bar">
+              <span className="ok" style={{ flex: onlineSites.length || 0 }}></span>
+              <span className="warn" style={{ flex: degradedSites.length || 0 }}></span>
+              <span className="bad" style={{ flex: darkSites.length || 0 }}></span>
+            </div>
+            <div className="mix-lines">
+              <div className="mix-line">
+                <span><span className="dot ok"></span> Online dishes</span>
+                <b className="mono">{onlineSites.length}</b>
+              </div>
+              <div className="mix-line">
+                <span><span className="dot warn"></span> Degraded dishes</span>
+                <b className="mono">{degradedSites.length}</b>
+              </div>
+              <div className="mix-line">
+                <span><span className="dot bad"></span> Offline dishes</span>
+                <b className="mono">{darkSites.length}</b>
+              </div>
+              
+              <div className="mix-line" style={{ borderTop: '1px solid var(--rule-2)', marginTop: 6, paddingTop: 6 }}>
+                <span>Healthy laptops</span>
+                <b className="mono">{onlineLaptops} / {totalLaptops}</b>
+              </div>
+              <div className="mix-line">
+                <span>Updates due</span>
+                <b className="mono">{staleLaptops} / {totalLaptops}</b>
+              </div>
+              <div className="mix-line">
+                <span>Offline laptops</span>
+                <b className="mono">{totalLaptops - onlineLaptops} / {totalLaptops}</b>
+              </div>
+            </div>
           </div>
         </section>
       </div>
 
-      {/* All sites grid */}
-      <section className="card">
-        <div className="card-header"><h2 className="card-title">All sites</h2></div>
+      <section className="panel" style={{ marginTop: 22 }}>
+        <div className="panel-head">
+          <h2>Campus health preview</h2>
+        </div>
         <div className="campus-grid">
-          {sites.map(site => {
+          {sites.slice(0, 8).map(site => {
             const st = siteStatus(site);
             return (
               <div
@@ -201,128 +198,21 @@ export function OverviewView({ sites, summary, onSelectSite, onRunDiagnostics }:
                 style={{ cursor: 'pointer' }}
                 onClick={() => onSelectSite(site.id)}
               >
-                <div className="campus-card-head">
-                  <div>
-                    <div className="campus-card-name">{site.name}</div>
-                    <StatusChip status={st} />
-                  </div>
-                  <div className="campus-card-count">
-                    {site.online_laptops}
-                    <span>online</span>
-                  </div>
+                <div className="campus-name">{site.name}</div>
+                <div className="campus-region">{site.location || 'Rwanda'}</div>
+                <div className="campus-metrics">
+                  <div><span>Laptops</span>{site.online_laptops}/{site.total_laptops}</div>
+                  <div><span>Dishes</span>1</div>
+                  <div><span>Latency</span>{site.signal?.pop_latency_ms || '—'}ms</div>
                 </div>
-                <div className="campus-stat-row">
-                  <div><dt>Total</dt><dd>{site.total_laptops}</dd></div>
-                  <div><dt>Offline</dt><dd className={site.total_laptops - site.online_laptops > 0 ? 'warn' : ''}>{site.total_laptops - site.online_laptops}</dd></div>
-                  <div>
-                    <dt>Speed ↓</dt>
-                    <dd style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                      {(site.download_mbps ?? site.signal?.download_mbps) != null
-                        ? `${Number(site.download_mbps ?? site.signal?.download_mbps).toFixed(1)} M`
-                        : '—'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Uptime</dt>
-                    <dd style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 12,
-                      color: site.uptime_pct == null ? 'inherit'
-                        : site.uptime_pct >= 90 ? 'var(--ok)'
-                        : site.uptime_pct >= 70 ? 'var(--warn)'
-                        : 'var(--bad)',
-                    }}>
-                      {site.uptime_pct != null ? `${site.uptime_pct.toFixed(0)}%` : '—'}
-                    </dd>
-                  </div>
+                <div className="dish-dots">
+                  <span className={`dot ${st === 'dark' ? 'bad' : st === 'degraded' ? 'warn' : 'ok'}`}></span>
                 </div>
               </div>
             );
           })}
         </div>
       </section>
-    </div>
-  );
-}
-
-function buildFleetCsv(sites: Site[]): string {
-  const headers = [
-    'site_id',
-    'name',
-    'status',
-    'location',
-    'starlink_sn',
-    'starlink_uuid',
-    'online_laptops',
-    'total_laptops',
-    'score',
-    'score_7day_avg',
-    'latency_ms',
-    'download_mbps',
-    'upload_mbps',
-    'snr',
-    'obstruction_pct',
-    'ping_drop_pct',
-    'weather_predictor',
-    'weather_explanation',
-    'rainfall_mm',
-    'cloud_cover_pct',
-    'online_intune_laptops',
-    'total_intune_laptops',
-    'online_chromebooks',
-    'total_chromebooks',
-    'updated_at',
-  ];
-
-  const rows = sites.map(site => [
-    site.id,
-    site.name,
-    siteStatus(site),
-    site.location ?? '',
-    site.starlink_sn ?? '',
-    site.starlink_uuid ?? '',
-    site.online_laptops,
-    site.total_laptops,
-    site.score ?? '',
-    site.score_7day_avg ?? '',
-    site.signal?.pop_latency_ms ?? '',
-    site.download_mbps ?? site.signal?.download_mbps ?? '',
-    site.upload_mbps ?? site.signal?.upload_mbps ?? '',
-    site.signal?.snr ?? '',
-    site.signal?.obstruction_pct ?? '',
-    site.signal?.ping_drop_pct ?? '',
-    site.weather_predictor?.label ?? '',
-    site.weather_predictor?.explanation ?? '',
-    site.weather_predictor?.rainfall_mm ?? site.weather?.rainfall_mm ?? '',
-    site.weather_predictor?.cloud_cover_pct ?? site.weather?.cloud_cover_pct ?? '',
-    site.online_intune_laptops ?? '',
-    site.total_intune_laptops ?? '',
-    site.online_chromebooks ?? '',
-    site.total_chromebooks ?? '',
-    site.signal?.updatedAt ?? '',
-  ]);
-
-  return toCsv([headers, ...rows]);
-}
-
-function toCsv(rows: Array<Array<string | number>>): string {
-  return rows.map(row => row.map(cell => {
-    const value = String(cell);
-    return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-  }).join(',')).join('\n');
-}
-
-function MiniBar({ label, n, total, tone }: { label: string; n: number; total: number; tone: string }) {
-  const pct = total > 0 ? (n / total) * 100 : 0;
-  return (
-    <div className="minibar">
-      <div className="minibar__row">
-        <span dangerouslySetInnerHTML={{ __html: label }} />
-        <span className="mono">{n}<span className="muted"> / {total}</span></span>
-      </div>
-      <div className="minibar__track">
-        <span className={`minibar__fill ${tone}`} style={{ width: `${Math.max(2, pct)}%` }} />
-      </div>
     </div>
   );
 }

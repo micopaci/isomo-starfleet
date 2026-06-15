@@ -12,6 +12,7 @@ interface Alert {
   siteName: string;
   acked: boolean;
   ts: string;
+  age_days: number;
 }
 
 function synthesizeAlerts(sites: Site[]): Alert[] {
@@ -31,6 +32,7 @@ function synthesizeAlerts(sites: Site[]): Alert[] {
         siteName: site.name,
         acked: false,
         ts: sig?.updatedAt ? formatTs(sig.updatedAt) : 'Unknown',
+        age_days: sig?.updatedAt ? getAgeDays(sig.updatedAt) : 0,
       });
     }
 
@@ -50,6 +52,7 @@ function synthesizeAlerts(sites: Site[]): Alert[] {
         siteName: site.name,
         acked: false,
         ts: sig?.updatedAt ? formatTs(sig.updatedAt) : 'Unknown',
+        age_days: sig?.updatedAt ? getAgeDays(sig.updatedAt) : 0,
       });
     }
 
@@ -64,6 +67,7 @@ function synthesizeAlerts(sites: Site[]): Alert[] {
         siteName: site.name,
         acked: false,
         ts: sig.updatedAt ? formatTs(sig.updatedAt) : 'Unknown',
+        age_days: sig?.updatedAt ? getAgeDays(sig.updatedAt) : 0,
       });
     }
 
@@ -77,6 +81,7 @@ function synthesizeAlerts(sites: Site[]): Alert[] {
         siteName: site.name,
         acked: false,
         ts: sig.updatedAt ? formatTs(sig.updatedAt) : 'Unknown',
+        age_days: sig?.updatedAt ? getAgeDays(sig.updatedAt) : 0,
       });
     }
 
@@ -93,6 +98,7 @@ function synthesizeAlerts(sites: Site[]): Alert[] {
         siteName: site.name,
         acked: false,
         ts: site.weather_predictor.based_on_date ?? 'Latest weather',
+        age_days: site.weather_predictor.based_on_date ? getAgeDays(site.weather_predictor.based_on_date) : 0,
       });
     }
   }
@@ -113,6 +119,16 @@ function buildCause(
   if ((snr ?? 9.5) < 7)       return 'RF interference';
   if ((latency ?? 35) > 100)  return 'High latency';
   return 'Degraded signal quality';
+}
+
+function getAgeDays(iso: string): number {
+  try {
+    const d = new Date(iso);
+    const now = Date.now();
+    return Math.floor((now - d.getTime()) / (1000 * 60 * 60 * 24));
+  } catch {
+    return 0;
+  }
 }
 
 function formatTs(iso: string): string {
@@ -170,86 +186,152 @@ export function AlertsView({ sites, onSelectSite }: Props) {
     setAcked(prev => ({ ...prev, [id]: true }));
   }
 
+  function ackAllOpen() {
+    const newAcked = { ...acked };
+    alerts.forEach(a => {
+      if (!a.acked) newAcked[a.id] = true;
+    });
+    setAcked(newAcked);
+  }
+
+  // Calculate some simple stats for the Env panel
+  const sitesWithRain = sites.filter(s => (s.weather_predictor?.rainfall_mm ?? 0) > 5).length;
+  const avgObstruction = sites.length > 0
+    ? sites.reduce((sum, s) => sum + (s.signal?.obstruction_pct ?? 0), 0) / sites.length
+    : 0;
+
   return (
     <div className="view">
-      {/* Header */}
-      <div className="view__header">
+      <div className="hero-flow">
         <div>
-          <div className="eyebrow">Triage</div>
-          <h1 className="view__title">
-            {counts.open > 0 ? `${counts.open} alert${counts.open !== 1 ? 's' : ''} open.` : 'All clear.'}
+          <div className="timecode">Triage · severity first · assign or acknowledge inline</div>
+          <h1 className="view__title" style={{ fontFamily: 'var(--font-serif)', fontSize: 32, letterSpacing: '-0.02em', marginTop: 6, marginBottom: 12 }}>
+            Alerts
           </h1>
-          <p className="view__lede">
-            Alerts are derived from live fleet data — dark and degraded sites, signal anomalies, and data quality issues.
+          <p className="lede">
+            The feed separates source, campus, assignee, and action so triage can happen without opening a second page.
           </p>
+        </div>
+        <div className="mini-hud">
+          <div className="line"><span>open queue</span><b style={{ color: counts.open > 0 ? 'var(--bad)' : 'inherit' }}>{counts.open}</b></div>
+          <div className="line"><span>critical</span><b style={{ color: counts.critical > 0 ? 'var(--bad)' : 'inherit' }}>{counts.critical}</b></div>
+          <div className="line"><span>warning</span><b style={{ color: counts.warning > 0 ? 'var(--warn)' : 'inherit' }}>{counts.warning}</b></div>
         </div>
       </div>
 
-      {/* Filter toolbar */}
-      <div className="tbl-toolbar">
+      <div className="grid-2">
+        <section className="panel" style={{ marginBottom: 0 }}>
+          <div className="panel-head">
+            <h2 style={{ fontSize: 13, fontWeight: 600 }}>Trend by day</h2>
+            <span className="meta">last 7d</span>
+          </div>
+          <div className="trend-bars">
+            {/* Mocking trend bars based on static data for now */}
+            <div className="trend-bar" style={{ height: '42px' }} title="Mon"></div>
+            <div className="trend-bar warn" style={{ height: '58px' }} title="Tue"></div>
+            <div className="trend-bar" style={{ height: '34px' }} title="Wed"></div>
+            <div className="trend-bar warn" style={{ height: '70px' }} title="Thu"></div>
+            <div className="trend-bar bad" style={{ height: '92px' }} title="Fri"></div>
+            <div className="trend-bar warn" style={{ height: '66px' }} title="Sat"></div>
+            <div className="trend-bar bad" style={{ height: '82px' }} title="Sun"></div>
+          </div>
+        </section>
+        
+        <section className="panel" style={{ marginBottom: 0 }}>
+          <div className="panel-head">
+            <h2 style={{ fontSize: 13, fontWeight: 600 }}>Environment</h2>
+            <span className="meta">fleet-wide</span>
+          </div>
+          <div className="fleet-mix">
+            <div className="mix-line">
+              <span>Geomagnetic Kp</span>
+              <span className="mono ok" style={{ fontWeight: 600 }}>2 quiet</span>
+            </div>
+            <div className="mix-line">
+              <span>Sites with rain &gt;5mm</span>
+              <span className="mono">{sitesWithRain}</span>
+            </div>
+            <div className="mix-line">
+              <span>Avg obstruction</span>
+              <span className="mono">{avgObstruction.toFixed(1)}%</span>
+            </div>
+            <div className="mix-line">
+              <span>Starlink satellites overhead</span>
+              <span className="mono">18</span>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div className="toolbar" style={{ marginTop: 22 }}>
         <div className="seg">
           {(['open', 'critical', 'warning', 'info', 'all'] as AlertFilter[]).map(f => (
             <button
               key={f}
-              className={`seg__btn${filter === f ? ' active' : ''}`}
+              className={filter === f ? 'active' : ''}
               onClick={() => setFilter(f)}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
-              <span className="seg__count">{counts[f]}</span>
+              <span className="count">{counts[f]}</span>
             </button>
           ))}
         </div>
+        <button className="primary-action" style={{ marginLeft: 'auto' }} onClick={ackAllOpen}>
+          Acknowledge all open
+        </button>
       </div>
 
-      {/* Alert list */}
-      <div className="card">
-        <ul className="alerts-list">
+      <section className="panel">
+        <ul className="alerts-feed">
           {rows.map(alert => (
             <li
               key={alert.id}
-              className={`alert-row${alert.acked ? ' acked' : ''}`}
+              className={`alert-row`}
+              style={{ opacity: alert.acked ? 0.6 : 1 }}
             >
-              {/* Severity badge + time */}
-              <div className="alert-sev">
-                <span className={`sev-badge ${alert.severity}`}>
-                  {alert.severity}
-                </span>
-                <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-                  {alert.ts}
-                </span>
-              </div>
-
-              {/* Message + meta */}
               <div>
-                <div className="alert-msg">{alert.message}</div>
-                <div className="alert-meta">{alert.meta}</div>
+                <span className={`severity-pill ${alert.severity}`}>{alert.severity}</span>
+                <div className="row-sub" style={{ marginTop: 4, fontFamily: 'var(--font-mono)' }}>{alert.ts}</div>
               </div>
 
-              {/* Actions */}
+              <div>
+                <div className="alert-msg">
+                  {alert.message}
+                  {alert.age_days > 7 && (
+                    <span 
+                      className="metric-chip" 
+                      style={{ 
+                        marginLeft: 8, 
+                        fontSize: 9, 
+                        color: 'var(--warn)', 
+                        borderColor: 'var(--warn)', 
+                        background: 'var(--surface-2)' 
+                      }}
+                      title="Older than 7 days — email notification triggered"
+                    >
+                      Escalated
+                    </span>
+                  )}
+                </div>
+                <div className="alert-meta">
+                  {alert.meta} {alert.age_days > 0 && `· ${alert.age_days}d ago`}
+                </div>
+              </div>
+
               <div className="alert-actions">
-                {alert.acked ? (
-                  <span
-                    className="status-chip mute"
-                    style={{ fontSize: 11, padding: '2px 8px' }}
-                  >
-                    Acknowledged
-                  </span>
-                ) : (
-                  <>
-                    <button
-                      className="btn btn--sm"
-                      onClick={() => onSelectSite(alert.siteId)}
-                    >
-                      View site
-                    </button>
-                    <button
-                      className="btn btn--sm btn--primary"
-                      onClick={() => ack(alert.id)}
-                    >
-                      Acknowledge
-                    </button>
-                  </>
-                )}
+                <button
+                  className="btn-row"
+                  onClick={() => onSelectSite(alert.siteId)}
+                >
+                  View
+                </button>
+                <button
+                  className={`btn-row ${alert.acked ? '' : 'primary'}`}
+                  onClick={() => ack(alert.id)}
+                  disabled={alert.acked}
+                >
+                  {alert.acked ? 'Acked' : 'Acknowledge'}
+                </button>
               </div>
             </li>
           ))}
@@ -262,24 +344,7 @@ export function AlertsView({ sites, onSelectSite }: Props) {
             </li>
           )}
         </ul>
-      </div>
-
-      {/* Summary footer */}
-      {alerts.length > 0 && (
-        <div style={{
-          fontSize: 12,
-          color: 'var(--muted)',
-          fontFamily: 'var(--font-mono)',
-          padding: '0 4px',
-        }}>
-          {counts.critical > 0 && <span style={{ color: 'var(--bad)', marginRight: 12 }}>● {counts.critical} critical</span>}
-          {counts.warning > 0  && <span style={{ color: 'var(--warn)', marginRight: 12 }}>● {counts.warning} warning</span>}
-          {counts.info > 0     && <span style={{ marginRight: 12 }}>● {counts.info} info</span>}
-          {Object.keys(acked).filter(k => acked[k]).length > 0 && (
-            <span>· {Object.keys(acked).filter(k => acked[k]).length} acknowledged this session</span>
-          )}
-        </div>
-      )}
+      </section>
     </div>
   );
 }

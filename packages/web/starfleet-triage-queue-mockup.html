@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Starfleet Triage Queue Mockup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f3f6f1;
+      --rail: #e8eee8;
+      --surface: #fbfcf8;
+      --surface-2: #eef4ee;
+      --ink: #222b27;
+      --ink-2: #44514b;
+      --ink-3: #68756e;
+      --muted: #84908a;
+      --rule: #cfd9d2;
+      --rule-2: #dfe6e1;
+      --accent: #24825f;
+      --accent-2: #0e3d2b;
+      --ok: #347a56;
+      --warn: #9b6f18;
+      --bad: #b45142;
+      --info: #3c7780;
+      --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-serif: "Newsreader", "Iowan Old Style", Georgia, serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    }
+
+    [data-theme="dark"] {
+      --bg: #141f1c;
+      --rail: #17251f;
+      --surface: #1b2b24;
+      --surface-2: #22332b;
+      --ink: #e6efe9;
+      --ink-2: #b8c5be;
+      --ink-3: #7c8a84;
+      --muted: #66746d;
+      --rule: #33443c;
+      --rule-2: #26362f;
+      --accent: #34b483;
+      --accent-2: #5fc28e;
+      --ok: #5fc28e;
+      --warn: #d9a441;
+      --bad: #cf5b48;
+      --info: #75b8bd;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    button, input { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+    .serif { font-family: var(--font-serif); letter-spacing: -0.012em; }
+    .muted { color: var(--muted); }
+
+    .app { min-height: 100vh; display: grid; grid-template-columns: 232px minmax(0, 1fr); }
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      background: var(--rail);
+      border-right: 1px solid var(--rule);
+      padding: 18px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--rule); }
+    .mark {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--accent);
+      color: var(--accent-2);
+      font-family: var(--font-serif);
+      font-size: 19px;
+      font-weight: 500;
+    }
+    .brand strong { display: block; font-size: 14px; font-weight: 600; }
+    .brand span { display: block; margin-top: 2px; color: var(--muted); font: 10px var(--font-mono); letter-spacing: .12em; text-transform: uppercase; }
+    .nav { display: grid; gap: 4px; }
+    .nav button {
+      border: 1px solid transparent;
+      background: transparent;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      text-align: left;
+      padding: 9px 10px;
+      color: var(--ink-2);
+    }
+    .nav button:hover { border-color: var(--rule); background: var(--surface); }
+    .nav button.active { border-color: var(--accent); color: var(--ink); background: var(--surface); }
+    .nav .count { color: var(--muted); font: 11px var(--font-mono); }
+    .side-filter { border: 1px solid var(--rule); padding: 11px; margin-top: auto; }
+    .side-filter label { display: block; margin-bottom: 8px; font: 10px var(--font-mono); color: var(--muted); letter-spacing: .12em; text-transform: uppercase; }
+    .side-filter input { width: 100%; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); padding: 8px 9px; outline: none; }
+
+    .main { min-width: 0; }
+    .vitals {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: var(--bg);
+      border-bottom: 1px solid var(--rule);
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr)) auto;
+      align-items: stretch;
+    }
+    .vital {
+      min-height: 54px;
+      border-right: 1px solid var(--rule);
+      padding: 9px 15px 8px;
+      display: grid;
+      align-content: center;
+      gap: 2px;
+    }
+    .vital .value { font: 18px var(--font-mono); color: var(--ink); }
+    .vital .label { font: 10px var(--font-mono); color: var(--muted); letter-spacing: .11em; text-transform: uppercase; }
+    .vital .value.bad { color: var(--bad); }
+    .vital .value.warn { color: var(--warn); }
+    .vital .value.ok { color: var(--ok); }
+    .now { padding: 0 16px; display: grid; align-content: center; color: var(--muted); font: 12px var(--font-mono); white-space: nowrap; }
+
+    .view { display: none; padding: 28px clamp(18px, 3vw, 38px) 44px; }
+    .view.active { display: block; }
+    .page-head { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: end; margin-bottom: 18px; }
+    h1 { margin: 0; font: 500 32px/1.05 var(--font-serif); letter-spacing: -0.018em; }
+    .deck { margin-top: 8px; max-width: 720px; color: var(--ink-2); font-size: 14px; }
+    .head-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }
+    .btn {
+      border: 1px solid var(--rule);
+      background: var(--surface);
+      color: var(--ink-2);
+      padding: 8px 11px;
+    }
+    .btn:hover { border-color: var(--ink-3); color: var(--ink); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+    .btn.danger { border-color: color-mix(in srgb, var(--bad) 60%, var(--rule)); color: var(--bad); }
+    .seg { display: inline-flex; border: 1px solid var(--rule); }
+    .seg button { border: 0; border-right: 1px solid var(--rule); background: transparent; padding: 8px 11px; color: var(--ink-2); }
+    .seg button:last-child { border-right: 0; }
+    .seg button.active { color: var(--accent-2); background: var(--surface); }
+
+    .triage-grid { display: grid; grid-template-columns: minmax(0, 1fr) 332px; gap: 22px; align-items: start; }
+    .panel { border: 1px solid var(--rule); background: var(--surface); }
+    .panel-head { display: flex; align-items: baseline; gap: 12px; padding: 12px 15px; border-bottom: 1px solid var(--rule); }
+    .panel-head h2 { margin: 0; font: 500 18px var(--font-serif); }
+    .panel-head .meta { margin-left: auto; color: var(--muted); font: 11px var(--font-mono); }
+
+    .queue { display: grid; }
+    .work-item {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr) 170px;
+      gap: 16px;
+      padding: 14px 15px;
+      border-bottom: 1px solid var(--rule-2);
+      background: var(--surface);
+    }
+    .work-item:last-child { border-bottom: 0; }
+    .work-item:hover { background: var(--surface-2); }
+    .rank { display: grid; align-content: start; gap: 8px; }
+    .severity {
+      width: fit-content;
+      border: 1px solid var(--rule);
+      padding: 3px 7px;
+      font: 10px var(--font-mono);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .severity.critical { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 58%, var(--rule)); }
+    .severity.warning { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 58%, var(--rule)); }
+    .severity.info { color: var(--info); border-color: color-mix(in srgb, var(--info) 58%, var(--rule)); }
+    .age { color: var(--muted); font: 11px var(--font-mono); }
+    .site-line { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+    .site-line strong { font: 500 18px var(--font-serif); color: var(--ink); white-space: nowrap; }
+    .site-line span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .problem { margin-top: 4px; color: var(--ink-2); font-size: 13.5px; }
+    .cause {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      font: 11px var(--font-mono);
+    }
+    .cause span { border: 1px solid var(--rule); padding: 3px 6px; color: var(--ink-2); background: var(--bg); }
+    .cause .bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 52%, var(--rule)); }
+    .cause .warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 52%, var(--rule)); }
+    .cause .ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 52%, var(--rule)); }
+    .likely { margin-top: 8px; color: var(--muted); font-size: 12.5px; }
+    .likely b { color: var(--accent-2); font-weight: 600; }
+    .actions { display: grid; align-content: center; gap: 8px; }
+    .actions .quiet { border: 1px solid var(--rule); background: transparent; padding: 7px 9px; color: var(--ink-2); text-align: center; }
+    .actions .quiet:hover { color: var(--ink); border-color: var(--ink-3); }
+
+    .all-green {
+      margin-top: 14px;
+      border: 1px solid var(--rule);
+      background: var(--surface);
+      padding: 11px 13px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      color: var(--ink-2);
+      font: 12px var(--font-mono);
+    }
+    .status-dot { width: 8px; height: 8px; background: var(--ok); flex: none; }
+    .all-green button { margin-left: auto; border: 0; background: transparent; color: var(--accent-2); padding: 0; }
+
+    .side-stack { display: grid; gap: 14px; }
+    .feed { display: grid; }
+    .feed-row { display: grid; grid-template-columns: 48px 1fr; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--rule-2); }
+    .feed-row:last-child { border-bottom: 0; }
+    .time { font: 11px var(--font-mono); color: var(--muted); }
+    .feed-row p { margin: 0; color: var(--ink-2); font-size: 12.5px; }
+    .feed-row b { color: var(--ink); font-weight: 600; }
+    .env-grid { padding: 12px; display: grid; gap: 9px; }
+    .env-line { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--rule-2); padding-bottom: 7px; font-size: 12.5px; color: var(--ink-2); }
+    .env-line:last-child { border-bottom: 0; padding-bottom: 0; }
+    .env-line .mono { color: var(--ink); }
+    .env-line .warn { color: var(--warn); }
+
+    .sites-layout { display: grid; gap: 14px; }
+    .sites-toolbar { display: flex; gap: 10px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+    .search { width: min(360px, 100%); border: 1px solid var(--rule); background: var(--surface); color: var(--ink); padding: 9px 10px; outline: none; }
+    .site-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: 12px; }
+    .site-card {
+      border: 1px solid var(--rule);
+      background: var(--surface);
+      padding: 13px;
+      display: grid;
+      gap: 11px;
+      text-align: left;
+    }
+    .site-card:hover { border-color: var(--ink-3); background: var(--surface-2); }
+    .site-card .top { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
+    .site-card h3 { margin: 0; font: 500 17px var(--font-serif); }
+    .site-card .region { margin-top: 2px; color: var(--muted); font: 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+    .score { color: var(--ink); font: 19px var(--font-mono); }
+    .score.bad { color: var(--bad); }
+    .score.warn { color: var(--warn); }
+    .score.ok { color: var(--ok); }
+    .site-metrics { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--rule-2); }
+    .site-metrics div { padding: 8px; border-right: 1px solid var(--rule-2); }
+    .site-metrics div:last-child { border-right: 0; }
+    .site-metrics span { display: block; color: var(--muted); font: 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+    .site-metrics b { display: block; margin-top: 2px; font: 13px var(--font-mono); font-weight: 500; }
+    .site-cause { color: var(--ink-2); font-size: 12.5px; min-height: 36px; }
+    .dish-dots { display: flex; gap: 5px; flex-wrap: wrap; }
+    .dish-dot { width: 8px; height: 8px; background: var(--ok); }
+    .dish-dot.warn { background: var(--warn); }
+    .dish-dot.bad { background: var(--bad); }
+    .map-mode { display: none; border: 1px solid var(--rule); min-height: 520px; background: var(--surface); position: relative; overflow: hidden; }
+    .map-mode.active { display: block; }
+    .rwanda {
+      width: min(640px, 90%);
+      height: 440px;
+      margin: 32px auto;
+      border: 1px solid var(--rule);
+      position: relative;
+      background: var(--bg);
+    }
+    .pin { position: absolute; width: 11px; height: 11px; background: var(--ok); border: 1px solid var(--bg); }
+    .pin.warn { background: var(--warn); }
+    .pin.bad { background: var(--bad); }
+    .pin b { position: absolute; left: 15px; top: -6px; white-space: nowrap; color: var(--ink-2); font: 11px var(--font-mono); font-weight: 500; }
+
+    .inventory-panel { border: 1px solid var(--rule); background: var(--surface); overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 860px; }
+    th {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--rule);
+      color: var(--muted);
+      font: 10px var(--font-mono);
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--rule-2); color: var(--ink-2); }
+    tr:hover td { background: var(--surface-2); }
+    .host { color: var(--ink); font-weight: 500; }
+    .bar { width: 78px; height: 7px; border: 1px solid var(--rule); background: var(--bg); display: inline-block; vertical-align: middle; margin-right: 8px; }
+    .bar i { display: block; height: 100%; background: var(--ink-3); }
+    .bar.warn i { background: var(--warn); }
+    .bar.bad i { background: var(--bad); }
+
+    .status { display: inline-flex; gap: 6px; align-items: center; font: 11px var(--font-mono); color: var(--ink-2); }
+    .status:before { content: ""; width: 7px; height: 7px; background: var(--muted); }
+    .status.ok:before { background: var(--ok); }
+    .status.warn:before { background: var(--warn); }
+    .status.bad:before { background: var(--bad); }
+    .status.info:before { background: var(--info); }
+
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: min(480px, 100vw);
+      height: 100vh;
+      background: var(--surface);
+      border-left: 1px solid var(--rule);
+      z-index: 50;
+      transform: translateX(100%);
+      transition: transform .18s cubic-bezier(.22, 1, .36, 1);
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+    .drawer.open { transform: translateX(0); }
+    .drawer-head { display: flex; gap: 12px; justify-content: space-between; padding: 18px; border-bottom: 1px solid var(--rule); }
+    .drawer-head h2 { margin: 0; font: 500 24px var(--font-serif); }
+    .drawer-head p { margin: 4px 0 0; color: var(--muted); }
+    .drawer-body { overflow: auto; padding: 16px 18px 26px; }
+    .close { width: 32px; height: 32px; border: 1px solid var(--rule); background: transparent; }
+    .section { margin-top: 18px; }
+    .section:first-child { margin-top: 0; }
+    .section-title { margin-bottom: 8px; color: var(--muted); font: 10px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+    .spark-panel { border: 1px solid var(--rule); padding: 10px; }
+    .spark-panel svg { width: 100%; height: 68px; display: block; }
+    .kv { display: grid; grid-template-columns: repeat(2, 1fr); border: 1px solid var(--rule); }
+    .kv div { padding: 10px; border-right: 1px solid var(--rule-2); border-bottom: 1px solid var(--rule-2); }
+    .kv div:nth-child(2n) { border-right: 0; }
+    .kv span { display: block; color: var(--muted); font: 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+    .kv b { display: block; margin-top: 3px; font: 16px var(--font-mono); font-weight: 500; }
+    .drawer-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+
+    .mobile-nav { display: none; }
+
+    @media (max-width: 1120px) {
+      .vitals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .now { display: none; }
+    }
+
+    @media (max-width: 900px) {
+      .app { display: block; padding-bottom: 64px; }
+      .sidebar { display: none; }
+      .vitals { grid-template-columns: repeat(2, 1fr); position: static; }
+      .view { padding: 18px 14px 28px; }
+      .page-head { display: block; }
+      .head-actions { justify-content: flex-start; margin-top: 14px; }
+      h1 { font-size: 27px; }
+      .triage-grid { grid-template-columns: 1fr; }
+      .work-item { grid-template-columns: 1fr; gap: 10px; padding: 14px; }
+      .rank { display: flex; align-items: center; gap: 8px; }
+      .actions { display: flex; flex-wrap: wrap; }
+      .actions .quiet, .actions .btn { flex: 1; min-width: 132px; }
+      .site-line { display: block; }
+      .site-line strong, .site-line span { display: block; white-space: normal; }
+      .mobile-nav {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 45;
+        background: var(--rail);
+        border-top: 1px solid var(--rule);
+      }
+      .mobile-nav button { border: 0; border-right: 1px solid var(--rule); background: transparent; padding: 10px 6px; color: var(--ink-2); font: 11px var(--font-mono); }
+      .mobile-nav button.active { color: var(--accent-2); background: var(--surface); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="mark">S</div>
+        <div>
+          <strong>Starfleet</strong>
+          <span>Isomo ops</span>
+        </div>
+      </div>
+      <nav class="nav" aria-label="Primary navigation">
+        <button class="active" data-view="triage">Triage <span class="count">4</span></button>
+        <button data-view="sites">Sites <span class="count">40</span></button>
+        <button data-view="inventory">Inventory <span class="count">301</span></button>
+      </nav>
+      <div class="side-filter">
+        <label for="campusFilter">Campus filter</label>
+        <input id="campusFilter" placeholder="All campuses">
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="vitals" aria-label="Fleet vital signs">
+        <div class="vital"><div class="value ok">37/40</div><div class="label">sites working</div></div>
+        <div class="vital"><div class="value bad">2</div><div class="label">critical now</div></div>
+        <div class="vital"><div class="value">268/301</div><div class="label">devices last hour</div></div>
+        <div class="vital"><div class="value warn">Kp 5</div><div class="label">environment risk</div></div>
+        <div class="now">Kigali CAT 14:32</div>
+      </section>
+
+      <section id="triage" class="view active">
+        <div class="page-head">
+          <div>
+            <h1>Four things need a human.</h1>
+            <div class="deck">Ranked by operational risk. Each item joins site connectivity, laptops, alerts, and environmental cause in one row.</div>
+          </div>
+          <div class="head-actions">
+            <div class="seg" aria-label="Triage filter">
+              <button class="active">Open</button>
+              <button>Critical</button>
+              <button>Weather</button>
+            </div>
+            <button class="btn primary">Run sweep</button>
+          </div>
+        </div>
+
+        <div class="triage-grid">
+          <div>
+            <section class="panel queue" aria-label="Prioritized worklist">
+              <div class="panel-head">
+                <h2>Work queue</h2>
+                <span class="meta">sorted by impact, then age</span>
+              </div>
+              <article class="work-item" data-site="GS Nyange">
+                <div class="rank"><span class="severity critical">P1</span><span class="age">offline 12m</span></div>
+                <div>
+                  <div class="site-line"><strong>GS Nyange</strong><span>Mugesera, Eastern</span></div>
+                  <div class="problem">Dish unreachable. No heartbeat since 14:20. Forty two laptops now isolated from Intune.</div>
+                  <div class="cause">
+                    <span class="bad">link down</span><span class="warn">rain 4.5mm</span><span class="warn">Kp 5 storm</span><span>obs 2.1%</span><span>reboot 6d</span>
+                  </div>
+                  <div class="likely"><b>Probable cause:</b> link outage with environmental stress. Reboot is safe after ping fails.</div>
+                </div>
+                <div class="actions">
+                  <button class="btn primary">Reboot dish</button>
+                  <button class="quiet">Ping dish</button>
+                  <button class="quiet">Assign</button>
+                  <button class="quiet">Ack</button>
+                </div>
+              </article>
+
+              <article class="work-item" data-site="GS Gishyita">
+                <div class="rank"><span class="severity critical">P1</span><span class="age">38m</span></div>
+                <div>
+                  <div class="site-line"><strong>GS Gishyita</strong><span>Karongi, Western</span></div>
+                  <div class="problem">Signal quality 41, down 44 percent from baseline. Dish is online but link is unstable.</div>
+                  <div class="cause">
+                    <span class="warn">heavy rain 12mm</span><span>cloud 97%</span><span>snr 4.1</span><span>obs 6.2%</span>
+                  </div>
+                  <div class="likely"><b>Probable cause:</b> weather. Monitor for recovery, hold off reboot unless SNR keeps falling.</div>
+                </div>
+                <div class="actions">
+                  <button class="btn primary">Diagnostics</button>
+                  <button class="quiet">Ping dish</button>
+                  <button class="quiet">Assign</button>
+                  <button class="quiet">Ack</button>
+                </div>
+              </article>
+
+              <article class="work-item" data-site="Maranyundo Girls">
+                <div class="rank"><span class="severity warning">P2</span><span class="age">3h</span></div>
+                <div>
+                  <div class="site-line"><strong>Maranyundo Girls</strong><span>Bugesera, Eastern</span></div>
+                  <div class="problem">Fourteen laptops have not checked in for over 3 hours. Dish healthy. Device issue, not network.</div>
+                  <div class="cause">
+                    <span class="ok">dish online</span><span class="warn">14 stale</span><span>Intune sync 3h</span><span>battery avg 38%</span>
+                  </div>
+                  <div class="likely"><b>Probable cause:</b> classroom cart offline or Windows updates stalled.</div>
+                </div>
+                <div class="actions">
+                  <button class="btn primary">Push update</button>
+                  <button class="quiet">View laptops</button>
+                  <button class="quiet">Reassign</button>
+                </div>
+              </article>
+
+              <article class="work-item" data-site="ES Kirambo">
+                <div class="rank"><span class="severity warning">P2</span><span class="age">44m</span></div>
+                <div>
+                  <div class="site-line"><strong>ES Kirambo</strong><span>Burera, Northern</span></div>
+                  <div class="problem">Latency p95 is 320ms and crossed the 300ms threshold at 13:48. Spread is widening.</div>
+                  <div class="cause">
+                    <span class="ok">dish online</span><span>obs 4.1%</span><span>cloud 97%</span><span>sat geometry low</span>
+                  </div>
+                  <div class="likely"><b>Probable cause:</b> satellite pass geometry with cloud cover. Ping before escalation.</div>
+                </div>
+                <div class="actions">
+                  <button class="btn primary">Ping dish</button>
+                  <button class="quiet">Diagnostics</button>
+                  <button class="quiet">Assign</button>
+                </div>
+              </article>
+            </section>
+
+            <div class="all-green">
+              <span class="status-dot"></span>
+              <span><b>33 sites healthy</b>, 268 laptops checked in, avg latency 38ms, uptime 99.4%</span>
+              <button data-view="sites">Show all sites</button>
+            </div>
+          </div>
+
+          <aside class="side-stack">
+            <section class="panel">
+              <div class="panel-head"><h2>What changed</h2><span class="meta">since 14:00</span></div>
+              <div class="feed">
+                <div class="feed-row"><span class="time">14:20</span><p><b>GS Nyange</b> went offline, no heartbeat.</p></div>
+                <div class="feed-row"><span class="time">14:02</span><p>Kp index rose to <b>5</b>, geomagnetic storm began.</p></div>
+                <div class="feed-row"><span class="time">13:54</span><p><b>GS Gishyita</b> signal dropped below 60.</p></div>
+                <div class="feed-row"><span class="time">13:48</span><p><b>ES Kirambo</b> latency p95 crossed 300ms.</p></div>
+                <div class="feed-row"><span class="time">12:30</span><p><b>Maranyundo</b>, 14 laptops went stale.</p></div>
+                <div class="feed-row"><span class="time">11:15</span><p><b>CIC Muramba</b> recovered, back online.</p></div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head"><h2>Environment</h2><span class="meta">fleet-wide</span></div>
+              <div class="env-grid">
+                <div class="env-line"><span>Geomagnetic Kp</span><span class="mono warn">5 storm</span></div>
+                <div class="env-line"><span>Sites with rain over 5mm</span><span class="mono">6</span></div>
+                <div class="env-line"><span>Avg obstruction</span><span class="mono">1.4%</span></div>
+                <div class="env-line"><span>Starlink sats overhead</span><span class="mono">18</span></div>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <section id="sites" class="view">
+        <div class="page-head">
+          <div>
+            <h1>Sites, worst first.</h1>
+            <div class="deck">A school is the primary object. Dish, laptops, alerts, and weather roll up into one health tile.</div>
+          </div>
+          <div class="head-actions">
+            <input class="search" placeholder="Search school, region, or cause">
+            <div class="seg"><button class="active" data-mode="grid">Grid</button><button data-mode="map">Map</button></div>
+          </div>
+        </div>
+        <div class="sites-layout">
+          <div class="site-grid" id="siteGrid"></div>
+          <div class="map-mode" id="mapMode">
+            <div class="rwanda">
+              <button class="pin bad" style="left:62%;top:42%" data-site="GS Nyange"><b>GS Nyange</b></button>
+              <button class="pin warn" style="left:38%;top:55%" data-site="GS Gishyita"><b>Gishyita</b></button>
+              <button class="pin warn" style="left:45%;top:21%" data-site="ES Kirambo"><b>Kirambo</b></button>
+              <button class="pin warn" style="left:67%;top:61%" data-site="Maranyundo Girls"><b>Maranyundo</b></button>
+              <button class="pin" style="left:54%;top:35%" data-site="CIC Muramba"><b>Muramba</b></button>
+              <button class="pin" style="left:73%;top:48%" data-site="Rwamagana Leaders"><b>Rwamagana</b></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="inventory" class="view">
+        <div class="page-head">
+          <div>
+            <h1>Inventory for audits and bulk work.</h1>
+            <div class="deck">The laptop table stays, but it is not the daily command center. Use it for assignments, updates, storage, and device hygiene.</div>
+          </div>
+          <div class="head-actions">
+            <div class="seg"><button class="active">All 301</button><button>Update due 35</button><button>Offline 18</button></div>
+            <button class="btn primary">Push update</button>
+          </div>
+        </div>
+        <div class="inventory-panel">
+          <table>
+            <thead>
+              <tr><th>Hostname</th><th>Site</th><th>Assigned to</th><th>Model</th><th>OS</th><th>Status</th><th>Storage</th><th>Battery</th><th>Last seen</th></tr>
+            </thead>
+            <tbody id="inventoryRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <nav class="mobile-nav" aria-label="Mobile navigation">
+    <button class="active" data-view="triage">Triage</button>
+    <button data-view="sites">Sites</button>
+    <button data-view="inventory">Inventory</button>
+  </nav>
+
+  <aside class="drawer" id="drawer" aria-label="Site detail">
+    <div class="drawer-head">
+      <div>
+        <h2 id="drawerTitle">GS Nyange</h2>
+        <p id="drawerSub">Mugesera, Eastern</p>
+      </div>
+      <button class="close" id="closeDrawer">X</button>
+    </div>
+    <div class="drawer-body">
+      <div class="section">
+        <div class="section-title">Signal and latency, last 24h</div>
+        <div class="spark-panel">
+          <svg viewBox="0 0 360 68" role="img" aria-label="Signal trend">
+            <line x1="0" y1="52" x2="360" y2="52" stroke="var(--rule)" />
+            <polyline id="sparkSignal" fill="none" stroke="var(--bad)" stroke-width="2" points="0,18 32,20 64,22 96,25 128,31 160,36 192,46 224,54 256,58 288,61 320,62 360,63" />
+          </svg>
+          <svg viewBox="0 0 360 68" role="img" aria-label="Latency trend">
+            <line x1="0" y1="52" x2="360" y2="52" stroke="var(--rule)" />
+            <polyline id="sparkLatency" fill="none" stroke="var(--warn)" stroke-width="2" points="0,44 32,43 64,44 96,41 128,45 160,39 192,42 224,28 256,25 288,19 320,16 360,13" />
+          </svg>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">Unified site state</div>
+        <div class="kv" id="drawerKv"></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Likely cause</div>
+        <p id="drawerCause" class="problem">Link outage with environmental stress. Reboot is safe after ping fails.</p>
+      </div>
+      <div class="section">
+        <div class="section-title">Actions</div>
+        <div class="drawer-actions">
+          <button class="btn primary">Run diagnostics</button>
+          <button class="btn">Ping dish</button>
+          <button class="btn">Pull data</button>
+          <button class="btn danger">Reboot dish</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <script>
+    const sites = [
+      { name:'GS Nyange', region:'Mugesera, Eastern', score:18, tone:'bad', dishes:'0/1', laptops:'0/42', latency:'-', cause:'Dish offline. Rain 4.5mm, Kp 5, no heartbeat.', dots:['bad'], action:'Reboot dish' },
+      { name:'GS Gishyita', region:'Karongi, Western', score:41, tone:'warn', dishes:'1/1', laptops:'31/33', latency:'188ms', cause:'Signal falling with heavy rain and 97% cloud.', dots:['warn'], action:'Diagnostics' },
+      { name:'Maranyundo Girls', region:'Bugesera, Eastern', score:62, tone:'warn', dishes:'1/1', laptops:'18/32', latency:'42ms', cause:'Fourteen laptops stale. Network looks healthy.', dots:['ok'], action:'Push update' },
+      { name:'ES Kirambo', region:'Burera, Northern', score:68, tone:'warn', dishes:'1/1', laptops:'23/24', latency:'320ms', cause:'Latency p95 over threshold, likely pass geometry.', dots:['warn'], action:'Ping dish' },
+      { name:'CIC Muramba', region:'Gicumbi, Northern', score:91, tone:'ok', dishes:'1/1', laptops:'28/29', latency:'34ms', cause:'Recovered at 11:15. No current action.', dots:['ok'], action:'Open site' },
+      { name:'Rwamagana Leaders', region:'Rwamagana, Eastern', score:88, tone:'ok', dishes:'1/1', laptops:'19/20', latency:'39ms', cause:'Healthy. Last laptop check-in 22m ago.', dots:['ok'], action:'Open site' },
+      { name:'SOPUM Rukomo', region:'Gakenke, Northern', score:84, tone:'ok', dishes:'1/1', laptops:'16/17', latency:'41ms', cause:'Healthy with light rainfall nearby.', dots:['ok'], action:'Open site' },
+      { name:'St Paul Muko', region:'Musanze, Northern', score:82, tone:'ok', dishes:'1/1', laptops:'12/14', latency:'46ms', cause:'Healthy. Two laptops update due.', dots:['ok'], action:'Open site' }
+    ];
+
+    const laptops = [
+      ['RW-NYA-014','GS Nyange','paci@isomo.rw','Lenovo 300w','Win 11 23H2','offline','81','-', '12m'],
+      ['RW-GIS-021','GS Gishyita','theo@isomo.rw','HP ProBook','Win 11 22H2','healthy','54','72%', '8m'],
+      ['RW-MAR-033','Maranyundo Girls','aline@isomo.rw','Chromebook 311','ChromeOS 125','stale','38','44%', '3h'],
+      ['RW-MAR-034','Maranyundo Girls','aline@isomo.rw','Chromebook 311','ChromeOS 125','update due','62','38%', '3h'],
+      ['RW-KIR-017','ES Kirambo','sam@isomo.rw','Lenovo 300w','Win 11 23H2','healthy','47','88%', '18m'],
+      ['RW-MUR-028','CIC Muramba','chantal@isomo.rw','HP x360','Win 11 23H2','healthy','35','64%', '11m'],
+      ['RW-RWA-019','Rwamagana Leaders','claude@isomo.rw','Chromebook 311','ChromeOS 125','healthy','29','91%', '22m'],
+      ['RW-RUK-016','SOPUM Rukomo','francois@isomo.rw','Lenovo 100e','Win 11 22H2','low storage','91','55%', '31m']
+    ];
+
+    const drawer = document.getElementById('drawer');
+    const drawerTitle = document.getElementById('drawerTitle');
+    const drawerSub = document.getElementById('drawerSub');
+    const drawerCause = document.getElementById('drawerCause');
+    const drawerKv = document.getElementById('drawerKv');
+
+    function setView(view) {
+      document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === view));
+      document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+
+    function openSite(name) {
+      const site = sites.find(s => s.name === name) || sites[0];
+      drawerTitle.textContent = site.name;
+      drawerSub.textContent = site.region;
+      drawerCause.textContent = site.cause;
+      drawerKv.innerHTML = [
+        ['Health', site.score + '/100'],
+        ['Dishes', site.dishes],
+        ['Laptops', site.laptops],
+        ['Latency', site.latency],
+        ['Open alerts', site.tone === 'bad' ? '2' : site.tone === 'warn' ? '1' : '0'],
+        ['Next action', site.action]
+      ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
+      drawer.classList.add('open');
+    }
+
+    function renderSites() {
+      const grid = document.getElementById('siteGrid');
+      grid.innerHTML = sites.map(site => `
+        <button class="site-card" data-site="${site.name}">
+          <div class="top">
+            <div><h3>${site.name}</h3><div class="region">${site.region}</div></div>
+            <div class="score ${site.tone}">${site.score}</div>
+          </div>
+          <div class="site-metrics">
+            <div><span>Dishes</span><b>${site.dishes}</b></div>
+            <div><span>Laptops</span><b>${site.laptops}</b></div>
+            <div><span>Latency</span><b>${site.latency}</b></div>
+          </div>
+          <div class="site-cause">${site.cause}</div>
+          <div class="dish-dots">${site.dots.map(d => `<span class="dish-dot ${d}"></span>`).join('')}</div>
+        </button>
+      `).join('');
+    }
+
+    function renderInventory() {
+      document.getElementById('inventoryRows').innerHTML = laptops.map(row => {
+        const statusTone = row[5] === 'healthy' ? 'ok' : row[5] === 'offline' ? 'bad' : 'warn';
+        const storageTone = Number(row[6]) > 80 ? 'bad' : Number(row[6]) > 60 ? 'warn' : '';
+        return `<tr>
+          <td class="host">${row[0]}</td><td>${row[1]}</td><td>${row[2]}</td><td>${row[3]}</td><td class="mono">${row[4]}</td>
+          <td><span class="status ${statusTone}">${row[5]}</span></td>
+          <td><span class="bar ${storageTone}"><i style="width:${row[6]}%"></i></span><span class="mono">${row[6]}%</span></td>
+          <td class="mono">${row[7]}</td><td class="mono">${row[8]}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    document.addEventListener('click', event => {
+      const viewButton = event.target.closest('[data-view]');
+      if (viewButton) setView(viewButton.dataset.view);
+      const item = event.target.closest('[data-site]');
+      if (item) openSite(item.dataset.site);
+      if (event.target.id === 'closeDrawer') drawer.classList.remove('open');
+      const modeButton = event.target.closest('[data-mode]');
+      if (modeButton) {
+        const map = modeButton.dataset.mode === 'map';
+        document.getElementById('siteGrid').style.display = map ? 'none' : 'grid';
+        document.getElementById('mapMode').classList.toggle('active', map);
+        document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b === modeButton));
+      }
+    });
+
+    renderSites();
+    renderInventory();
+  </script>
+</body>
+</html>

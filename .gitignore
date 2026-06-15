@@ -61,6 +61,8 @@ data_usage/auth/state.json
 data_usage/auth/api_headers.json
 data_usage/auth/*headers*.json
 data_usage/auth/fleet_map_ast.json
+data_usage/auth/fleet_seed.json
+data_usage/auth/inventory_classified.json
 data_usage/auth/latest_sync.json
 data_usage/auth/ping_samples.jsonl
 data_usage/auth/*.png
@@ -68,5 +70,6 @@ data_usage/auth/debug/
 
 # Local agent / editor config and scratch planning docs
 .claude/
+.preview/
 /Starfleet*.pdf
 /package-lock.json

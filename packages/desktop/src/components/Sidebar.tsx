@@ -1,7 +1,7 @@
 import { Site, siteStatus, SiteStatusValue } from '@starfleet/shared';
 
 type FilterValue = 'all' | SiteStatusValue;
-type NavTab = 'overview' | 'starlinks' | 'computers' | 'students' | 'alerts' | 'campuses' | 'map';
+export type NavTab = 'overview' | 'starlinks' | 'computers' | 'alerts' | 'campuses' | 'map' | 'report';
 
 interface Props {
   sites: Site[];
@@ -11,120 +11,101 @@ interface Props {
   onSelect: (id: number | null) => void;
   onFilter: (f: FilterValue) => void;
   onTabChange: (tab: NavTab) => void;
+  onOpenSettings: () => void;
+  kpData?: { k_index: number } | null;
   fleetUptime?: string;
   onlineDishes?: number;
   totalDishes?: number;
   openAlerts?: number;
 }
 
-const TONE: Record<SiteStatusValue, string> = {
-  online:   'ok',
-  degraded: 'warn',
-  dark:     'bad',
-};
-
-const NAV_ITEMS: { id: NavTab; label: string; icon: string }[] = [
-  { id: 'overview',  label: 'Overview',  icon: '⊞' },
-  { id: 'starlinks', label: 'Starlinks', icon: '◎' },
-  { id: 'computers', label: 'Computers', icon: '⊡' },
-  { id: 'students',  label: 'Students',  icon: '◯' },
-  { id: 'alerts',    label: 'Alerts',    icon: '◬' },
-  { id: 'campuses',  label: 'Campuses',  icon: '⌂' },
-  { id: 'map',       label: 'Map',       icon: '⊠' },
+const OPS_ITEMS: { id: NavTab; label: string; icon?: string }[] = [
+  { id: 'overview',  label: 'Overview' },
+  { id: 'starlinks', label: 'Starlinks' },
+  { id: 'computers', label: 'Computers' },
+  { id: 'alerts',    label: 'Alerts' },
+  { id: 'campuses',  label: 'Campuses' },
+  { id: 'map',       label: 'Map' },
 ];
 
 export function Sidebar({
-  sites, selectedId, filter, activeTab,
-  onSelect, onFilter, onTabChange,
-  fleetUptime, onlineDishes = 0, totalDishes = 0, openAlerts = 0,
+  sites, activeTab,
+  onTabChange, onOpenSettings,
+  kpData,
+  onlineDishes = 0, totalDishes = 0, openAlerts = 0,
 }: Props) {
-  const filters: FilterValue[] = ['all', 'online', 'degraded', 'dark'];
-  const visible = sites.filter(s => filter === 'all' ? true : siteStatus(s) === filter);
+
+  // Mock data for computers counts
+  const totalComputers = 301;
+  const rainSites = 3;
 
   return (
     <aside className="sidebar">
-      {/* Brand */}
-      <div className="sidebar-header">
-        <div className="sidebar-logo" aria-hidden>S</div>
-        <div className="sidebar-wordmark">
-          Starfleet
-          <small>Isomo Ops</small>
-        </div>
+      <div className="brand">
+        <div className="brand-mark">S</div>
+        <div className="brand-name">Starfleet <span>Isomo ops</span></div>
       </div>
 
-      {/* Main nav */}
       <div>
-        <div className="sidebar-section-label">Operations</div>
-        <nav className="site-list" role="navigation">
-          {NAV_ITEMS.map(item => (
+        <div className="nav-label">Operations</div>
+        <nav className="nav" aria-label="Primary Ops">
+          {OPS_ITEMS.map(item => (
             <button
               key={item.id}
-              className={`site-item ${activeTab === item.id ? 'active' : ''}`}
+              className={activeTab === item.id ? 'active' : ''}
               onClick={() => onTabChange(item.id)}
             >
-              <span style={{ fontSize: 13, opacity: 0.7, flexShrink: 0 }}>{item.icon}</span>
-              <span className="site-name">{item.label}</span>
-              {item.id === 'alerts' && openAlerts > 0 && (
-                <span className="site-count" style={{ color: 'var(--bad)' }}>{openAlerts}</span>
-              )}
-              {item.id === 'starlinks' && (
-                <span className="site-count">{onlineDishes}/{totalDishes}</span>
-              )}
+              {item.label}
+              {item.id === 'alerts' && <small id="lbl-badge-alerts">{openAlerts}</small>}
+              {item.id === 'starlinks' && <small>{totalDishes}</small>}
+              {item.id === 'computers' && <small>{totalComputers}</small>}
+              {item.id === 'campuses' && <small>{totalDishes}</small>}
+              {item.id === 'map' && <small>RW</small>}
             </button>
           ))}
         </nav>
+        
+        <div className="nav-label" style={{ marginTop: 18 }}>Reports</div>
+        <nav className="nav" aria-label="Primary Reports">
+          <button
+            className={activeTab === 'report' ? 'active' : ''}
+            onClick={() => onTabChange('report')}
+          >
+            Fleet Report <small><i className="ti ti-file-analytics"></i></small>
+          </button>
+        </nav>
       </div>
 
-      {/* Site filter (visible when in overview/site-focused mode) */}
-      {activeTab === 'overview' && (
-        <div>
-          <div className="sidebar-section-label">Filter sites</div>
-          <div className="filter-row">
-            {filters.map(f => (
-              <button
-                key={f}
-                className={`filter-btn ${filter === f ? 'active' : ''}`}
-                onClick={() => onFilter(f)}
-              >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            ))}
+      <div className="sidebar-tools">
+        <label>
+          <span className="field-label">Campus region</span>
+          <select className="campus-region-selector" defaultValue="all">
+            <option value="all">All campuses</option>
+            <option value="Eastern">Eastern region</option>
+            <option value="Western">Western region</option>
+            <option value="Northern">Northern region</option>
+            <option value="Southern">Southern region</option>
+            <option value="Central">Central region</option>
+          </select>
+        </label>
+        
+        <button 
+          className="quiet-btn" 
+          onClick={onOpenSettings}
+          style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8 }}
+        >
+          <i className="ti ti-settings"></i> Settings
+        </button>
+        
+        <div className="mini-hud">
+          <div className="line">
+            <span>kp index</span>
+            <b style={{ color: kpData && kpData.k_index >= 5 ? 'var(--bad)' : kpData && kpData.k_index >= 4 ? 'var(--warn)' : 'var(--info)' }}>
+              {kpData ? `${kpData.k_index} ${kpData.k_index >= 4 ? 'storm' : 'quiet'}` : '—'}
+            </b>
           </div>
-          <nav className="site-list">
-            <button
-              className={`site-item ${selectedId === null ? 'active' : ''}`}
-              onClick={() => onSelect(null)}
-            >
-              <span className={`site-dot status-online`} />
-              <span className="site-name">All sites</span>
-            </button>
-            {visible.map(site => {
-              const st = siteStatus(site);
-              return (
-                <button
-                  key={site.id}
-                  className={`site-item ${selectedId === site.id ? 'active' : ''}`}
-                  onClick={() => onSelect(site.id)}
-                >
-                  <span className={`site-dot status-${st}`} />
-                  <span className="site-name">{site.name}</span>
-                  <span className="site-count">{site.online_laptops}/{site.total_laptops}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-      )}
-
-      {/* Foot — fleet pulse */}
-      <div className="sidebar-foot">
-        <div className="sidebar-pulse">
-          <div className="sidebar-pulse__label">Fleet uptime · 30d</div>
-          <div className="sidebar-pulse__value">
-            {fleetUptime ?? '—'}
-            <span style={{ fontSize: 14, color: 'var(--muted)' }}>%</span>
-          </div>
-          <div className="sidebar-pulse__sub">{onlineDishes}/{totalDishes} dishes online</div>
+          <div className="line"><span>rain &gt;5mm</span><b>{rainSites} sites</b></div>
+          <div className="line"><span>sat overhead</span><b>18</b></div>
         </div>
       </div>
     </aside>
