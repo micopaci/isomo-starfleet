@@ -34,6 +34,8 @@ export interface Alert {
   profile_number?: string;
 }
 
+export type Connectivity = 'online' | 'stale' | 'offline' | 'unknown';
+
 export interface InventoryDevice {
   id: number;
   profile: string;
@@ -41,6 +43,7 @@ export interface InventoryDevice {
   serial: string;
   model: string;
   status: 'working' | 'broken' | 'ready' | 'decommissioned';
+  connectivity: Connectivity;
   assignee: string;
   lastIntake: string;
   operator: string;
@@ -221,6 +224,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const lastSeenAt = r.last_seen ? new Date(r.last_seen).getTime() : null;
         const online = lastSeenAt != null && (Date.now() - lastSeenAt) <= ONLINE_WINDOW_MS;
 
+        // Connectivity is the backend's freshness verdict (online/stale/offline/
+        // unknown) and is independent of the hardware lifecycle status. A device
+        // that simply hasn't checked in is "offline", never "decommissioned".
+        const connRaw = String(r.status || '').toLowerCase();
+        const connectivity: Connectivity =
+          connRaw === 'online' || connRaw === 'stale' || connRaw === 'offline' ? connRaw : 'unknown';
+
         return {
           id: Number(r.id),
           profile: r.profile_number || `LAP-${String(r.id).padStart(3, '0')}`,
@@ -228,6 +238,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           serial: r.windows_sn || '—',
           model: r.model || 'Unknown Device',
           status,
+          connectivity,
           assignee: r.user_principal_name || '—',
           lastIntake: r.intune_enrolled_at ? new Date(r.intune_enrolled_at).toISOString().split('T')[0] : '—',
           operator: r.site_name || '—',

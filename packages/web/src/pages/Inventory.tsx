@@ -454,7 +454,8 @@ export default function Inventory() {
                 <th style={{ width: 100 }}>Profile #</th>
                 <th style={{ width: 140 }}>Serial (BIOS)</th>
                 <th>Model</th>
-                <th style={{ width: 160 }}>Status</th>
+                <th style={{ width: 130 }}>Status</th>
+                <th style={{ width: 110 }}>Connection</th>
                 <th>Assignee</th>
                 <th style={{ width: 120 }}>Last Intake</th>
                 <th style={{ width: 110 }}>Site</th>
@@ -474,6 +475,13 @@ export default function Inventory() {
                   </td>
                   <td>{d.model}</td>
                   <td><DeviceStatusBadge status={d.status} mismatch={d.mismatch} /></td>
+                  <td>
+                    <StatusChip
+                      label={d.connectivity.toUpperCase()}
+                      tone={d.connectivity === 'online' ? 'ok' : d.connectivity === 'stale' ? 'warn' : d.connectivity === 'offline' ? 'bad' : 'mute'}
+                      size="sm"
+                    />
+                  </td>
                   <td style={{ fontSize: 12, color: 'var(--ink-2)' }}>{d.assignee}</td>
                   <td><span className="cell-mono" style={{ fontSize: 11 }}>{d.lastIntake}</span></td>
                   <td style={{ fontSize: 12, color: 'var(--ink-3)' }}>{d.operator}</td>

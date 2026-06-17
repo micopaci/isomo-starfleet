@@ -131,6 +131,7 @@ export default function Computers() {
                 <th>Model</th>
                 <th>OS</th>
                 <th>Status</th>
+                <th>Connection</th>
                 <th className="num">Last Seen</th>
               </tr>
             </thead>
@@ -144,6 +145,7 @@ export default function Computers() {
                   <td style={{ fontSize: 12 }}>{c.model || '—'}</td>
                   <td className="cell-mono">{c.os_version || c.os || '—'}</td>
                   <td><StatusChip label={(c.hardware_status || 'unknown').toUpperCase().replace(/_/g, ' ')} tone={c.hardware_status === 'working_in_use' ? 'ok' : c.hardware_status === 'decommissioned' ? 'mute' : 'bad'} size="sm" /></td>
+                  <td><StatusChip label={(c.status || 'unknown').toUpperCase()} tone={c.status === 'online' ? 'ok' : c.status === 'stale' ? 'warn' : c.status === 'offline' ? 'bad' : 'mute'} size="sm" /></td>
                   <td className="num cell-mono">{c.last_seen ? new Date(c.last_seen).toLocaleDateString() : '—'}</td>
                 </tr>
               ))}
