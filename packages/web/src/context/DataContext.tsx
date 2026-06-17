@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 // Mapped types matching mockData structure but loaded with real data
-export type Status = 'online' | 'degraded' | 'offline';
+export type Status = 'online' | 'degraded' | 'offline' | 'inactive';
 
 export interface Dish {
   name: string;
@@ -163,7 +163,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // freshness. With no telemetry at all we treat the dish as offline
         // (unreachable) rather than inventing a "degraded" state.
         const hasSignal = s.signal && s.signal.snr != null;
-        const status: 'online' | 'degraded' | 'offline' =
+        const status: Status =
+          statusVal === 'inactive' ? 'inactive' :
           statusVal === 'online' ? 'online' :
           statusVal === 'offline' ? 'offline' :
           statusVal === 'degraded' ? 'degraded' :

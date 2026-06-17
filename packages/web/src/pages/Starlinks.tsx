@@ -8,11 +8,13 @@ const STATUS_FILTERS: { label: string; value: Status | 'all' }[] = [
   { label: 'Online', value: 'online' },
   { label: 'Degraded', value: 'degraded' },
   { label: 'Offline', value: 'offline' },
+  { label: 'Inactive', value: 'inactive' },
 ];
 
-function tone(status: Status): 'ok' | 'warn' | 'bad' {
+function tone(status: Status): 'ok' | 'warn' | 'bad' | 'mute' {
   if (status === 'online') return 'ok';
   if (status === 'degraded') return 'warn';
+  if (status === 'inactive') return 'mute';
   return 'bad';
 }
 
@@ -34,6 +36,7 @@ export default function Starlinks() {
     online: dishes.filter(d => d.status === 'online').length,
     degraded: dishes.filter(d => d.status === 'degraded').length,
     offline: dishes.filter(d => d.status === 'offline').length,
+    inactive: dishes.filter(d => d.status === 'inactive').length,
   }), [dishes]);
 
   if (loading) {
@@ -50,7 +53,7 @@ export default function Starlinks() {
         <div>
           <p className="sf-timecode">Network Infrastructure</p>
           <h1 className="sf-view-title">Starlink <em>Terminals</em></h1>
-          <p className="sf-view-lede">All {dishes.length} Starlink dishes deployed across Rwanda. {counts.online} online, {counts.degraded} degraded, {counts.offline} offline.</p>
+          <p className="sf-view-lede">All {dishes.length} Starlink dishes deployed across Rwanda. {counts.online} online, {counts.degraded} degraded, {counts.offline} offline, {counts.inactive} inactive.</p>
         </div>
       </div>
 
@@ -66,7 +69,7 @@ export default function Starlinks() {
             >
               {f.label}
               <span className="seg-count">
-                {f.value === 'all' ? dishes.length : f.value === 'online' ? counts.online : f.value === 'degraded' ? counts.degraded : counts.offline}
+                {f.value === 'all' ? dishes.length : f.value === 'online' ? counts.online : f.value === 'degraded' ? counts.degraded : f.value === 'offline' ? counts.offline : counts.inactive}
               </span>
             </button>
           ))}
