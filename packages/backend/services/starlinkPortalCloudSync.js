@@ -153,6 +153,12 @@ function numberFromValue(value) {
 function coerceDailyGigabytes(point) {
   const direct = numberFromValue(point);
   if (direct != null) return direct;
+  if (Array.isArray(point)) {
+    if (point.length === 0) return null;
+    const first = point[0];
+    if (Array.isArray(first)) return coerceDailyGigabytes(first);
+    return coerceDailyGigabytes(first);
+  }
   if (!point || typeof point !== 'object') return null;
 
   const gb = numberFromValue(firstDefined(
@@ -242,7 +248,7 @@ function parseUsageHistory(payload, options = {}) {
 
     dailyData.forEach((point, dayIndex) => {
       const logDate = addUtcDays(startDate, dayIndex);
-      if (logDate > today) return;
+      if (logDate >= today) return; // skip today — UTC day not complete until 00:00 UTC next day
       const consumedGb = coerceDailyGigabytes(point);
       if (consumedGb == null || !Number.isFinite(consumedGb) || consumedGb < 0) return;
 
@@ -304,10 +310,24 @@ class StarlinkPortalClient {
   getDataUsage(accountId, serviceLineId) {
     const encodedAccount = encodeURIComponent(accountId);
     const encodedServiceLine = encodeURIComponent(serviceLineId);
-    return this.requestJson(
-      `${this.telemetryaggBaseUrl}/data-usage/account/${encodedAccount}/service-line/${encodedServiceLine}`,
-      { operation: 'daily_usage', account_id: accountId, service_line_id: serviceLineId },
-    );
+    const annotatedPath = `${this.telemetryaggBaseUrl}/data-usage/account/${encodedAccount}/service-line/${encodedServiceLine}/annotated`;
+    const legacyPath = `${this.telemetryaggBaseUrl}/data-usage/account/${encodedAccount}/service-line/${encodedServiceLine}`;
+
+    try {
+      return this.requestJson(
+        annotatedPath,
+        { operation: 'daily_usage', account_id: accountId, service_line_id: serviceLineId, variant: 'annotated' },
+      );
+    } catch (err) {
+      if (err && err.name === 'StarlinkPortalAuthExpiredError') throw err;
+      if (err && /HTTP 404|HTTP 403/.test(err.message || '')) {
+        return this.requestJson(
+          legacyPath,
+          { operation: 'daily_usage', account_id: accountId, service_line_id: serviceLineId, variant: 'legacy' },
+        );
+      }
+      throw err;
+    }
   }
 }
 

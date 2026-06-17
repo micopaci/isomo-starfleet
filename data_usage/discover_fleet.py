@@ -36,7 +36,6 @@ with sync_playwright() as p:
         global intercepted_accounts, intercepted_terminals
         url = response.url
 
-        # Log any matching endpoint to see why the skeleton loader is stuck
         if "accounts/contact" in url:
             print(f"📡 [API TRACK] accounts/contact detected! HTTP Status: {response.status}")
             if response.status == 200:
@@ -45,21 +44,20 @@ with sync_playwright() as p:
                 except Exception as e:
                     print(f"   ⚠️ Error parsing accounts JSON: {str(e)}")
 
-        elif "service-lines" in url or "service-line" in url:
-            # Avoid logging tracking pixels or static assets
-            if "telemetryagg" not in url:
-                print(f"📡 [API TRACK] service-lines detected! HTTP Status: {response.status}")
-                if response.status == 200:
-                    try:
-                        intercepted_terminals = response.json()
-                    except Exception:
-                        pass
+        # Only capture the plural /service-lines list endpoint, not individual /service-line/{id} calls.
+        # Individual service-line status responses have a different shape and would corrupt the parse.
+        elif "/service-lines" in url and "telemetryagg" not in url:
+            print(f"📡 [API TRACK] service-lines list detected! HTTP Status: {response.status}")
+            if response.status == 200:
+                try:
+                    intercepted_terminals = response.json()
+                except Exception:
+                    pass
 
     page.on("response", handle_response)
 
     # --- STEP 1: LOAD MAIN ACCOUNT HOME ---
     print("🌐 Loading main home dashboard view...")
-    # Using 'networkidle' tells Playwright to wait until background traffic stops completely
     page.goto("https://starlink.com/account/home", wait_until="networkidle")
     time.sleep(3)
 
@@ -97,14 +95,12 @@ with sync_playwright() as p:
         print(f"\n📂 Activating Account Context: {acc_name} [{acc_id}]...")
         intercepted_terminals = None
 
-        # Navigate directly to the homepage appended with the target account query parameter
-        # This mirrors the behavior captured by your camera snapshot
         page.goto(f"https://starlink.com/account/home?accountNumber={acc_id}", wait_until="networkidle")
         time.sleep(3)
 
-        # Navigate over to the subscriptions tab inside that active token context to extract the active lines
         page.goto("https://starlink.com/account/subscriptions", wait_until="networkidle")
 
+        # Wait up to 10s for the service-lines list response to arrive
         for _ in range(20):
             if intercepted_terminals is not None:
                 break
@@ -118,11 +114,21 @@ with sync_playwright() as p:
                 results = intercepted_terminals.get("results", [])
 
             for item in results:
+                if not isinstance(item, dict):
+                    continue
+                service_line = item.get("serviceLineNumber") or item.get("service_line_id")
+                nickname = item.get("nickname") or (item.get("serviceAddress") or {}).get("formattedAddress")
+                portal_status = item.get("status")
+                # Starlink portal: status == 0 means active/online
+                is_active = portal_status == 0 if isinstance(portal_status, int) else str(portal_status).lower() in ("active", "0", "")
                 terminals_payload.append({
-                    "service_line": item.get("serviceLineNumber"),
-                    "nickname": item.get("nickname") or item.get("serviceAddress", {}).get("formattedAddress"),
-                    "status": "Active" if item.get("status") == 0 else "Inactive"
+                    "service_line": service_line,
+                    "nickname": nickname,
+                    "status": "Active" if is_active else "Inactive",
                 })
+
+        if not terminals_payload:
+            print(f"   ⚠️  No terminals captured for {acc_name} — subscriptions page may not have loaded in time.")
 
         discovered_fleet[acc_name] = {
             "account_id": acc_id,

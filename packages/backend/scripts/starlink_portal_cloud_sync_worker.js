@@ -805,7 +805,8 @@ async function runDaemon() {
     argValue('--status-interval-minutes') || process.env.STARLINK_STATUS_INTERVAL_MINUTES,
     5,
   );
-  const usageCron = argValue('--usage-cron') || process.env.STARLINK_USAGE_CRON || '0 0 * * *';
+  // 02:00 CAT = 00:00 UTC — run just after UTC midnight so daily data is always complete
+  const usageCron = argValue('--usage-cron') || process.env.STARLINK_USAGE_CRON || '0 2 * * *';
   const usageTz = process.env.STARLINK_USAGE_TZ || 'Africa/Kigali';
   if (!cron.validate(usageCron)) {
     throw new Error(`Invalid STARLINK_USAGE_CRON expression: ${usageCron}`);

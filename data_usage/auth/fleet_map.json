@@ -109,8 +109,8 @@
             },
             {
                 "service_line": "SL-DF-9515103-35769-62",
-                "nickname": "GS Kinigi  - G3",
-                "status": "Active"
+                "nickname": "DISABLED - GS Kinigi  - G3",
+                "status": "Inactive"
             },
             {
                 "service_line": "SL-DF-9555466-11575-67",
@@ -174,8 +174,8 @@
         "terminals": [
             {
                 "service_line": "SL-596751-62929-38",
-                "nickname": "GS St Mathieu - Busasamana",
-                "status": "Active"
+                "nickname": "DISABLED",
+                "status": "Inactive"
             },
             {
                 "service_line": "SL-596752-17499-41",
