@@ -21,6 +21,7 @@ export interface Dish {
   spark: number[];
   pingDrop: number;
   agent: boolean;
+  dataGb: number; // data consumed over the last 7 days (from portal usage sync)
 }
 
 export interface Alert {
@@ -187,6 +188,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         while (spark.length < 10) {
           spark.unshift(0);
         }
+        const dataGb = consumedGb.slice(-7).reduce((sum: number, v: any) => sum + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
 
         return {
           name: s.name,
@@ -208,6 +210,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           spark,
           pingDrop: Number(terminal?.latest_ping_drop_pct || 0),
           agent: s.total_laptops > 0,
+          dataGb,
         };
       }) : [];
 
@@ -233,6 +236,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const consumed = Array.isArray(t.usage_trend) ? t.usage_trend.map((u: any) => Number(u.consumed_gb)) : [];
           const spark = consumed.length > 0 ? consumed.slice(-10) : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
           while (spark.length < 10) spark.unshift(0);
+          const inactiveDataGb = consumed.slice(-7).reduce((sum: number, v: any) => sum + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
           mappedInactive.push({
             name: t.nickname || t.site_name || t.service_line_id,
             campus: t.site_name || 'Unassigned',
@@ -244,6 +248,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             spark,
             pingDrop: 0,
             agent: false,
+            dataGb: inactiveDataGb,
           });
         }
       } catch (err) {

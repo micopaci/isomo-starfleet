@@ -27,6 +27,7 @@ const SORT_ACCESSORS: Record<string, (d: Dish) => string | number> = {
   up: d => d.up,
   snr: d => d.snr,
   rain: d => d.rain,
+  data: d => d.dataGb,
   uptime: d => d.uptime,
   agent: d => (d.agent ? 1 : 0),
 };
@@ -130,8 +131,8 @@ export default function Starlinks() {
                 {([
                   ['name', 'Site', ''], ['region', 'Region', ''], ['status', 'Status', ''],
                   ['latency', 'Latency', 'num'], ['down', 'Down', 'num'], ['up', 'Up', 'num'],
-                  ['snr', 'SNR', 'num'], ['rain', 'Rain', 'num'], ['uptime', 'Uptime', 'num'],
-                  ['agent', 'Agent', ''],
+                  ['snr', 'SNR', 'num'], ['rain', 'Rain', 'num'], ['data', 'Data (7d)', 'num'],
+                  ['uptime', 'Uptime', 'num'], ['agent', 'Agent', ''],
                 ] as [string, string, string][]).map(([key, label, cls]) => (
                   <th
                     key={key}
@@ -165,6 +166,7 @@ export default function Starlinks() {
                   <td className="num cell-mono">{d.up > 0 ? `${d.up}M` : '—'}</td>
                   <td className="num cell-mono">{d.snr > 0 ? `${d.snr.toFixed(1)}` : '—'}</td>
                   <td className="num cell-mono" style={{ color: d.rain > 5 ? 'var(--warn)' : undefined }}>{d.rain > 0 ? `${d.rain}mm` : '—'}</td>
+                  <td className="num cell-mono">{d.dataGb > 0 ? `${d.dataGb.toFixed(1)}GB` : '—'}</td>
                   <td className="num cell-mono" style={{ color: d.uptime === 0 ? 'var(--muted)' : d.uptime >= 99 ? 'var(--ok)' : 'var(--warn)' }}>{d.uptime > 0 ? `${d.uptime.toFixed(1)}%` : '—'}</td>
                   <td>{d.agent ? <StatusChip label="Active" tone="ok" size="sm" /> : <StatusChip label="None" tone="mute" size="sm" />}</td>
                 </tr>
