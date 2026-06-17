@@ -315,6 +315,7 @@ router.post('/heartbeat', heartbeatLimiter, async (req, res, next) => {
     if (!enforceAgentSiteScope(req, res, site_id)) return;
 
     const client = await pool.connect();
+    let mismatchInstruction = null;
     try {
       const device_id = await autoRegisterDevice(client, device_sn, site_id, hostname, {
         os, model, manufacturer
@@ -332,11 +333,14 @@ router.post('/heartbeat', heartbeatLimiter, async (req, res, next) => {
       );
       await markIngestSuccess(client, device_id, seenAt);
       broadcast('device_online', { device_id, site_id: canonicalSiteId });
+
+      // Cross-verify manual inventory state
+      mismatchInstruction = await checkDeviceStatusMismatch(client, device_id, canonicalSiteId);
     } finally {
       client.release();
     }
 
-    res.status(201).json({ ok: true });
+    res.status(201).json({ ok: true, instruction: mismatchInstruction });
   } catch (err) { next(err); }
 });
 
@@ -698,5 +702,68 @@ router.post('/refresh-token', agentHealthLimiter, async (req, res, next) => {
     });
   } catch (err) { next(err); }
 });
+
+// ── Telemetry Status Cross-Verification ─────────────────────────────────────
+async function checkDeviceStatusMismatch(client, deviceId, currentSiteId) {
+  try {
+    const { rows } = await client.query(
+      `SELECT d.id, d.profile_number, d.hardware_status, d.windows_sn 
+       FROM devices d 
+       WHERE d.id = $1`,
+      [deviceId]
+    );
+    if (!rows.length) return null;
+    const device = rows[0];
+
+    const invalidState = 
+      device.hardware_status === 'intake_broken' || 
+      device.hardware_status === 'decommissioned' || 
+      device.hardware_status === 'ready_for_reissue';
+
+    if (invalidState) {
+      const key = `mismatch_${device.id}_${device.hardware_status}`;
+      const severity = device.hardware_status === 'decommissioned' ? 'critical' : 'warning';
+      
+      await client.query(
+        `INSERT INTO alert_events (active_key, source_type, source_id, site_id, device_id, severity, category, title, message, metadata)
+         VALUES ($1, 'device', $2, $3, $4, $5, 'inventory', $6, $7, $8)
+         ON CONFLICT (active_key) DO UPDATE SET 
+           last_seen_at = NOW(),
+           message = EXCLUDED.message,
+           metadata = alert_events.metadata || EXCLUDED.metadata`,
+        [
+          key,
+          String(device.id),
+          currentSiteId || null,
+          device.id,
+          severity,
+          `Inventory Mismatch: ${device.profile_number || 'Device SN ' + device.windows_sn}`,
+          `Device ${device.profile_number || device.windows_sn} heartbeated online, but is marked as '${device.hardware_status}' in inventory.`,
+          JSON.stringify({
+            hardware_status: device.hardware_status,
+            current_site_id: currentSiteId,
+            last_telemetry_timestamp: new Date().toISOString()
+          })
+        ]
+      );
+
+      // Lock retired/broken devices
+      if (device.hardware_status === 'decommissioned' || device.hardware_status === 'intake_broken') {
+        return 'LOCK_SCREEN';
+      }
+    } else {
+      // Auto-resolve any open mismatch alerts for this device
+      await client.query(
+        `UPDATE alert_events 
+         SET status = 'resolved', resolved_at = NOW() 
+         WHERE device_id = $1 AND category = 'inventory' AND status != 'resolved'`,
+        [deviceId]
+      );
+    }
+  } catch (err) {
+    console.error('Error in checkDeviceStatusMismatch:', err);
+  }
+  return null;
+}
 
 module.exports = router;

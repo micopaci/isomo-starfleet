@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
   warnDot:         { width: 8, height: 8, borderRadius: 0, flexShrink: 0 },
   staleName:       { fontSize: 13, fontWeight: '600' },
   staleSite:       { fontSize: 12, marginTop: 2 },
-  staleChip:       { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
+  staleChip:       { borderRadius: 0, paddingHorizontal: 8, paddingVertical: 4 },
   staleChipText:   { fontSize: 12, fontWeight: '700' },
   empty:           { alignItems: 'center', marginTop: 60, gap: 6 },
   emptyIcon:       { fontSize: 36 },

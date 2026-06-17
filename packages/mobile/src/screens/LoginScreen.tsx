@@ -13,15 +13,20 @@ import { Colors } from '../theme/colors';
 
 const API_BASE_KEY = 'starfleet_api_base';
 
-interface Props { colors: Colors; onLogin: () => void; }
+interface Props {
+  colors: Colors;
+  onLogin: () => void;
+  onEnterDeskMode: (operatorName: string) => void;
+}
 
-export function LoginScreen({ colors, onLogin }: Props) {
+export function LoginScreen({ colors, onLogin, onEnterDeskMode }: Props) {
   const [email,      setEmail]      = useState('');
   const [password,   setPassword]   = useState('');
   const [apiBase,    setApiBase]    = useState(getApiBase());
   const [showServer, setShowServer] = useState(false);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState('');
+  const [operatorInput, setOperatorInput] = useState('');
 
   const scale = useSharedValue(1);
   useEffect(() => {
@@ -82,6 +87,21 @@ export function LoginScreen({ colors, onLogin }: Props) {
             onPress={handleLogin} disabled={loading}
           >
             {loading ? <ActivityIndicator color={colors.bg} /> : <Text style={[s.btnText, { color: colors.bg }]}>Sign in</Text>}
+          </TouchableOpacity>
+
+          <View style={{ height: 1, backgroundColor: colors.rule, marginVertical: 8 }} />
+
+          <Text style={{ textAlign: 'center', fontSize: 11, fontWeight: '700', color: colors.muted, letterSpacing: 1 }}>
+            OR RAPID INTAKE
+          </Text>
+
+          <TouchableOpacity
+            style={[s.btn, { backgroundColor: colors.surface2, borderColor: colors.accent, borderWidth: 1 }]}
+            onPress={() => {
+              onEnterDeskMode('Kiosk Operator');
+            }}
+          >
+            <Text style={[s.btnText, { color: colors.accent }]}>Enter Intake Desk Mode</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => setShowServer(v => !v)} style={s.toggleWrap}>

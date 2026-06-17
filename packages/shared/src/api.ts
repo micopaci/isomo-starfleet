@@ -17,24 +17,35 @@ export class StarfleetApi {
   private baseUrl: string;
   private getToken: () => string;
   private onAuthError?: () => void;
+  private getOperatorEmail?: () => string;
 
   constructor(
     baseUrl: string,
     getToken: () => string,
     onAuthError?: () => void,
+    getOperatorEmail?: () => string,
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.getToken = getToken;
     this.onAuthError = onAuthError;
+    this.getOperatorEmail = getOperatorEmail;
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const token = this.getToken();
+    const opEmail = this.getOperatorEmail?.() || '';
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: token ? `Bearer ${token}` : '',
+    };
+    if (opEmail) {
+      headers['x-operator-email'] = opEmail;
+    }
+
     const res = await fetch(`${this.baseUrl}${path}`, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
-        Authorization: token ? `Bearer ${token}` : '',
+        ...headers,
         ...options.headers,
       },
     });
@@ -357,6 +368,68 @@ export class StarfleetApi {
   }
 
   // ── Auth ───────────────────────────────────────────────────────────────────
+
+  // ── Inventory & Intake ──────────────────────────────────────────────────────
+
+  /** POST /api/inventory/onboard */
+  onboardDevice(serialNumber: string): Promise<{ ok: boolean; device: Device }> {
+    return this.request<{ ok: boolean; device: Device }>('/api/inventory/onboard', {
+      method: 'POST',
+      body: JSON.stringify({ serial_number: serialNumber }),
+    });
+  }
+
+  /** POST /api/inventory/mark-state */
+  markDeviceState(input: {
+    deviceId: number;
+    hardware_status: string;
+    symptom_tags?: string[];
+    repair_details?: string;
+    client_transaction_uuid?: string;
+  }): Promise<{ ok: boolean; device: Device }> {
+    return this.request<{ ok: boolean; device: Device }>('/api/inventory/mark-state', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /** POST /api/inventory/reassign */
+  reassignDevice(input: {
+    deviceId: number;
+    assignee_email: string;
+    assignee_type: 'student' | 'staff' | 'pool';
+    site_id: number | null;
+    client_transaction_uuid?: string;
+  }): Promise<{ ok: boolean; device: Device }> {
+    return this.request<{ ok: boolean; device: Device }>('/api/inventory/reassign', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  /** POST /api/inventory/sync */
+  syncOfflineQueue(transactions: any[]): Promise<{
+    ok: boolean;
+    results: Array<{ transaction_uuid: string; status: 'success' | 'failed'; error?: string; note?: string }>;
+  }> {
+    return this.request<{
+      ok: boolean;
+      results: Array<{ transaction_uuid: string; status: 'success' | 'failed'; error?: string; note?: string }>;
+    }>('/api/inventory/sync', {
+      method: 'POST',
+      body: JSON.stringify({ transactions }),
+    });
+  }
+
+  /** GET /api/inventory/devices/:deviceId/logs */
+  getDeviceLifecycleLogs(deviceId: number): Promise<any[]> {
+    return this.request<any[]>(`/api/inventory/devices/${deviceId}/logs`);
+  }
+
+  /** GET /api/inventory/devices/:deviceId/assignments */
+  getDeviceAssignments(deviceId: number): Promise<any[]> {
+    return this.request<any[]>(`/api/inventory/devices/${deviceId}/assignments`);
+  }
 
   /** POST /auth/login */
   login(email: string, password: string): Promise<{ token: string }> {

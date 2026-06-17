@@ -16,6 +16,7 @@ const { authMiddleware }  = require('./middleware/auth');
 const authRoutes          = require('./routes/auth');
 const ingestRoutes        = require('./routes/ingest');
 const apiRoutes           = require('./routes/api');
+const inventoryRoutes     = require('./routes/inventory');
 const wsService           = require('./services/websocket');
 const graphClient         = require('./services/graph');
 const { scheduleCron }              = require('./services/scoreCron');
@@ -584,6 +585,7 @@ app.use('/auth', authRoutes);
 app.use('/ingest', authMiddleware, ingestRoutes);
 
 // ── Read API + trigger (JWT-protected) ───────────────────────────────────────
+app.use('/api/inventory', authMiddleware, inventoryRoutes);
 app.use('/api', authMiddleware, apiRoutes);
 
 // ── Internal — force-run score cron (JWT-protected, admin) ───────────────────

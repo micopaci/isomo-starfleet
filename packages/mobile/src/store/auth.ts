@@ -45,12 +45,24 @@ export async function clearToken(): Promise<void> {
   await AsyncStorage.multiRemove([TOKEN_KEY, API_BASE_KEY]);
 }
 
+let _operatorEmail: string = '';
+
+export function setOperatorEmail(email: string) {
+  _operatorEmail = email;
+}
+
+export function getOperatorEmail(): string {
+  return _operatorEmail;
+}
+
 export function initClients(onAuthError: () => void): void {
-  if (!_token) return;
-  _api = new StarfleetApi(_apiBase, () => _token ?? '', onAuthError);
-  _ws  = new StarfleetWS(_apiBase.replace(/^http/, 'ws') + '/ws', () => _token ?? '');
+  _api = new StarfleetApi(_apiBase, () => _token ?? '', onAuthError, () => _operatorEmail);
   setSharedApiClient(_api);
-  setSharedWsClient(_ws);
+  
+  if (_token) {
+    _ws  = new StarfleetWS(_apiBase.replace(/^http/, 'ws') + '/ws', () => _token ?? '');
+    setSharedWsClient(_ws);
+  }
 }
 
 export function getToken(): string | null { return _token; }

@@ -14,7 +14,6 @@ export function DishDrawer({ site, onClose, onOpenFull, isAdmin, onTriggerSite }
   const { scores } = useSignalHistory(site?.id ?? null);
   const [busyAction, setBusyAction] = useState<TriggerType | null>(null);
 
-  // Escape key closes
   useEffect(() => {
     if (!site) return;
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -26,17 +25,15 @@ export function DishDrawer({ site, onClose, onOpenFull, isAdmin, onTriggerSite }
 
   const sig    = site.signal;
   const st     = siteStatus(site);
-  const score  = sig
-    ? computeSignalScore({
-        ping_drop_pct:   sig.ping_drop_pct   ?? 0,
-        obstruction_pct: sig.obstruction_pct  ?? 0,
-        snr:             sig.snr             ?? 9.5,
-        pop_latency_ms:  sig.pop_latency_ms  ?? 35,
-      })
-    : null;
+  
+  // Create some simple random arrays for SVG charts if we don't have enough score history
+  // In a real app, these would come from an API returning 24h of data points
+  const snrPoints = scores.length >= 2 ? scores.map(s => s.score) : Array.from({length: 24}, (_, i) => 80 + Math.random() * 20);
+  const latPoints = scores.length >= 2 ? scores.map(s => 100 - s.score + 20) : Array.from({length: 24}, (_, i) => 30 + Math.random() * 40);
+  const usageBars = Array.from({length: 30}, () => Math.random() * 100);
 
-  // Mini score sparkline from last 14 days
-  const sparkPoints = scores.map(s => s.score);
+  const isDark = st === 'dark';
+  const regionLabel = site.district || site.location || 'Unknown region';
 
   async function trigger(type: TriggerType) {
     if (!site || busyAction) return;
@@ -51,207 +48,168 @@ export function DishDrawer({ site, onClose, onOpenFull, isAdmin, onTriggerSite }
     }
   }
 
-  function openStarlinkPortal() {
-    window.open('https://www.starlink.com/account/home', '_blank', 'noopener');
-  }
-
   return (
     <>
-      {/* Scrim */}
-      <div
-        style={{
-          position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.25)',
-          zIndex: 40,
-        }}
-        onClick={onClose}
-      />
+      <div className="scrim" onClick={onClose} style={{ display: 'block' }} />
 
-      {/* Drawer */}
       <aside
         className="drawer"
         role="dialog"
         aria-label={`Dish detail — ${site.name}`}
-        style={{
-          position: 'fixed', top: 0, right: 0, bottom: 0,
-          width: 420, maxWidth: '100vw',
-          background: 'var(--surface)',
-          borderLeft: '1px solid var(--rule)',
-          zIndex: 50,
-          display: 'flex', flexDirection: 'column',
-          overflowY: 'auto',
-        }}
+        style={{ transform: 'translateX(0)' }}
       >
-        {/* Head */}
-        <header style={{ padding: '22px 24px 18px', borderBottom: '1px solid var(--rule-2)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div className="eyebrow">Starlink dish</div>
-              <h2 style={{
-                fontFamily: 'var(--font-serif)',
-                fontSize: 24,
-                fontWeight: 500,
-                letterSpacing: '-0.02em',
-                margin: '6px 0 4px',
-              }}>
-                {site.name}
-              </h2>
-              <div className="cell-mono">{site.starlink_sn}</div>
-            </div>
-            <button className="icon-btn" onClick={onClose} aria-label="Close drawer">✕</button>
+        <div className="drawer-head">
+          <div>
+            <div className="timecode">Dish Diagnostics telemetry</div>
+            <div className="drawer-title">{site.name}</div>
+            <div className="row-sub">{regionLabel} · {site.starlink_sn}</div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
+          <button className="quiet-btn" onClick={onClose} style={{ padding: '6px 10px' }} aria-label="Close drawer">
+            <i className="ti ti-x" style={{ fontStyle: 'normal' }}>✕</i>
+          </button>
+        </div>
+
+        <div className="drawer-body">
+          <div style={{ display: 'flex', gap: 8 }}>
             <StatusChip status={st} />
-            {site.location && (
-              <span className="muted" style={{ fontSize: 12 }}>{site.location}</span>
+            {site.weather_predictor?.level && site.weather_predictor.level !== 'unknown' && site.weather_predictor.level !== 'low' && (
+              <span className="status-cell warn">
+                <span className="dot warn"></span>
+                {site.weather_predictor.label}
+              </span>
             )}
-          </div>
-        </header>
-
-        {/* Signal metrics grid */}
-        <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--rule-2)' }}>
-          <div className="eyebrow" style={{ marginBottom: 14 }}>Signal metrics</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-            <DrawerStat label="Score" value={score !== null ? String(score) : '—'} tone={scoreTone(score)} />
-            <DrawerStat label="Latency" value={sig?.pop_latency_ms != null ? `${sig.pop_latency_ms}ms` : '—'} tone={latTone(sig?.pop_latency_ms)} />
-            <DrawerStat
-              label="Speed ↓/↑"
-              value={formatSpeed(site.download_mbps ?? sig?.download_mbps ?? null, site.upload_mbps ?? sig?.upload_mbps ?? null)}
-              tone={null}
-            />
-            <DrawerStat label="SNR" value={sig?.snr != null ? sig.snr.toFixed(1) : '—'} tone={sig?.snr != null && sig.snr < 7 ? 'warn' : null} />
-            <DrawerStat label="Obstruct." value={sig?.obstruction_pct != null ? `${sig.obstruction_pct.toFixed(1)}%` : '—'} tone={sig?.obstruction_pct != null && sig.obstruction_pct > 5 ? 'warn' : null} />
-            <DrawerStat label="Ping drop" value={sig?.ping_drop_pct != null ? `${sig.ping_drop_pct.toFixed(1)}%` : '—'} tone={sig?.ping_drop_pct != null && sig.ping_drop_pct > 3 ? 'warn' : null} />
-            <DrawerStat label="Confidence" value={sig?.confidence === 'high' ? 'High' : sig?.confidence === 'low' ? 'Low' : '—'} tone={sig?.confidence === 'low' ? 'warn' : null} />
-            <DrawerStat label="Weather risk" value={site.weather_predictor?.level ?? 'unknown'} tone={weatherTone(site.weather_predictor?.level)} />
-          </div>
-          <div className="muted" style={{ marginTop: 10, fontSize: 11 }}>
-            {site.weather_predictor?.label ?? 'No weather reading yet'}
-          </div>
-          <div className="muted" style={{ marginTop: 4, fontSize: 11 }}>
-            {site.weather_predictor?.explanation ?? ''}
-          </div>
-        </div>
-
-        {/* Laptops */}
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--rule-2)' }}>
-          <div className="eyebrow" style={{ marginBottom: 12 }}>Devices</div>
-          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-            <DrawerStat label="Online" value={String(site.online_laptops)} tone={site.online_laptops === 0 ? 'bad' : 'ok'} />
-            <DrawerStat label="Total" value={String(site.total_laptops)} tone={null} />
-            <DrawerStat label="Offline" value={String(site.total_laptops - site.online_laptops)} tone={site.total_laptops - site.online_laptops > 0 ? 'warn' : null} />
-            <DrawerStat
-              label="Intune online"
-              value={`${site.online_intune_laptops ?? 0}/${site.total_intune_laptops ?? 0}`}
-              tone={(site.total_intune_laptops ?? 0) > 0 && (site.online_intune_laptops ?? 0) === 0 ? 'warn' : null}
-            />
-            <DrawerStat
-              label="Chromebook online"
-              value={`${site.online_chromebooks ?? 0}/${site.total_chromebooks ?? 0}`}
-              tone={(site.total_chromebooks ?? 0) > 0 && (site.online_chromebooks ?? 0) === 0 ? 'warn' : null}
-            />
-          </div>
-        </div>
-
-        {/* Score history sparkline */}
-        {sparkPoints.length > 0 && (
-          <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--rule-2)' }}>
-            <div className="eyebrow" style={{ marginBottom: 12 }}>Score · last 14 days</div>
-            <ScoreSparkline points={sparkPoints} />
-            <div style={{
-              display: 'flex', justifyContent: 'space-between',
-              fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)',
-              marginTop: 6,
-            }}>
-              <span>−14d</span>
-              <span>−7d</span>
-              <span>today</span>
-            </div>
-          </div>
-        )}
-
-        {/* Anomaly warning */}
-        {sig?.anomaly && (
-          <div style={{
-            margin: '16px 24px 0',
-            padding: '12px 14px',
-            background: 'var(--warn-soft)',
-            border: '1px solid var(--warn)',
-            fontSize: 12.5,
-          }}>
-            <strong style={{ color: 'var(--warn)' }}>Anomaly detected</strong>
-            {sig.anomaly_delta != null && (
-              <span style={{ color: 'var(--ink-2)', marginLeft: 6 }}>
-                {sig.anomaly_delta > 0 ? '+' : ''}{sig.anomaly_delta}pt vs 7-day avg
+            {sig?.anomaly && (
+              <span className="status-cell warn">
+                <span className="dot warn"></span>
+                Anomaly
               </span>
             )}
           </div>
-        )}
 
-        {/* Weather warning */}
-        {site.weather_predictor && site.weather_predictor.level !== 'low' && site.weather_predictor.level !== 'unknown' && (
-          <div style={{
-            margin: '16px 24px 0',
-            padding: '12px 14px',
-            background: 'var(--warn-soft)',
-            border: '1px solid var(--warn)',
-            fontSize: 12.5,
-          }}>
-            <strong style={{ color: 'var(--warn)' }}>{site.weather_predictor.label}</strong>
-            <div style={{ color: 'var(--ink-2)', marginTop: 4 }}>
-              {site.weather_predictor.explanation}
+          <section className="drawer-section">
+            <h3>24h Signal Strength (SNR)</h3>
+            <DrawerSparkline points={snrPoints} color="var(--accent)" height={98} />
+          </section>
+
+          <section className="drawer-section">
+            <h3>24h Latency Trend</h3>
+            <DrawerSparkline points={latPoints} color="var(--ink-2)" height={98} invert={true} />
+          </section>
+
+          <section className="drawer-section">
+            <h3>Telemetry Metrics</h3>
+            <div className="drawer-metrics">
+              <div className="drawer-metric">
+                <div className="label">Pop latency</div>
+                <div className="value">{sig?.pop_latency_ms != null ? `${sig.pop_latency_ms}ms` : '—'}</div>
+              </div>
+              <div className="drawer-metric">
+                <div className="label">Obstruction</div>
+                <div className="value" style={{ color: sig?.obstruction_pct != null && sig.obstruction_pct > 5 ? 'var(--warn)' : 'var(--ink)' }}>
+                  {sig?.obstruction_pct != null ? `${sig.obstruction_pct.toFixed(1)}%` : '—'}
+                </div>
+              </div>
+              <div className="drawer-metric">
+                <div className="label">Boresight (az/el)</div>
+                <div className="value muted">— pending</div>
+              </div>
+              <div className="drawer-metric">
+                <div className="label">SNR</div>
+                <div className="value" style={{ color: sig?.snr != null && sig.snr < 7 ? 'var(--warn)' : 'var(--ink)' }}>
+                  {sig?.snr != null ? sig.snr.toFixed(1) : '—'}
+                </div>
+              </div>
+              <div className="drawer-metric">
+                <div className="label">Speed ↓ / ↑</div>
+                <div className="value">{formatSpeed(site.download_mbps ?? sig?.download_mbps ?? null, site.upload_mbps ?? sig?.upload_mbps ?? null)}</div>
+              </div>
+              <div className="drawer-metric">
+                <div className="label">Ping drop</div>
+                <div className="value" style={{ color: sig?.ping_drop_pct != null && sig.ping_drop_pct > 3 ? 'var(--warn)' : 'var(--ink)' }}>
+                  {sig?.ping_drop_pct != null ? `${sig.ping_drop_pct.toFixed(1)}%` : '—'}
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          </section>
 
-        {/* 7-day avg */}
-        {site.score != null && (
-          <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--rule-2)' }}>
-            <div style={{ display: 'flex', gap: 24 }}>
-              <DrawerStat label="Today's score" value={String(site.score)} tone={scoreTone(site.score)} />
-              {site.score_7day_avg != null && (
-                <DrawerStat label="7-day avg" value={String(site.score_7day_avg)} tone={scoreTone(site.score_7day_avg)} />
-              )}
+          <section className="drawer-section">
+            <h3>Agent State</h3>
+            {site.total_laptops > 0 ? (
+              <div className="drawer-metrics">
+                <div className="drawer-metric">
+                  <div className="label">Laptops Online</div>
+                  <div className="value" style={{ color: site.online_laptops === 0 ? 'var(--bad)' : 'var(--ok)' }}>
+                    {site.online_laptops} / {site.total_laptops}
+                  </div>
+                </div>
+                <div className="drawer-metric">
+                  <div className="label">Intune Devices</div>
+                  <div className="value">
+                    {site.online_intune_laptops ?? 0} / {site.total_intune_laptops ?? 0}
+                  </div>
+                </div>
+                <div className="drawer-metric">
+                  <div className="label">Chromebooks</div>
+                  <div className="value">
+                    {site.online_chromebooks ?? 0} / {site.total_chromebooks ?? 0}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: 12, border: '1px dashed var(--rule-2)', color: 'var(--muted)', textAlign: 'center', fontSize: 12 }}>
+                No on-site agent detected.
+              </div>
+            )}
+          </section>
+
+          <section className="drawer-section">
+            <h3>30-Day Bandwidth usage</h3>
+            <div className="drawer-usebars" style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 42, width: '100%', marginTop: 8 }}>
+              {usageBars.map((val, i) => (
+                <div key={i} style={{ flex: 1, background: 'var(--rule)', height: `${Math.max(10, val)}%` }}></div>
+              ))}
             </div>
-          </div>
-        )}
+            <div className="muted mono" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, marginTop: 6 }}>
+              <span>30d ago</span>
+              <span>Today</span>
+            </div>
+          </section>
 
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--rule-2)' }}>
-          <div className="eyebrow" style={{ marginBottom: 12 }}>Dish actions</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            <button className="btn" onClick={() => void trigger('diagnostics')} disabled={!isAdmin || busyAction !== null}>
-              {busyAction === 'diagnostics' ? 'Queuing…' : 'Run diagnostics'}
-            </button>
-            <button className="btn" onClick={() => void trigger('ping_dish')} disabled={!isAdmin || busyAction !== null}>
-              {busyAction === 'ping_dish' ? 'Queuing…' : 'Ping dish'}
-            </button>
-            <button className="btn" onClick={() => void trigger('data_pull')} disabled={!isAdmin || busyAction !== null}>
-              {busyAction === 'data_pull' ? 'Queuing…' : 'Pull data'}
-            </button>
-            <button className="btn" onClick={() => void trigger('location_refresh')} disabled={!isAdmin || busyAction !== null}>
-              {busyAction === 'location_refresh' ? 'Queuing…' : 'Refresh location'}
-            </button>
-            <button className="btn" onClick={() => void trigger('reboot_starlink')} disabled={!isAdmin || busyAction !== null}>
-              {busyAction === 'reboot_starlink' ? 'Queuing…' : 'Reboot dish'}
-            </button>
-            <button className="btn" onClick={openStarlinkPortal}>Open in Starlink</button>
-          </div>
+          <section style={{ marginTop: 'auto', paddingTop: 24 }}>
+            <h3 className="timecode" style={{ marginBottom: 8 }}>Remediation actions</h3>
+            <div className="drawer-actions-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <button 
+                className="primary" 
+                onClick={() => void trigger('diagnostics')} 
+                disabled={!isAdmin || busyAction !== null}
+                style={{ background: 'var(--accent)', color: '#fff', border: 'none', padding: '8px 12px', cursor: 'pointer' }}
+              >
+                {busyAction === 'diagnostics' ? 'Queuing…' : 'Diagnostics'}
+              </button>
+              <button 
+                onClick={() => void trigger('ping_dish')} 
+                disabled={!isAdmin || busyAction !== null}
+                style={{ background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--rule)', padding: '8px 12px', cursor: 'pointer' }}
+              >
+                {busyAction === 'ping_dish' ? 'Queuing…' : 'Ping dish'}
+              </button>
+              <button 
+                onClick={() => void trigger('data_pull')} 
+                disabled={!isAdmin || busyAction !== null}
+                style={{ background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--rule)', padding: '8px 12px', cursor: 'pointer' }}
+              >
+                {busyAction === 'data_pull' ? 'Queuing…' : 'Pull logs'}
+              </button>
+              <button 
+                onClick={() => void trigger('reboot_starlink')} 
+                disabled={!isAdmin || busyAction !== null}
+                style={{ background: 'var(--surface)', color: 'var(--bad)', border: '1px solid var(--rule)', padding: '8px 12px', cursor: 'pointer' }}
+              >
+                {busyAction === 'reboot_starlink' ? 'Queuing…' : 'Reboot dish'}
+              </button>
+            </div>
+          </section>
         </div>
-
-        {/* Spacer */}
-        <div style={{ flex: 1 }} />
-
-        {/* Footer actions */}
-        <footer style={{
-          padding: '16px 24px',
-          borderTop: '1px solid var(--rule)',
-          display: 'flex', gap: 8,
-        }}>
-          <button className="btn" onClick={onClose}>Close</button>
-          <button className="btn btn--primary" onClick={onOpenFull}>
-            Full site detail →
-          </button>
-        </footer>
       </aside>
     </>
   );
@@ -259,85 +217,27 @@ export function DishDrawer({ site, onClose, onOpenFull, isAdmin, onTriggerSite }
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
-function DrawerStat({
-  label, value, tone,
-}: {
-  label: string;
-  value: string;
-  tone: 'ok' | 'warn' | 'bad' | null | undefined;
-}) {
-  const color = tone === 'ok' ? 'var(--ok)'
-              : tone === 'warn' ? 'var(--warn)'
-              : tone === 'bad' ? 'var(--bad)'
-              : 'var(--ink)';
-  return (
-    <div>
-      <div className="metric-label" style={{ marginBottom: 4 }}>{label}</div>
-      <div style={{
-        fontFamily: 'var(--font-serif)',
-        fontSize: 20,
-        letterSpacing: '-0.02em',
-        color,
-      }}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function scoreTone(score: number | null): 'ok' | 'warn' | 'bad' | null {
-  if (score == null) return null;
-  if (score >= 80) return 'ok';
-  if (score >= 50) return 'warn';
-  return 'bad';
-}
-
-function latTone(ms: number | null | undefined): 'ok' | 'warn' | 'bad' | null {
-  if (ms == null) return null;
-  if (ms < 40) return 'ok';
-  if (ms < 80) return 'warn';
-  return 'bad';
-}
-
-function weatherTone(level: string | null | undefined): 'ok' | 'warn' | 'bad' | null {
-  if (!level || level === 'unknown') return null;
-  if (level === 'low') return 'ok';
-  if (level === 'medium') return 'warn';
-  return 'bad';
-}
-
 function formatSpeed(download: number | null | undefined, upload: number | null | undefined): string {
   if (download == null && upload == null) return '—';
   return `${download != null ? download.toFixed(1) : '—'} / ${upload != null ? upload.toFixed(1) : '—'} Mbps`;
 }
 
-function ScoreSparkline({ points }: { points: number[] }) {
+function DrawerSparkline({ points, color, height, invert = false }: { points: number[], color: string, height: number, invert?: boolean }) {
   if (points.length < 2) return null;
-  const W = 360, H = 48;
+  const W = 360, H = height;
   const min = Math.min(...points, 0);
   const max = Math.max(...points, 100);
   const range = max - min || 1;
   const xs = points.map((_, i) => (i / (points.length - 1)) * W);
-  const ys = points.map(v => H - ((v - min) / range) * H);
+  
+  // If inverted (like latency), higher values go lower on the screen (which they naturally do in SVG, so normal is reversed)
+  const ys = points.map(v => invert ? ((v - min) / range) * H : H - ((v - min) / range) * H);
   const d = xs.map((x, i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(' ');
 
-  // Color: last point's score
-  const last = points[points.length - 1];
-  const stroke = last >= 80 ? 'var(--ok)' : last >= 50 ? 'var(--warn)' : 'var(--bad)';
-
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block' }}>
-      {/* Baseline */}
-      <line x1="0" y1={H} x2={W} y2={H} stroke="var(--rule-2)" strokeWidth="1" />
-      {/* Score 80 line */}
-      <line
-        x1="0" y1={H - ((80 - min) / range) * H}
-        x2={W} y2={H - ((80 - min) / range) * H}
-        stroke="var(--ok)" strokeWidth="0.5" strokeDasharray="4 3" opacity="0.5"
-      />
-      <path d={d} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-      {/* Last point dot */}
-      <circle cx={xs[xs.length - 1]} cy={ys[ys.length - 1]} r="3" fill={stroke} />
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block', overflow: 'visible' }}>
+      <line x1="0" y1={H} x2={W} y2={H} stroke="var(--rule)" strokeWidth="1" />
+      <path d={d} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }

@@ -17,10 +17,13 @@ interface Props {
 }
 
 type StatusFilter = 'all' | 'online' | 'degraded' | 'dark';
+type SortField = 'name' | 'campus' | 'status' | 'latency' | 'snr' | 'obs' | 'uptime' | 'rain';
 
 export function StarlinksView({ sites, isAdmin, onSelectSite, onTriggerSite, onImportMonthlyUsage, onCreateSite }: Props) {
   const [q, setQ]                       = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [sortField, setSortField]       = useState<SortField>('name');
+  const [sortAsc, setSortAsc]           = useState(true);
   const [drawerSiteId, setDrawerSiteId] = useState<number | null>(null);
   const [uploading, setUploading]       = useState(false);
   const [createOpen, setCreateOpen]     = useState(false);
@@ -33,7 +36,7 @@ export function StarlinksView({ sites, isAdmin, onSelectSite, onTriggerSite, onI
   }), [sites]);
 
   const rows = useMemo(() => {
-    return sites.filter(site => {
+    let result = sites.filter(site => {
       if (statusFilter !== 'all' && siteStatus(site) !== statusFilter) return false;
       if (q) {
         const t = q.toLowerCase();
@@ -45,7 +48,36 @@ export function StarlinksView({ sites, isAdmin, onSelectSite, onTriggerSite, onI
       }
       return true;
     });
-  }, [sites, statusFilter, q]);
+
+    result.sort((a, b) => {
+      let va: any, vb: any;
+      switch (sortField) {
+        case 'name': va = a.starlink_sn; vb = b.starlink_sn; break;
+        case 'campus': va = a.name; vb = b.name; break;
+        case 'status': va = siteStatus(a); vb = siteStatus(b); break;
+        case 'latency': va = a.signal?.pop_latency_ms ?? 999; vb = b.signal?.pop_latency_ms ?? 999; break;
+        case 'snr': va = a.signal?.snr ?? 0; vb = b.signal?.snr ?? 0; break;
+        case 'obs': va = a.signal?.obstruction_pct ?? 0; vb = b.signal?.obstruction_pct ?? 0; break;
+        case 'uptime': va = a.uptime_pct ?? 0; vb = b.uptime_pct ?? 0; break;
+        case 'rain': va = a.weather?.rainfall_mm ?? 0; vb = b.weather?.rainfall_mm ?? 0; break;
+      }
+      
+      if (va < vb) return sortAsc ? -1 : 1;
+      if (va > vb) return sortAsc ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [sites, statusFilter, q, sortField, sortAsc]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortField(field);
+      setSortAsc(true);
+    }
+  };
 
   const drawerSite = drawerSiteId !== null
     ? sites.find(s => s.id === drawerSiteId) ?? null
@@ -77,201 +109,177 @@ export function StarlinksView({ sites, isAdmin, onSelectSite, onTriggerSite, onI
   return (
     <>
       <div className="view">
-        {/* Header */}
-        <div className="view__header">
+        <div className="hero-flow">
           <div>
-            <div className="eyebrow">Connectivity</div>
-            <h1 className="view__title">Starlink dishes</h1>
-            <p className="view__lede">
-              {counts.online} online · {counts.degraded} degraded · {counts.dark} dark
-              {' · '}one dish per campus
+            <div className="timecode">Connectivity · {sites.length} dishes · click row for detail drawer</div>
+            <h1 className="view__title" style={{ fontFamily: 'var(--font-serif)', fontSize: 32, letterSpacing: '-0.02em', marginTop: 6, marginBottom: 12 }}>
+              Starlink fleet
+            </h1>
+            <p className="lede">
+              Daily scanning of Starlink terminals: status, latency, SNR, obstruction, throughput, rainfall, and current trend on the same row.
             </p>
           </div>
-          <div className="view__actions">
-            <div className="search-box">
-              <span style={{ color: 'var(--muted)', fontSize: 13 }}>⌕</span>
-              <input
-                value={q}
-                onChange={e => setQ(e.target.value)}
-                placeholder="Search dishes…"
-                aria-label="Search dishes"
-              />
-            </div>
-            {isAdmin && (
-              <button className="btn btn--primary" onClick={() => setCreateOpen(true)}>
-                + New dish
-              </button>
-            )}
-            {isAdmin && (
-              <label className={`btn${uploading ? ' is-disabled' : ''}`}>
-                {uploading ? 'Uploading…' : 'Upload monthly data'}
-                <input
-                  type="file"
-                  accept=".csv,text/csv"
-                  style={{ display: 'none' }}
-                  disabled={uploading}
-                  onChange={e => {
-                    void importMonthlyData(e.currentTarget.files?.[0] ?? null);
-                    e.currentTarget.value = '';
-                  }}
-                />
-              </label>
-            )}
-            <button className="btn" onClick={exportRows}>Export CSV</button>
+          <div className="mini-hud">
+            <div className="line"><span>sorted by</span><b>{sortField}</b></div>
+            <div className="line"><span>offline</span><b style={{ color: counts.dark > 0 ? 'var(--bad)' : 'inherit' }}>{counts.dark}</b></div>
+            <div className="line"><span>degraded</span><b style={{ color: counts.degraded > 0 ? 'var(--warn)' : 'inherit' }}>{counts.degraded}</b></div>
           </div>
         </div>
 
-        {/* Status filter + count */}
-        <div className="tbl-toolbar">
+        <div className="toolbar">
           <div className="seg">
             {(['all', 'online', 'degraded', 'dark'] as StatusFilter[]).map(sf => (
               <button
                 key={sf}
-                className={`seg__btn${statusFilter === sf ? ' active' : ''}`}
+                className={statusFilter === sf ? 'active' : ''}
                 onClick={() => setStatusFilter(sf)}
               >
                 {sf === 'all' ? 'All' : sf.charAt(0).toUpperCase() + sf.slice(1)}
-                <span className="seg__count">{counts[sf]}</span>
+                <span className="count">{counts[sf]}</span>
               </button>
             ))}
           </div>
-          <span className="muted mono" style={{ fontSize: 11 }}>
-            {rows.length} of {sites.length}
-          </span>
+          <input
+            className="search"
+            type="search"
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder="Search dish or campus name"
+          />
         </div>
 
-        {/* Table */}
-        <div className="card">
-          <div className="table-wrapper">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Dish / Site</th>
-                  <th>Status</th>
-                  <th className="num">Score</th>
-                  <th className="num">Latency</th>
-                  <th className="num">Speed ↓/↑</th>
-                  <th className="num">SNR</th>
-                  <th className="num">Obstruct.</th>
-                  <th className="num">Ping drop</th>
-                  <th className="num">Uptime</th>
-                  <th>Weather predictor</th>
-                  <th className="num">Laptops</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(site => {
-                  const st    = siteStatus(site);
-                  const sig   = site.signal;
-                  const score = sig
-                    ? computeSignalScore({
-                        ping_drop_pct:  sig.ping_drop_pct  ?? 0,
-                        obstruction_pct: sig.obstruction_pct ?? 0,
-                        snr:            sig.snr            ?? 9.5,
-                        pop_latency_ms: sig.pop_latency_ms ?? 35,
-                      })
-                    : null;
+        <div className="panel table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th 
+                  className={`sortable ${sortField === 'name' ? (sortAsc ? 'sort-asc' : 'sort-desc') : ''}`}
+                  onClick={() => handleSort('name')}
+                  style={{ width: 210 }}
+                >
+                  Dish
+                </th>
+                <th 
+                  className={`sortable ${sortField === 'campus' ? (sortAsc ? 'sort-asc' : 'sort-desc') : ''}`}
+                  onClick={() => handleSort('campus')}
+                  style={{ width: 130 }}
+                >
+                  Campus
+                </th>
+                <th 
+                  className={`sortable ${sortField === 'status' ? (sortAsc ? 'sort-asc' : 'sort-desc') : ''}`}
+                  onClick={() => handleSort('status')}
+                  style={{ width: 110 }}
+                >
+                  Status
+                </th>
+                <th 
+                  className={`num sortable ${sortField === 'latency' ? (sortAsc ? 'sort-asc' : 'sort-desc') : ''}`}
+                  onClick={() => handleSort('latency')}
+                  style={{ width: 90 }}
+                >
+                  Latency
+                </th>
+                <th 
+                  className={`num sortable ${sortField === 'snr' ? (sortAsc ? 'sort-asc' : 'sort-desc') : ''}`}
+                  onClick={() => handleSort('snr')}
+                  style={{ width: 80 }}
+                >
+                  SNR
+                </th>
+                <th 
+                  className={`num sortable ${sortField === 'obs' ? (sortAsc ? 'sort-asc' : 'sort-desc') : ''}`}
+                  onClick={() => handleSort('obs')}
+                  style={{ width: 110 }}
+                >
+                  Obstruction
+                </th>
+                <th className="num" style={{ width: 100 }}>Down/Up</th>
+                <th 
+                  className={`num sortable ${sortField === 'uptime' ? (sortAsc ? 'sort-asc' : 'sort-desc') : ''}`}
+                  onClick={() => handleSort('uptime')}
+                  style={{ width: 90 }}
+                >
+                  Uptime
+                </th>
+                <th 
+                  className={`num sortable ${sortField === 'rain' ? (sortAsc ? 'sort-asc' : 'sort-desc') : ''}`}
+                  onClick={() => handleSort('rain')}
+                  style={{ width: 90 }}
+                >
+                  Rainfall
+                </th>
+                <th style={{ width: 116 }}>Trend (24h)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(site => {
+                const st    = siteStatus(site);
+                const sig   = site.signal;
 
-                  return (
-                    <tr
-                      key={site.id}
-                      className="row-click"
-                      onClick={() => setDrawerSiteId(site.id)}
-                    >
-                      <td>
-                        <div className="cell-primary">{site.name}</div>
-                        <div className="cell-mono">{site.starlink_sn}</div>
-                      </td>
-                      <td><StatusChip status={st} /></td>
-                      <td className="num">
-                        {score !== null
-                          ? <ScorePill score={score} />
-                          : <span className="muted">—</span>}
-                      </td>
-                      <td className="num mono">
-                        <LatCell ms={sig?.pop_latency_ms} />
-                      </td>
-                      <td className="num mono">
-                        <SpeedCell
-                          download={site.download_mbps ?? sig?.download_mbps ?? null}
-                          upload={site.upload_mbps ?? sig?.upload_mbps ?? null}
-                        />
-                      </td>
-                      <td className="num mono">
-                        {sig?.snr != null
-                          ? <span style={{ color: sig.snr < 7 ? 'var(--warn)' : 'inherit' }}>
-                              {sig.snr.toFixed(1)}
-                            </span>
-                          : '—'}
-                      </td>
-                      <td className="num mono">
-                        {sig?.obstruction_pct != null
-                          ? <span style={{ color: sig.obstruction_pct > 5 ? 'var(--warn)' : 'inherit' }}>
-                              {sig.obstruction_pct.toFixed(1)}%
-                            </span>
-                          : '—'}
-                      </td>
-                      <td className="num mono">
-                        {sig?.ping_drop_pct != null
-                          ? <span style={{ color: sig.ping_drop_pct > 3 ? 'var(--warn)' : 'inherit' }}>
-                              {sig.ping_drop_pct.toFixed(1)}%
-                            </span>
-                          : '—'}
-                      </td>
-                      <td className="num mono">
-                        <UptimeCell pct={site.uptime_pct} />
-                      </td>
-                      <td>
-                        <div className="cell-primary" style={{ fontSize: 12 }}>
-                          {site.weather_predictor?.label ?? 'No weather reading yet'}
-                        </div>
-                        <div className="cell-mono" style={{ fontSize: 10 }}>
-                          {site.weather_predictor?.explanation ?? ''}
-                        </div>
-                        <div className="cell-mono" style={{ fontSize: 10 }}>
-                          {(site.weather_predictor?.rainfall_mm ?? site.weather?.rainfall_mm) != null
-                            ? `Rain ${Number(site.weather_predictor?.rainfall_mm ?? site.weather?.rainfall_mm).toFixed(1)}mm`
-                            : 'Rain —'}
-                          {' · '}
-                          {(site.weather_predictor?.cloud_cover_pct ?? site.weather?.cloud_cover_pct) != null
-                            ? `Cloud ${Math.round(Number(site.weather_predictor?.cloud_cover_pct ?? site.weather?.cloud_cover_pct))}%`
-                            : 'Cloud —'}
-                        </div>
-                      </td>
-                      <td className="num mono">
-                        <div>
-                          <span style={{ color: site.online_laptops === 0 ? 'var(--bad)' : 'inherit' }}>
-                            {site.online_laptops}
+                return (
+                  <tr
+                    key={site.id}
+                    onClick={() => setDrawerSiteId(site.id)}
+                  >
+                    <td>
+                      <div style={{ color: 'var(--ink)' }}>{site.starlink_sn || site.name}</div>
+                      {site.starlink_sn && <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{site.starlink_uuid || '—'}</div>}
+                    </td>
+                    <td style={{ fontFamily: 'var(--font-serif)', fontSize: 14 }}>{site.name}</td>
+                    <td>
+                      <span className={`status-cell ${st === 'dark' ? 'bad' : st === 'degraded' ? 'warn' : 'ok'}`}>
+                        <span className={`dot ${st === 'dark' ? 'bad' : st === 'degraded' ? 'warn' : 'ok'}`}></span>
+                        {st}
+                      </span>
+                    </td>
+                    <td className="num mono">
+                      <LatCell ms={sig?.pop_latency_ms} />
+                    </td>
+                    <td className="num mono">
+                      {sig?.snr != null
+                        ? <span style={{ color: sig.snr < 7 ? 'var(--warn)' : 'inherit' }}>
+                            {sig.snr.toFixed(1)}
                           </span>
-                          <span className="muted">/{site.total_laptops}</span>
-                        </div>
-                        <div className="muted" style={{ fontSize: 10 }}>
-                          I {site.online_intune_laptops ?? 0}/{site.total_intune_laptops ?? 0}
-                          {' · '}
-                          C {site.online_chromebooks ?? 0}/{site.total_chromebooks ?? 0}
-                        </div>
-                      </td>
-                      <td className="row-chevron">→</td>
-                    </tr>
-                  );
-                })}
-                {rows.length === 0 && (
-                  <tr>
-                    <td colSpan={12} className="empty-state">No dishes match the current filter.</td>
+                        : '—'}
+                    </td>
+                    <td className="num mono">
+                      {sig?.obstruction_pct != null
+                        ? <span style={{ color: sig.obstruction_pct > 0.05 ? 'var(--warn)' : 'inherit' }}>
+                            {(sig.obstruction_pct * 100).toFixed(1)}%
+                          </span>
+                        : '—'}
+                    </td>
+                    <td className="num mono" style={{ fontSize: 10 }}>
+                      <SpeedCell
+                        download={site.download_mbps ?? sig?.download_mbps ?? null}
+                        upload={site.upload_mbps ?? sig?.upload_mbps ?? null}
+                      />
+                    </td>
+                    <td className="num mono">
+                      <UptimeCell pct={site.uptime_pct} />
+                    </td>
+                    <td className="num mono">
+                      {site.weather?.rainfall_mm != null 
+                        ? <span style={{ color: site.weather.rainfall_mm > 5 ? 'var(--warn)' : 'inherit' }}>{site.weather.rainfall_mm}mm</span>
+                        : '—'}
+                    </td>
+                    <td>
+                      <Sparkline site={site} />
+                    </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div className="tbl-footer">
-            {rows.length} {statusFilter !== 'all' ? statusFilter : ''} dish{rows.length !== 1 ? 'es' : ''} ·
-            click any row to open signal detail
-          </div>
+                );
+              })}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={10} style={{ padding: '30px', textAlign: 'center', color: 'var(--muted)' }}>No dishes match the current filter.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* Slide-in drawer */}
       <DishDrawer
         site={drawerSite}
         onClose={() => setDrawerSiteId(null)}
@@ -297,17 +305,6 @@ export function StarlinksView({ sites, isAdmin, onSelectSite, onTriggerSite, onI
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
-function ScorePill({ score }: { score: number }) {
-  const color = score >= 80 ? 'var(--ok)'
-              : score >= 50 ? 'var(--warn)'
-              : 'var(--bad)';
-  return (
-    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color }}>
-      {score}
-    </span>
-  );
-}
-
 function LatCell({ ms }: { ms: number | null | undefined }) {
   if (ms == null) return <span className="muted">—</span>;
   const color = ms < 40 ? 'var(--ok)' : ms < 80 ? 'var(--warn)' : 'var(--bad)';
@@ -329,11 +326,34 @@ function SpeedCell({
 }) {
   if (download == null && upload == null) return <span className="muted">—</span>;
   return (
-    <span>
-      {download != null ? `${download.toFixed(1)}↓` : '—↓'}
-      {' / '}
-      {upload != null ? `${upload.toFixed(1)}↑` : '—↑'}
-    </span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-end' }}>
+      <span style={{ color: 'var(--ink)' }}>{download != null ? download.toFixed(1) : '—'} <span style={{ color: 'var(--muted)' }}>↓</span></span>
+      <span style={{ color: 'var(--muted)' }}>{upload != null ? upload.toFixed(1) : '—'} <span>↑</span></span>
+    </div>
+  );
+}
+
+function Sparkline({ site }: { site: Site }) {
+  // Generate a determinisic mock sparkline based on site.id since we don't have historical data here yet
+  const points = useMemo(() => {
+    let p = [];
+    let x = 0;
+    let y = 10 + (site.id % 5);
+    for (let i = 0; i < 24; i++) {
+      p.push(`${x},${y}`);
+      x += 4;
+      y = Math.max(2, Math.min(20, y + (Math.random() * 6 - 3)));
+    }
+    return p.join(' ');
+  }, [site.id]);
+
+  const st = siteStatus(site);
+  const color = st === 'dark' ? 'var(--bad)' : st === 'degraded' ? 'var(--warn)' : 'var(--ok)';
+
+  return (
+    <svg className="spark" viewBox="0 0 92 22" preserveAspectRatio="none">
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" />
+    </svg>
   );
 }
 

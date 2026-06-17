@@ -15,9 +15,10 @@ import {
   clearToken,
   getToken,
   decodeJwtPayload,
+  setOperatorEmail,
 } from './store/auth';
 
-type BootState = 'loading' | 'authed' | 'guest';
+type BootState = 'loading' | 'authed' | 'guest' | 'desk';
 
 export default function App() {
   const scheme = useColorScheme();
@@ -59,8 +60,17 @@ export default function App() {
     setBoot('authed');
   }, [handleAuthError]);
 
+  const handleEnterDeskMode = useCallback((operatorName: string) => {
+    setOperatorEmail(operatorName);
+    initClients(handleAuthError);
+    setRole('guest_operator');
+    setEmail(operatorName);
+    setBoot('desk');
+  }, [handleAuthError]);
+
   const handleLogout = useCallback(async () => {
     await clearToken();
+    setOperatorEmail('');
     setRole('viewer');
     setEmail('');
     setBoot('guest');
@@ -82,12 +92,13 @@ export default function App() {
           backgroundColor={colors.bg}
         />
         <RootNavigator
-          authed={boot === 'authed'}
+          authed={boot === 'authed' || boot === 'desk'}
           colors={colors}
           onLogin={handleLogin}
           onLogout={handleLogout}
           role={role}
           email={email}
+          onEnterDeskMode={handleEnterDeskMode}
         />
       </SafeAreaProvider>
     </GestureHandlerRootView>

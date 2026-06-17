@@ -2,45 +2,39 @@ import { useState, useEffect, useCallback } from 'react';
 import { StarfleetApi, TriggerType, CreateSiteInput, UpdateSiteInput, useFleetSummary, siteStatus } from '@starfleet/shared';
 import { LoginScreen } from './components/LoginScreen';
 import { Sidebar } from './components/Sidebar';
+import { SettingsDrawer } from './components/SettingsDrawer';
 import { MetricCards } from './components/MetricCards';
 import { FleetOverview } from './components/FleetOverview';
 import { OverviewView } from './components/OverviewView';
 import { StarlinksView } from './components/StarlinksView';
 import { ComputersView } from './components/ComputersView';
 import { AlertsView } from './components/AlertsView';
+import { CampusesView } from './components/CampusesView';
+import { FleetReportView } from './components/FleetReportView';
 import { MapView } from './components/MapView';
 import { SiteDetail } from './components/SiteDetail';
 import { DarkBanner } from './components/DarkBanner';
 import { isLoggedIn, initClients, logout, getStoredToken, getBaseUrl } from './store/auth';
 
 type FilterValue = 'all' | 'online' | 'degraded' | 'dark';
-type NavTab = 'overview' | 'starlinks' | 'computers' | 'students' | 'alerts' | 'campuses' | 'map';
+type NavTab = 'overview' | 'starlinks' | 'computers' | 'alerts' | 'campuses' | 'map' | 'report';
 
 export function App() {
   const [authed, setAuthed]             = useState(isLoggedIn());
   const [selectedSiteId, setSelectedId] = useState<number | null>(null);
   const [filter, setFilter]             = useState<FilterValue>('all');
   const [darkSiteBanner, setDarkBanner] = useState<string | null>(null);
-  const [dark, setDark]                 = useState(
-    window.matchMedia('(prefers-color-scheme: dark)').matches,
-  );
 
-  // Dark mode — follow OS
+  // Apply visual settings from localStorage
   useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = (e: MediaQueryListEvent) => setDark(e.matches);
-    mq.addEventListener('change', handler);
-    document.documentElement.classList.toggle('dark', mq.matches);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark);
-  }, [dark]);
-
-  // Electron dark mode bridge
-  useEffect(() => {
-    (window as any).electronAPI?.onDarkModeChanged?.((d: boolean) => setDark(d));
+    const h = document.documentElement;
+    const light = new Set(['warm-paper', 'chalk', 'stone']);
+    const p = localStorage.getItem('sf_palette') || localStorage.getItem('sf_pin_palette') || 'field-green';
+    h.setAttribute('data-palette', p);
+    h.setAttribute('data-typeset', localStorage.getItem('sf_typeset') || localStorage.getItem('sf_pin_typeset') || 'editorial');
+    h.setAttribute('data-density', localStorage.getItem('sf_density') || localStorage.getItem('sf_pin_density') || 'comfortable');
+    h.setAttribute('data-contrast', localStorage.getItem('sf_contrast') || localStorage.getItem('sf_pin_contrast') || 'normal');
+    h.setAttribute('data-theme', light.has(p) ? 'light' : 'dark');
   }, []);
 
   // Inject Google Fonts for the new design system
@@ -89,6 +83,7 @@ function AuthedApp({
 }) {
   const { sites, summary, loading } = useFleetSummary();
   const [activeTab, setActiveTab] = useState<NavTab>('overview');
+  const [isSettingsOpen, setSettingsOpen] = useState(false);
 
   const [kpData, setKpData] = useState<{ k_index: number; condition_label?: string } | null>(null);
 
@@ -120,8 +115,8 @@ function AuthedApp({
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       const shortcuts: Record<string, NavTab> = {
-        o: 'overview', s: 'starlinks', c: 'computers', u: 'students',
-        a: 'alerts', p: 'campuses', m: 'map',
+        o: 'overview', s: 'starlinks', c: 'computers',
+        a: 'alerts', p: 'campuses', m: 'map', r: 'report'
       };
       if (shortcuts[k]) { e.preventDefault(); setActiveTab(shortcuts[k]); return; }
       if (k === 'escape') { setSelectedId(null); return; }
@@ -210,7 +205,7 @@ function AuthedApp({
 
   const tabLabel: Record<NavTab, string> = {
     overview: 'Overview', starlinks: 'Starlinks', computers: 'Computers',
-    students: 'Students', alerts: 'Alerts', campuses: 'Campuses', map: 'Map',
+    alerts: 'Alerts', campuses: 'Campuses', map: 'Map', report: 'Fleet Report'
   };
 
   return (
@@ -227,10 +222,14 @@ function AuthedApp({
         onSelect={id => { setSelectedId(id); if (id !== null) setActiveTab('overview'); }}
         onFilter={f => setFilter(f as FilterValue)}
         onTabChange={tab => { setActiveTab(tab); setSelectedId(null); }}
+        onOpenSettings={() => setSettingsOpen(true)}
+        kpData={kpData}
         onlineDishes={onlineDishes}
         totalDishes={sites.length}
         openAlerts={openAlerts}
       />
+
+      <SettingsDrawer isOpen={isSettingsOpen} onClose={() => setSettingsOpen(false)} />
 
       <main className="main-area">
         {/* Top bar */}
@@ -320,18 +319,11 @@ function AuthedApp({
         )}
 
         {activeTab === 'campuses' && (
-          <PlaceholderView
-            title="Campuses"
-            lede="Per-campus breakdown — dishes, computers, and student signals."
-            body={<FleetOverview sites={sites} onSelect={handleSelectSite} />}
-          />
+          <CampusesView sites={sites} onSelectSite={handleSelectSite} />
         )}
 
-        {activeTab === 'students' && (
-          <PlaceholderView
-            title="Students"
-            lede="Student connectivity and learning metrics — requires student data integration."
-          />
+        {activeTab === 'report' && (
+          <FleetReportView sites={sites} />
         )}
       </main>
     </div>

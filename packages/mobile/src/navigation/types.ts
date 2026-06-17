@@ -8,6 +8,7 @@ export type TabParamList = {
   Sites:     undefined;
   Starlinks: undefined;
   Alerts:    undefined;
+  Inventory: undefined;
   Settings:  undefined;
 };
 

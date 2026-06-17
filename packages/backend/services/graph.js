@@ -306,6 +306,11 @@ async function syncManagedDevices(managedDevices = null) {
       }
     }
   } finally {
+    try {
+      await client.query(`RESET lock_timeout`);
+    } catch (err) {
+      console.error('[Graph] Failed to reset lock_timeout:', err);
+    }
     client.release();
   }
 

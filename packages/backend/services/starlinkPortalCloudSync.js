@@ -251,7 +251,7 @@ function parseUsageHistory(payload, options = {}) {
 
     dailyData.forEach((point, dayIndex) => {
       const logDate = addUtcDays(startDate, dayIndex);
-      if (logDate > today) return;
+      if (logDate >= today) return; // skip today — UTC day not complete until 00:00 UTC next day
       const consumedGb = coerceDailyGigabytes(point);
       if (consumedGb == null || !Number.isFinite(consumedGb) || consumedGb < 0) return;
 

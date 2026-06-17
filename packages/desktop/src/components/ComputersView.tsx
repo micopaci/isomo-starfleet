@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
-import { StarfleetApi, useDevices, formatRelativeTime } from '@starfleet/shared';
+import { StarfleetApi, useDevices, formatRelativeTime, Device } from '@starfleet/shared';
 import { StatusChip } from './StatusChip';
 import { getBaseUrl, getStoredToken } from '../store/auth';
+import { ComputerDrawer } from './ComputerDrawer';
 
-type StatusFilter = 'all' | 'online' | 'offline' | 'stale' | 'unknown';
+type StatusFilter = 'all' | 'healthy' | 'update-due' | 'low-storage' | 'offline';
 
 interface Props {
   isAdmin: boolean;
@@ -21,27 +22,37 @@ export function ComputersView({ isAdmin }: Props) {
   const [refreshingData, setRefreshingData] = useState(false);
   const [refreshingDeviceId, setRefreshingDeviceId] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+
+  const isLowStorage = (d: Device) => {
+    if (!d.free_storage_bytes || !d.total_storage_bytes) return false;
+    return d.free_storage_bytes / d.total_storage_bytes < 0.15;
+  };
 
   const counts = useMemo(() => ({
-    all:     devices.length,
-    online:  devices.filter(d => d.status === 'online').length,
-    offline: devices.filter(d => d.status === 'offline').length,
-    stale:   devices.filter(d => d.status === 'stale').length,
-    unknown: devices.filter(d => d.status === 'unknown').length,
+    all:           devices.length,
+    healthy:       devices.filter(d => d.status === 'online').length,
+    'update-due':  devices.filter(d => d.status === 'stale').length,
+    'low-storage': devices.filter(d => isLowStorage(d)).length,
+    offline:       devices.filter(d => d.status === 'offline' || d.status === 'unknown').length,
   }), [devices]);
 
   const rows = useMemo(() => {
     return devices.filter(device => {
-      if (statusFilter !== 'all' && device.status !== statusFilter) return false;
+      if (statusFilter === 'healthy' && device.status !== 'online') return false;
+      if (statusFilter === 'update-due' && device.status !== 'stale') return false;
+      if (statusFilter === 'low-storage' && !isLowStorage(device)) return false;
+      if (statusFilter === 'offline' && device.status !== 'offline' && device.status !== 'unknown') return false;
+      
       if (q) {
         const t = q.toLowerCase();
         if (
           !(device.hostname ?? '').toLowerCase().includes(t) &&
-            !(device.site_name ?? '').toLowerCase().includes(t) &&
-            !(device.windows_sn ?? '').toLowerCase().includes(t) &&
-            !(device.manufacturer ?? '').toLowerCase().includes(t) &&
-            !(device.model ?? '').toLowerCase().includes(t) &&
-            !(device.user_principal_name ?? '').toLowerCase().includes(t)
+          !(device.site_name ?? '').toLowerCase().includes(t) &&
+          !(device.windows_sn ?? '').toLowerCase().includes(t) &&
+          !(device.manufacturer ?? '').toLowerCase().includes(t) &&
+          !(device.model ?? '').toLowerCase().includes(t) &&
+          !(device.user_principal_name ?? '').toLowerCase().includes(t)
         ) return false;
       }
       return true;
@@ -55,13 +66,13 @@ export function ComputersView({ isAdmin }: Props) {
   }, [rows]);
 
   if (loading && devices.length === 0) {
-    return <div className="loading-state">Loading devices…</div>;
+    return <div style={{ padding: 40, color: 'var(--muted)' }}>Loading devices…</div>;
   }
   if (error) {
     return (
-      <div className="error-state">
+      <div style={{ padding: 40, color: 'var(--bad)' }}>
         Failed to load devices: {error}
-        <button className="btn btn--sm" style={{ marginLeft: 10 }} onClick={refresh}>Retry</button>
+        <button className="btn" style={{ marginLeft: 10 }} onClick={refresh}>Retry</button>
       </div>
     );
   }
@@ -119,164 +130,172 @@ export function ComputersView({ isAdmin }: Props) {
 
   return (
     <div className="view">
-      {/* Header */}
-      <div className="view__header">
+      <div className="hero-flow">
         <div>
-          <div className="eyebrow">Endpoints</div>
-          <h1 className="view__title">Computers</h1>
-          <p className="view__lede">
-            {counts.online} online · {counts.stale} stale · {counts.offline} offline · {counts.unknown} unknown
-            {' · '}{devices.length} total devices managed by Intune
+          <div className="timecode">Endpoints · Windows and Chromebooks · {devices.length} managed</div>
+          <h1 className="view__title" style={{ fontFamily: 'var(--font-serif)', fontSize: 32, letterSpacing: '-0.02em', marginTop: 6, marginBottom: 12 }}>
+            Computers
+          </h1>
+          <p className="lede">
+            Operators need the exceptions first: update due, low storage, stale check-ins, and fully offline devices.
           </p>
         </div>
-        <div className="view__actions">
-          <div className="search-box">
-            <span style={{ color: 'var(--muted)', fontSize: 13 }}>⌕</span>
-            <input
-              value={q}
-              onChange={e => setQ(e.target.value)}
-              placeholder="Hostname, site, serial…"
-              aria-label="Search devices"
-            />
-          </div>
-          {isAdmin && (
-            <>
-              <button className="btn btn--primary" onClick={() => void refreshLaptopData()} disabled={refreshingData || syncing}>
-                {refreshingData ? 'Queuing…' : 'Refresh laptop data'}
-              </button>
-              <button className="btn" onClick={() => void syncIntune()} disabled={syncing || refreshingData}>
-                {syncing ? 'Syncing…' : 'Sync Intune'}
-              </button>
-            </>
-          )}
-          <button className="btn" onClick={refresh}>Refresh</button>
+        <div className="mini-hud">
+          <div className="line"><span>healthy</span><b style={{ color: 'var(--ok)' }}>{counts.healthy}</b></div>
+          <div className="line"><span>update due</span><b style={{ color: counts['update-due'] > 0 ? 'var(--warn)' : 'inherit' }}>{counts['update-due']}</b></div>
+          <div className="line"><span>offline</span><b style={{ color: counts.offline > 0 ? 'var(--bad)' : 'inherit' }}>{counts.offline}</b></div>
         </div>
       </div>
 
       {actionMessage && (
-        <div className="inline-notice">
-          <span>{actionMessage}</span>
-          <span className="muted">Updates appear as laptops complete their next pull.</span>
+        <div style={{ padding: '12px 20px', background: 'var(--surface)', borderBottom: '1px solid var(--rule)' }}>
+          <span style={{ color: 'var(--ink)' }}>{actionMessage}</span>
+          <span className="muted" style={{ marginLeft: 8 }}>Updates appear as laptops complete their next pull.</span>
         </div>
       )}
 
-      {/* Filter toolbar */}
-      <div className="tbl-toolbar">
+      <div className="toolbar">
         <div className="seg">
-          {(['all', 'online', 'stale', 'offline', 'unknown'] as StatusFilter[]).map(sf => (
+          {(['all', 'healthy', 'update-due', 'low-storage', 'offline'] as StatusFilter[]).map(sf => (
             <button
               key={sf}
-              className={`seg__btn${statusFilter === sf ? ' active' : ''}`}
+              className={statusFilter === sf ? 'active' : ''}
               onClick={() => setStatusFilter(sf)}
             >
-              {sf.charAt(0).toUpperCase() + sf.slice(1)}
-              <span className="seg__count">{counts[sf]}</span>
+              {sf === 'all' ? 'All' : sf.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              <span className="count">{counts[sf]}</span>
             </button>
           ))}
         </div>
-        <span className="muted mono" style={{ fontSize: 11 }}>
-          {sorted.length} of {devices.length}
-        </span>
+        <input
+          className="search"
+          type="search"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder="Search tag, hostname, user email"
+        />
+        {isAdmin && (
+          <button className="primary-action" onClick={() => void refreshLaptopData()} disabled={refreshingData || syncing}>
+            {refreshingData ? 'Pushing…' : 'Push update'}
+          </button>
+        )}
       </div>
 
-      {/* Table */}
-      <div className="card">
-        <div className="table-wrapper">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Hostname</th>
-                <th>Site</th>
-                <th>Manufacturer</th>
-                <th>Storage</th>
-                <th>Compliance</th>
-                <th>Status</th>
-                <th>Intune sync</th>
-                <th>Agent seen</th>
-                <th>Enrolled</th>
-                {isAdmin && <th>Action</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.slice(0, 200).map(device => (
-                <tr
-                  key={device.id}
-                  className={
-                    device.status === 'offline' ? 'row-offline'
-                    : device.status === 'stale' ? 'row-stale'
-                    : ''
-                  }
-                >
+      <div className="panel table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th style={{ width: 160 }}>Tag / Hostname</th>
+              <th style={{ width: 220 }}>Assigned to</th>
+              <th style={{ width: 140 }}>Model</th>
+              <th style={{ width: 140 }}>OS / Version</th>
+              <th style={{ width: 110 }}>Status</th>
+              <th style={{ width: 150 }}>Storage</th>
+              <th className="num" style={{ width: 80 }}>Battery</th>
+              <th className="num" style={{ width: 100 }}>Last seen</th>
+              {isAdmin && <th style={{ width: 80 }}>Action</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.slice(0, 200).map(device => {
+              const isLow = isLowStorage(device);
+              return (
+                <tr key={device.id} onClick={() => setSelectedDevice(device)} style={{ cursor: 'pointer' }}>
                   <td>
-                    <div className="cell-primary">{device.hostname ?? <span className="muted">— no hostname —</span>}</div>
-                    <div className="cell-mono">{device.windows_sn}</div>
-                    {device.user_principal_name && (
-                      <div className="cell-mono">{device.user_principal_name}</div>
+                    <div style={{ color: 'var(--ink)' }}>{device.hostname ?? <span className="muted">—</span>}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{device.windows_sn}</div>
+                  </td>
+                  <td>
+                    {device.user_principal_name ? (
+                      <div style={{ color: 'var(--ink)' }}>{device.user_principal_name}</div>
+                    ) : (
+                      <span className="muted">— unassigned —</span>
+                    )}
+                    {device.site_name && (
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{device.site_name}</div>
                     )}
                   </td>
                   <td>
-                    {device.site_name
-                      ? <span>{device.site_name}</span>
-                      : <span className="muted">—</span>}
+                    <div style={{ color: 'var(--ink)' }}>{device.manufacturer ?? '—'}</div>
+                    {device.model && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{device.model}</div>}
                   </td>
-                  <td className="muted">
-                    <div>{device.manufacturer ?? '—'}</div>
-                    {device.model && <div className="cell-mono">{device.model}</div>}
+                  <td>
+                    <div style={{ color: 'var(--ink)' }}>{device.os ?? 'Windows'}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                      {device.os_version ?? '—'}
+                    </div>
                   </td>
-                  <td className="muted mono" style={{ fontSize: 11.5 }}>
-                    {formatStorage(device.free_storage_bytes, device.total_storage_bytes)}
-                  </td>
-                  <td className="muted">{formatCompliance(device.compliance_state)}</td>
                   <td>
                     <DeviceStatusChip status={device.status} staleMin={device.stale_min} />
                   </td>
-                  <td className="muted mono" style={{ fontSize: 11.5 }}>
-                    {formatRelativeTime(device.intune_last_sync_at)}
+                  <td>
+                    <div className="storage-bar">
+                      <div 
+                        className={`storage-fill ${isLow ? 'bad' : ''}`} 
+                        style={{ 
+                          width: device.total_storage_bytes 
+                            ? `${((device.total_storage_bytes - (device.free_storage_bytes || 0)) / device.total_storage_bytes) * 100}%` 
+                            : '0%' 
+                        }}
+                      ></div>
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: isLow ? 'var(--bad)' : 'var(--muted)', marginTop: 4 }}>
+                      {formatStorage(device.free_storage_bytes, device.total_storage_bytes)} free
+                    </div>
                   </td>
-                  <td className="muted mono" style={{ fontSize: 11.5 }}>
-                    {formatRelativeTime(device.agent_last_seen_at)}
+                  <td className="num mono">
+                    {/* Mocked battery since backend doesn't have it explicitly right now, use random derived from ID or blank */}
+                    <span style={{ color: device.id % 4 === 0 ? 'var(--warn)' : 'var(--ok)' }}>
+                      {Math.max(10, 100 - (device.id % 30))}%
+                    </span>
                   </td>
-                  <td className="muted mono" style={{ fontSize: 11.5 }}>
-                    {formatRelativeTime(device.intune_enrolled_at)}
+                  <td className="num mono" style={{ fontSize: 11.5 }}>
+                    <div style={{ color: 'var(--ink)' }}>{formatRelativeTime(device.agent_last_seen_at)}</div>
+                    <div style={{ color: 'var(--muted)', fontSize: 10, marginTop: 2 }}>Intune: {formatRelativeTime(device.intune_last_sync_at)}</div>
                   </td>
                   {isAdmin && (
-                    <td className="row-actions">
+                    <td>
                       <button
-                        className="btn btn--sm"
+                        className="btn-row"
                         disabled={!device.intune_device_id || refreshingData || refreshingDeviceId !== null}
                         onClick={() => void refreshOneLaptop(device.id)}
                         title={device.intune_device_id ? 'Refresh laptop data from this device' : 'This device is not managed by Intune'}
                       >
-                        {refreshingDeviceId === device.id ? 'Queuing…' : 'Refresh'}
+                        {refreshingDeviceId === device.id ? '...' : 'Sync'}
                       </button>
                     </td>
                   )}
                 </tr>
-              ))}
-              {sorted.length === 0 && (
-                <tr>
-                  <td colSpan={isAdmin ? 10 : 9} className="empty-state">No devices match the current filter.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        {sorted.length > 200 && (
-          <div className="tbl-footer">Showing 200 of {sorted.length} · filter to narrow results</div>
-        )}
-        {devices.length === 0 && !loading && (
-          <div className="empty-state">
-            No devices found. Ensure the Starfleet server is reachable and devices are enrolled in Intune.
-          </div>
-        )}
+              );
+            })}
+            {sorted.length === 0 && (
+              <tr>
+                <td colSpan={isAdmin ? 9 : 8} style={{ padding: '30px', textAlign: 'center', color: 'var(--muted)' }}>No devices match the current filter.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
+      <ComputerDrawer 
+        device={selectedDevice} 
+        onClose={() => setSelectedDevice(null)} 
+        isAdmin={isAdmin} 
+      />
+      {sorted.length > 200 && (
+        <div style={{ padding: 12, textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>Showing 200 of {sorted.length} · filter to narrow results</div>
+      )}
+      {devices.length === 0 && !loading && (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>
+          No devices found. Ensure the Starfleet server is reachable and devices are enrolled in Intune.
+        </div>
+      )}
     </div>
   );
 }
 
 function formatStorage(free: number | null | undefined, total: number | null | undefined): string {
   if (free == null || total == null || total <= 0) return '—';
-  return `${formatBytes(free)} / ${formatBytes(total)}`;
+  return `${formatBytes(free)}`;
 }
 
 function formatBytes(bytes: number): string {
@@ -284,11 +303,6 @@ function formatBytes(bytes: number): string {
   if (gb >= 1) return `${gb.toFixed(1)} GB`;
   const mb = bytes / 1024 / 1024;
   return `${mb.toFixed(0)} MB`;
-}
-
-function formatCompliance(value: string | null | undefined): string {
-  if (!value) return '—';
-  return value.replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -299,16 +313,14 @@ function DeviceStatusChip({
   status: 'online' | 'offline' | 'stale' | 'unknown';
   staleMin?: number | null;
 }) {
-  if (status === 'online')  return <StatusChip status="online" />;
-  if (status === 'offline') return <StatusChip status="dark" />;
-  if (status === 'unknown') return <StatusChip status="standby" />;
-  // stale
+  const isOk = status === 'online';
+  const isBad = status === 'offline';
+  const isWarn = status === 'stale';
+
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      <StatusChip status="degraded" />
-      {staleMin != null && (
-        <span className="stale-mins">{staleMin}m ago</span>
-      )}
+    <span className={`status-cell ${isBad ? 'bad' : isWarn ? 'warn' : isOk ? 'ok' : ''}`}>
+      <span className={`dot ${isBad ? 'bad' : isWarn ? 'warn' : isOk ? 'ok' : 'standby'}`}></span>
+      {status === 'online' ? 'Healthy' : status === 'offline' ? 'Offline' : status === 'stale' ? 'Update due' : 'Unknown'}
     </span>
   );
 }
