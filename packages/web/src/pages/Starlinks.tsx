@@ -18,23 +18,49 @@ function tone(status: Status): 'ok' | 'warn' | 'bad' | 'mute' {
   return 'bad';
 }
 
+const SORT_ACCESSORS: Record<string, (d: Dish) => string | number> = {
+  name: d => d.name.toLowerCase(),
+  region: d => d.region.toLowerCase(),
+  status: d => d.status,
+  latency: d => d.latency,
+  down: d => d.down,
+  up: d => d.up,
+  snr: d => d.snr,
+  rain: d => d.rain,
+  uptime: d => d.uptime,
+  agent: d => (d.agent ? 1 : 0),
+};
+
 export default function Starlinks() {
   const { dishes: activeDishes, inactiveDishes, loading } = useData();
   const [filter, setFilter] = useState<string | 'all'>('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Dish | null>(null);
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'name', dir: 'asc' });
+
+  const toggleSort = (key: string) =>
+    setSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' });
 
   // The Starlinks list is terminal-aware: it shows the active site-based fleet
   // plus suspended/disabled service lines (which never surface through /api/sites).
   const dishes = useMemo(() => [...activeDishes, ...inactiveDishes], [activeDishes, inactiveDishes]);
 
-  const filtered = useMemo(() =>
-    dishes.filter(d => {
+  const filtered = useMemo(() => {
+    const rows = dishes.filter(d => {
       const matchFilter = filter === 'all' || d.status === filter;
       const q = search.toLowerCase();
       const matchSearch = !q || d.name.toLowerCase().includes(q) || d.campus.toLowerCase().includes(q) || d.region.toLowerCase().includes(q);
       return matchFilter && matchSearch;
-    }), [dishes, filter, search]);
+    });
+    const accessor = SORT_ACCESSORS[sort.key] || SORT_ACCESSORS.name;
+    const factor = sort.dir === 'asc' ? 1 : -1;
+    return rows.sort((a, b) => {
+      const av = accessor(a), bv = accessor(b);
+      if (av < bv) return -1 * factor;
+      if (av > bv) return 1 * factor;
+      return 0;
+    });
+  }, [dishes, filter, search, sort]);
 
   const counts = useMemo(() => ({
     online: dishes.filter(d => d.status === 'online').length,
@@ -101,16 +127,25 @@ export default function Starlinks() {
           <table className="tbl" aria-label="Starlink terminals">
             <thead>
               <tr>
-                <th>Site</th>
-                <th>Region</th>
-                <th>Status</th>
-                <th className="num">Latency</th>
-                <th className="num">Down</th>
-                <th className="num">Up</th>
-                <th className="num">SNR</th>
-                <th className="num">Rain</th>
-                <th className="num">Uptime</th>
-                <th>Agent</th>
+                {([
+                  ['name', 'Site', ''], ['region', 'Region', ''], ['status', 'Status', ''],
+                  ['latency', 'Latency', 'num'], ['down', 'Down', 'num'], ['up', 'Up', 'num'],
+                  ['snr', 'SNR', 'num'], ['rain', 'Rain', 'num'], ['uptime', 'Uptime', 'num'],
+                  ['agent', 'Agent', ''],
+                ] as [string, string, string][]).map(([key, label, cls]) => (
+                  <th
+                    key={key}
+                    className={cls}
+                    onClick={() => toggleSort(key)}
+                    style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                    aria-sort={sort.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  >
+                    {label}
+                    <span style={{ opacity: sort.key === key ? 0.9 : 0.25, marginLeft: 4 }}>
+                      {sort.key === key ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>

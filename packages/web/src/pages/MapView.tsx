@@ -44,14 +44,14 @@ export default function MapView() {
       maxZoom: 19,
     }).addTo(map);
 
-    // Province boundaries (subtle interior lines + faint fill + labels)
+    // Province boundaries — neutral slate-blue so they read as administrative
+    // borders and are never confused with the green/amber/red dish status colors.
     const provinces = L.geoJSON(rwandaProvinces as GeoJSON.GeoJsonObject, {
       style: {
-        color: '#4a8c6f',
+        color: '#6f7bbf',
         weight: 1,
-        opacity: 0.55,
-        fillColor: '#34b483',
-        fillOpacity: 0.04,
+        opacity: 0.5,
+        fill: false,
       },
       onEachFeature: (feature, layer) => {
         const name = feature?.properties?.shapeName;
@@ -67,9 +67,9 @@ export default function MapView() {
     }).addTo(map);
     provinces.eachLayer(l => (l as L.Path).bringToBack?.());
 
-    // National border (heavier outline, no fill)
+    // National border (heavier neutral outline, no fill)
     L.geoJSON(rwandaBorder as GeoJSON.GeoJsonObject, {
-      style: { color: '#7fd1ad', weight: 2.5, opacity: 0.9, fill: false },
+      style: { color: '#aab4e0', weight: 2.5, opacity: 0.85, fill: false },
       interactive: false,
     }).addTo(map);
 

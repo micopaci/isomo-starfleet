@@ -5,12 +5,28 @@ import Drawer from '../components/Drawer';
 const STATUS_FILTERS = ['all', 'healthy', 'critical', 'offline', 'update-due', 'low-storage'] as const;
 type DevFilter = typeof STATUS_FILTERS[number];
 
+const SORT_ACCESSORS: Record<string, (c: any) => string | number> = {
+  name: c => (c.hostname || '').toLowerCase(),
+  profile: c => (c.profile_number || '').toLowerCase(),
+  serial: c => (c.windows_sn || '').toLowerCase(),
+  assignee: c => (c.user_principal_name || '').toLowerCase(),
+  model: c => (c.model || '').toLowerCase(),
+  os: c => (c.os_version || c.os || '').toLowerCase(),
+  status: c => (c.hardware_status || '').toLowerCase(),
+  connection: c => (c.status || '').toLowerCase(),
+  lastSeen: c => (c.last_seen ? new Date(c.last_seen).getTime() : 0),
+};
+
 export default function Computers() {
   const [filter, setFilter] = useState<DevFilter>('all');
   const [search, setSearch] = useState('');
   const [computerList, setComputerList] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'name', dir: 'asc' });
+
+  const toggleSort = (key: string) =>
+    setSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' });
   
   const [editEmail, setEditEmail] = useState('');
   const [editStatus, setEditStatus] = useState<string>('healthy');
@@ -51,14 +67,23 @@ export default function Computers() {
     }
   };
 
-  const filtered = useMemo(() =>
-    computerList.filter(c => {
+  const filtered = useMemo(() => {
+    const rows = computerList.filter(c => {
       const mappedStatus = c.hardware_status === 'working_in_use' ? 'healthy' : c.hardware_status;
       const matchFilter = filter === 'all' || mappedStatus === filter;
       const q = search.toLowerCase();
       const matchSearch = !q || (c.profile_number || '').toLowerCase().includes(q) || (c.user_principal_name || '').toLowerCase().includes(q) || (c.model || '').toLowerCase().includes(q) || (c.hostname || '').toLowerCase().includes(q) || (c.windows_sn || '').toLowerCase().includes(q);
       return matchFilter && matchSearch;
-    }), [filter, search, computerList]);
+    });
+    const accessor = SORT_ACCESSORS[sort.key] || SORT_ACCESSORS.name;
+    const factor = sort.dir === 'asc' ? 1 : -1;
+    return rows.sort((a, b) => {
+      const av = accessor(a), bv = accessor(b);
+      if (av < bv) return -1 * factor;
+      if (av > bv) return 1 * factor;
+      return 0;
+    });
+  }, [filter, search, computerList, sort]);
 
   const handleSelect = (c: any) => {
     setSelected(c);
@@ -124,15 +149,24 @@ export default function Computers() {
           <table className="tbl" aria-label="Computer fleet">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Profile</th>
-                <th>Serial</th>
-                <th>Assignee</th>
-                <th>Model</th>
-                <th>OS</th>
-                <th>Status</th>
-                <th>Connection</th>
-                <th className="num">Last Seen</th>
+                {([
+                  ['name', 'Name', ''], ['profile', 'Profile', ''], ['serial', 'Serial', ''],
+                  ['assignee', 'Assignee', ''], ['model', 'Model', ''], ['os', 'OS', ''],
+                  ['status', 'Status', ''], ['connection', 'Connection', ''], ['lastSeen', 'Last Seen', 'num'],
+                ] as [string, string, string][]).map(([key, label, cls]) => (
+                  <th
+                    key={key}
+                    className={cls}
+                    onClick={() => toggleSort(key)}
+                    style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                    aria-sort={sort.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  >
+                    {label}
+                    <span style={{ opacity: sort.key === key ? 0.9 : 0.25, marginLeft: 4 }}>
+                      {sort.key === key ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
