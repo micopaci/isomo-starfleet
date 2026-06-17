@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
   addBtnText:   { fontWeight: '600', fontSize: 14 },
   saveBtn:      { borderRadius: 0, paddingVertical: 10, alignItems: 'center', marginTop: 4 },
   formCard:     { borderRadius: 0, borderWidth: 1, padding: 14, marginBottom: 14 },
-  formInput:    { borderWidth: 1, borderRadius: 6, padding: 8, fontSize: 14 },
+  formInput:    { borderWidth: 1, borderRadius: 0, padding: 8, fontSize: 14 },
   entryCard:    { borderRadius: 0, borderWidth: 1, padding: 12, marginBottom: 10 },
   entryHeader:  { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   entryPeriod:  { flex: 1, fontWeight: '600', fontSize: 13 },

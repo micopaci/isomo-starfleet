@@ -1,16 +1,13 @@
 {
-  "version": 2,
-  "name": "isomo-starfleet",
-  "routes": [
-    { "src": "/favicon.ico", "dest": "/favicon.ico" },
-    { "src": "/favicon-16x16.png", "dest": "/favicon-16x16.png" },
-    { "src": "/favicon-32x32.png", "dest": "/favicon-32x32.png" },
-    { "src": "/apple-touch-icon.png", "dest": "/apple-touch-icon.png" },
-    { "src": "/android-chrome-192x192.png", "dest": "/android-chrome-192x192.png" },
-    { "src": "/android-chrome-512x512.png", "dest": "/android-chrome-512x512.png" },
-    { "src": "/site.webmanifest", "dest": "/site.webmanifest" },
-    { "src": "/", "dest": "/index.html" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://api.starfleet.icircles.rw/api/:path*" },
+    { "source": "/auth/:path*", "destination": "https://api.starfleet.icircles.rw/auth/:path*" },
+    { "source": "/ingest/:path*", "destination": "https://api.starfleet.icircles.rw/ingest/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
     {

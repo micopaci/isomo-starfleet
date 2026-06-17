@@ -16,9 +16,10 @@ interface Props {
   onLogout: () => void;
   role:     string;
   email:    string;
+  onEnterDeskMode: (operatorName: string) => void;
 }
 
-export function RootNavigator({ authed, colors, onLogin, onLogout, role, email }: Props) {
+export function RootNavigator({ authed, colors, onLogin, onLogout, role, email, onEnterDeskMode }: Props) {
   const navRef = useRef<NavigationContainerRef<any>>(null);
   useFCM(navRef);
 
@@ -46,7 +47,7 @@ export function RootNavigator({ authed, colors, onLogin, onLogout, role, email }
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!authed ? (
           <Stack.Screen name="Login">
-            {() => <LoginScreen colors={colors} onLogin={onLogin} />}
+            {() => <LoginScreen colors={colors} onLogin={onLogin} onEnterDeskMode={onEnterDeskMode} />}
           </Stack.Screen>
         ) : (
           <Stack.Screen name="Main">

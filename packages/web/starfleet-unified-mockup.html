@@ -854,6 +854,116 @@
     .storage-bar-fill.warn { background: var(--warn); }
     .storage-bar-fill.bad { background: var(--bad); }
 
+    /* ── Inventory View ── */
+    .inv-mismatch-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 16px;
+      background: var(--bad-soft);
+      border: 1px solid color-mix(in oklch, var(--bad) 40%, var(--rule));
+      color: var(--bad);
+      margin-bottom: 18px;
+      font-size: 13px;
+    }
+    .inv-reconcile-panel {
+      background: var(--surface-2);
+      border-top: 1.5px dashed var(--rule);
+      padding: 18px 16px;
+    }
+    .inv-reconcile-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 760px) { .inv-reconcile-grid { grid-template-columns: 1fr; } }
+    .inv-reconcile-card {
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+    }
+    .inv-reconcile-card-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      font-family: var(--font-mono);
+      color: var(--ink);
+      margin-bottom: 4px;
+    }
+    .inv-field {
+      width: 100%;
+      border: 1px solid var(--rule);
+      background: var(--surface);
+      color: var(--ink);
+      padding: 7px 9px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      outline: none;
+    }
+    .inv-field:focus { border-color: var(--accent); }
+    .inv-type-btn {
+      border: 1px solid var(--rule);
+      background: var(--surface-2);
+      color: var(--ink-2);
+      padding: 4px 10px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .inv-type-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .inv-status-working { color: var(--ok); font-family: var(--font-mono); font-size: 10.5px; letter-spacing:.05em; text-transform:uppercase; }
+    .inv-status-broken  { color: var(--bad); font-family: var(--font-mono); font-size: 10.5px; letter-spacing:.05em; text-transform:uppercase; }
+    .inv-status-ready   { color: var(--warn); font-family: var(--font-mono); font-size: 10.5px; letter-spacing:.05em; text-transform:uppercase; }
+    .inv-status-decom   { color: var(--muted); font-family: var(--font-mono); font-size: 10.5px; letter-spacing:.05em; text-transform:uppercase; }
+
+    /* intake modal */
+    .intake-modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.5);
+      z-index: 80;
+      display: none;
+      place-items: center;
+    }
+    .intake-modal-overlay.open { display: grid; }
+    .intake-modal {
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      width: min(540px, calc(100vw - 32px));
+      max-height: calc(100vh - 48px);
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    .intake-modal-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .intake-modal-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+    .intake-modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:14px 18px; border-top:1px solid var(--rule); }
+    .intake-field-label { font-family: var(--font-mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); display:block; margin-bottom:5px; }
+    .intake-autocomplete {
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      border-top: 0;
+      max-height: 130px;
+      overflow-y: auto;
+      display: none;
+    }
+    .intake-autocomplete-item {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--rule-2);
+      cursor: pointer;
+      font-size: 12.5px;
+    }
+    .intake-autocomplete-item:hover { background: var(--surface-2); }
+    .symptom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .symptom-check { display:flex; align-items:center; gap:8px; font-size:12.5px; }
+
     /* Alerts specific styling */
     .trend-bars {
       height: 112px;
@@ -1368,6 +1478,7 @@
           <button data-view="alerts">Alerts <small id="lbl-badge-alerts">12</small></button>
           <button data-view="campuses">Campuses <small>41</small></button>
           <button data-view="map">Map <small>RW</small></button>
+          <button data-view="inventory">Inventory <small>301</small></button>
         </nav>
         
         <div class="nav-label">Reports</div>
@@ -1921,6 +2032,202 @@
           </div>
         </div>
       </section>
+
+      <!-- ═══════════════════════════════════════════════════
+           VIEW: INVENTORY / HARDWARE INTAKE
+           ══════════════════════════════════════════════════ -->
+      <section data-view="inventory">
+        <div class="view-head">
+          <div>
+            <div class="timecode">Hardware Lifecycle Management</div>
+            <h1>Device <em>Inventory</em></h1>
+            <p class="lede">Track every laptop through its full lifecycle — intake, repair queue, reissue, and active assignment. All changes are logged with the operator's name and timestamp.</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-end;">
+            <button class="btn-row primary" id="btn-new-intake" onclick="openIntakeModal()" style="display:flex;align-items:center;gap:6px;"><i class="ti ti-plus"></i> New Intake</button>
+            <button class="btn-row" style="display:flex;align-items:center;gap:6px;"><i class="ti ti-download"></i> Export CSV</button>
+          </div>
+        </div>
+
+        <!-- Vitals Strip -->
+        <div class="kpi-strip" style="margin-bottom:22px;">
+          <div class="kpi">
+            <div class="kpi-label">Total Devices</div>
+            <div class="kpi-value">301</div>
+            <div class="kpi-sub">across all sites</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Working / In Use</div>
+            <div class="kpi-value" style="color:var(--ok);">251</div>
+            <div class="kpi-sub">actively assigned</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Intake / Broken</div>
+            <div class="kpi-value" style="color:var(--bad);">28</div>
+            <div class="kpi-sub">in repair queue</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Ready to Reissue</div>
+            <div class="kpi-value" style="color:var(--warn);">14</div>
+            <div class="kpi-sub">repaired, unassigned</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Mismatch Alerts</div>
+            <div class="kpi-value" style="color:var(--bad);">3</div>
+            <div class="kpi-sub">devices online while broken</div>
+          </div>
+        </div>
+
+        <!-- Mismatch Alert Banner -->
+        <div class="inv-mismatch-banner" id="inv-mismatch-banner">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <i class="ti ti-alert-triangle" style="font-size:16px;"></i>
+            <div>
+              <strong>3 inventory mismatches detected.</strong>
+              <span class="muted" style="margin-left:8px;">Devices marked as broken are heartbeating online. Review and resolve below.</span>
+            </div>
+          </div>
+          <button class="btn-row" onclick="scrollToMismatches()" style="white-space:nowrap;">View mismatches <i class="ti ti-arrow-down"></i></button>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar" style="margin-bottom:14px;">
+          <div class="seg" id="inv-filter-seg">
+            <button class="active" data-inv-filter="all">All <span class="count">301</span></button>
+            <button data-inv-filter="working">Working <span class="count">251</span></button>
+            <button data-inv-filter="broken">Broken <span class="count">28</span></button>
+            <button data-inv-filter="ready">Ready <span class="count">14</span></button>
+            <button data-inv-filter="decommissioned">Decommissioned <span class="count">8</span></button>
+          </div>
+          <div class="search" style="margin-left:auto;width:260px;">
+            <i class="ti ti-search" style="font-size:13px;color:var(--muted);"></i>
+            <input type="search" placeholder="Search LAP-XXX or serial..." id="inv-search-input" oninput="filterInventoryTable()" />
+          </div>
+        </div>
+
+        <!-- Device Table -->
+        <div class="panel" style="margin-bottom:22px;">
+          <div class="panel-head">
+            <h2>Device Registry</h2>
+            <span class="meta">Showing <span id="inv-row-count">12</span> devices</span>
+          </div>
+          <div class="table-scroll">
+            <table id="tbl-inventory">
+              <thead>
+                <tr>
+                  <th style="width:100px;">Profile #</th>
+                  <th style="width:140px;">Serial (BIOS)</th>
+                  <th>Model</th>
+                  <th style="width:130px;">Status</th>
+                  <th>Assignee</th>
+                  <th style="width:120px;">Last Intake</th>
+                  <th style="width:110px;">Operator</th>
+                  <th style="width:30px;"></th>
+                </tr>
+              </thead>
+              <tbody id="inv-tbody">
+                <!-- Rows injected by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Mismatch Resolution Section -->
+        <div class="panel" id="inv-mismatch-section">
+          <div class="panel-head">
+            <h2>Open Discrepancies <span style="color:var(--bad);font-family:var(--font-mono);font-size:12px;margin-left:8px;">3 escalated</span></h2>
+            <span class="meta">Devices heartbeating online while marked broken/decommissioned</span>
+          </div>
+
+          <!-- Mismatch row 1 -->
+          <div class="flow-list">
+            <div class="flow-row" id="mismatch-row-1">
+              <div class="content">
+                <div class="flow-title-row">
+                  <span class="status-cell bad"><span class="dot bad"></span>MISMATCH</span>
+                  <span class="row-title">LAP-012</span>
+                  <span class="row-sub">SN-A9283F · Dell Latitude 5490</span>
+                  <span class="metric-chip bad" style="font-family:var(--font-mono);font-size:10px;padding:1px 6px;border:1px solid var(--bad);color:var(--bad);background:var(--bad-soft);">+72h online</span>
+                </div>
+                <div class="flow-copy" style="font-size:12.5px;margin-top:6px;">Device heartbeated online but is marked <strong>intake_broken</strong> in inventory. Last operator: <span class="mono">Eric</span> · 2026-06-14 09:42</div>
+                <div id="mismatch-1-comment" style="display:none;margin-top:8px;padding:6px 10px;background:var(--surface-2);border-left:2px solid var(--accent);font-size:12px;"></div>
+              </div>
+              <div class="actions">
+                <button class="btn-row primary" onclick="toggleMismatchPanel('m1')">Resolve</button>
+              </div>
+            </div>
+            <!-- Inline reconcile panel -->
+            <div class="inv-reconcile-panel" id="inv-reconcile-m1" style="display:none;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--warn);">⚠ Resolve: LAP-012 Mismatch</span>
+                <button class="btn-row" onclick="toggleMismatchPanel('m1')" style="font-size:11px;">Cancel</button>
+              </div>
+              <div class="inv-reconcile-grid">
+                <div class="inv-reconcile-card">
+                  <div class="inv-reconcile-card-title">Option A — Reassign Custodian</div>
+                  <p style="font-size:12px;color:var(--ink-3);margin:4px 0 10px;">Assign to a student or staff. Updates device status to working_in_use and resolves the alert.</p>
+                  <input type="text" class="inv-field" placeholder="Custodian email (UPN)..." id="m1-email" />
+                  <div style="display:flex;gap:6px;margin-top:8px;">
+                    <button class="inv-type-btn active" onclick="setInvType('m1','student',this)">Student</button>
+                    <button class="inv-type-btn" onclick="setInvType('m1','staff',this)">Staff</button>
+                    <button class="inv-type-btn" onclick="setInvType('m1','pool',this)">Pool</button>
+                  </div>
+                  <button class="btn-row primary" style="margin-top:12px;width:100%;" onclick="submitMismatchReassign('m1','LAP-012')">Confirm Reassignment</button>
+                </div>
+                <div class="inv-reconcile-card">
+                  <div class="inv-reconcile-card-title">Option B — Log Diagnostic Comment</div>
+                  <p style="font-size:12px;color:var(--ink-3);margin:4px 0 10px;">Keep status as broken. Log a comment explaining why the device is active (e.g. bench test, diagnostics in progress).</p>
+                  <textarea class="inv-field" rows="3" placeholder="Diagnostic notes or bench explanation..." id="m1-comment" style="resize:none;"></textarea>
+                  <button class="btn-row" style="margin-top:8px;width:100%;" onclick="submitMismatchComment('m1','LAP-012')">Submit Comment</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="flow-row" id="mismatch-row-2">
+              <div class="content">
+                <div class="flow-title-row">
+                  <span class="status-cell bad"><span class="dot bad"></span>MISMATCH</span>
+                  <span class="row-title">LAP-088</span>
+                  <span class="row-sub">SN-C7738B · ThinkPad E14</span>
+                  <span class="metric-chip warn" style="font-family:var(--font-mono);font-size:10px;padding:1px 6px;border:1px solid var(--warn);color:var(--warn);background:var(--warn-soft);">+26h online</span>
+                </div>
+                <div class="flow-copy" style="font-size:12.5px;margin-top:6px;">Device heartbeated online but is marked <strong>decommissioned</strong> in inventory. Possible theft or unauthorised use.</div>
+                <div id="mismatch-2-comment" style="display:none;margin-top:8px;padding:6px 10px;background:var(--surface-2);border-left:2px solid var(--accent);font-size:12px;"></div>
+              </div>
+              <div class="actions">
+                <button class="btn-row primary" onclick="toggleMismatchPanel('m2')">Resolve</button>
+              </div>
+            </div>
+            <div class="inv-reconcile-panel" id="inv-reconcile-m2" style="display:none;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--warn);">⚠ Resolve: LAP-088 Mismatch</span>
+                <button class="btn-row" onclick="toggleMismatchPanel('m2')" style="font-size:11px;">Cancel</button>
+              </div>
+              <div class="inv-reconcile-grid">
+                <div class="inv-reconcile-card">
+                  <div class="inv-reconcile-card-title">Option A — Reassign Custodian</div>
+                  <p style="font-size:12px;color:var(--ink-3);margin:4px 0 10px;">Assign to a student or staff. Updates device status to working_in_use and resolves the alert.</p>
+                  <input type="text" class="inv-field" placeholder="Custodian email (UPN)..." id="m2-email" />
+                  <div style="display:flex;gap:6px;margin-top:8px;">
+                    <button class="inv-type-btn active" onclick="setInvType('m2','student',this)">Student</button>
+                    <button class="inv-type-btn" onclick="setInvType('m2','staff',this)">Staff</button>
+                    <button class="inv-type-btn" onclick="setInvType('m2','pool',this)">Pool</button>
+                  </div>
+                  <button class="btn-row primary" style="margin-top:12px;width:100%;" onclick="submitMismatchReassign('m2','LAP-088')">Confirm Reassignment</button>
+                </div>
+                <div class="inv-reconcile-card">
+                  <div class="inv-reconcile-card-title">Option B — Log Diagnostic Comment</div>
+                  <p style="font-size:12px;color:var(--ink-3);margin:4px 0 10px;">Keep status as decommissioned. Flag for investigation or log a comment.</p>
+                  <textarea class="inv-field" rows="3" placeholder="Investigation notes..." id="m2-comment" style="resize:none;"></textarea>
+                  <button class="btn-row" style="margin-top:8px;width:100%;" onclick="submitMismatchComment('m2','LAP-088')">Submit Comment</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
     </main>
   </div>
 
@@ -1931,7 +2238,7 @@
     <button data-view="computers"><i class="ti ti-device-laptop" style="display:block;font-size:16px;"></i>Devices</button>
     <button data-view="alerts"><i class="ti ti-bell" style="display:block;font-size:16px;"></i>Alerts</button>
     <button data-view="campuses"><i class="ti ti-school" style="display:block;font-size:16px;"></i>Sites</button>
-    <button data-view="map"><i class="ti ti-map" style="display:block;font-size:16px;"></i>Map</button>
+    <button data-view="inventory"><i class="ti ti-package" style="display:block;font-size:16px;"></i>Intake</button>
   </nav>
 
   <!-- BACKGROUND SCRIM -->
@@ -3077,6 +3384,187 @@
     
     // Initial Campus Grid render
     renderCampusesGrid("campus-grid", dishes);
+
+    /* 11. INVENTORY VIEW LOGIC */
+    const inventoryDevices = [
+      { profile: "LAP-001", serial: "SN-A9283F", model: "Dell Latitude 5490", status: "working", assignee: "alice.n@isomo.ac.rw", lastIntake: "2026-05-12", operator: "Eric", mismatch: false },
+      { profile: "LAP-002", serial: "SN-B1102E", model: "HP ProBook 440", status: "working", assignee: "claude.g@isomo.ac.rw", lastIntake: "2026-05-18", operator: "Eric", mismatch: false },
+      { profile: "LAP-003", serial: "SN-C7738B", model: "ThinkPad E14", status: "decommissioned", assignee: "—", lastIntake: "2026-06-02", operator: "Pacifique", mismatch: true },
+      { profile: "LAP-004", serial: "SN-D2291K", model: "Lenovo 300e", status: "broken", assignee: "—", lastIntake: "2026-06-10", operator: "Eric", mismatch: false },
+      { profile: "LAP-005", serial: "SN-E8841Z", model: "Dell Latitude 3420", status: "broken", assignee: "—", lastIntake: "2026-06-13", operator: "Pacifique", mismatch: false },
+      { profile: "LAP-006", serial: "SN-F3390M", model: "HP Chromebook 11", status: "ready", assignee: "—", lastIntake: "2026-06-11", operator: "Eric", mismatch: false },
+      { profile: "LAP-007", serial: "SN-G5542N", model: "Lenovo 100w", status: "working", assignee: "teacher.jean@isomo.ac.rw", lastIntake: "2026-04-28", operator: "Pacifique", mismatch: false },
+      { profile: "LAP-008", serial: "SN-H9921Q", model: "Dell 3120", status: "working", assignee: "sandrine.m@isomo.ac.rw", lastIntake: "2026-04-14", operator: "Eric", mismatch: false },
+      { profile: "LAP-009", serial: "SN-I7723R", model: "HP ProBook 450", status: "ready", assignee: "—", lastIntake: "2026-06-08", operator: "Pacifique", mismatch: false },
+      { profile: "LAP-010", serial: "SN-J4412S", model: "Lenovo 300e", status: "broken", assignee: "—", lastIntake: "2026-06-15", operator: "Eric", mismatch: false },
+      { profile: "LAP-011", serial: "SN-K6670T", model: "ThinkPad L14", status: "working", assignee: "john.doe@isomo.ac.rw", lastIntake: "2026-03-22", operator: "Pacifique", mismatch: false },
+      { profile: "LAP-012", serial: "SN-A9283F", model: "Dell Latitude 5490", status: "broken", assignee: "—", lastIntake: "2026-06-14", operator: "Eric", mismatch: true },
+    ];
+    let currentInvFilter = "all";
+
+    function statusBadgeHtml(status, mismatch) {
+      const labels = { working: "WORKING", broken: "BROKEN", ready: "READY", decommissioned: "DECOM." };
+      const cls = { working: "inv-status-working", broken: "inv-status-broken", ready: "inv-status-ready", decommissioned: "inv-status-decom" };
+      const dotCls = { working: "ok", broken: "bad", ready: "warn", decommissioned: "" };
+      const label = labels[status] || status.toUpperCase();
+      const mismatchTag = mismatch ? `<span style="font-family:var(--font-mono);font-size:9px;padding:1px 5px;border:1px solid var(--bad);color:var(--bad);background:var(--bad-soft);margin-left:6px;">MISMATCH</span>` : "";
+      return `<span class="${cls[status] || ''}" style="display:inline-flex;align-items:center;gap:6px;"><span class="dot ${dotCls[status] || 'muted'}"></span>${label}</span>${mismatchTag}`;
+    }
+
+    function renderInventory() {
+      const tbody = document.getElementById("inv-tbody");
+      if (!tbody) return;
+      const q = (document.getElementById("inv-search-input")?.value || "").toLowerCase();
+      const filtered = inventoryDevices.filter(d => {
+        const matchFilter = currentInvFilter === "all" || d.status === currentInvFilter;
+        const matchSearch = !q || d.profile.toLowerCase().includes(q) || d.serial.toLowerCase().includes(q) || d.model.toLowerCase().includes(q) || d.assignee.toLowerCase().includes(q);
+        return matchFilter && matchSearch;
+      });
+      document.getElementById("inv-row-count").textContent = filtered.length;
+      tbody.innerHTML = filtered.map(d => `
+        <tr>
+          <td><span class="mono" style="font-weight:600;color:var(--ink);">${d.profile}</span></td>
+          <td><span class="mono" style="color:var(--ink-3);font-size:11px;">${d.serial}</span></td>
+          <td style="color:var(--ink);">${d.model}</td>
+          <td>${statusBadgeHtml(d.status, d.mismatch)}</td>
+          <td><span style="font-size:12px;color:var(--ink-2);">${d.assignee}</span></td>
+          <td><span class="mono" style="font-size:11px;color:var(--muted);">${d.lastIntake}</span></td>
+          <td><span style="font-size:12px;color:var(--ink-3);">${d.operator}</span></td>
+          <td style="text-align:right;color:var(--muted);">›</td>
+        </tr>`).join("");
+    }
+
+    function filterInventoryTable() { renderInventory(); }
+
+    document.querySelectorAll("#inv-filter-seg button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("#inv-filter-seg button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentInvFilter = btn.dataset.invFilter;
+        renderInventory();
+      });
+    });
+
+    function scrollToMismatches() {
+      document.getElementById("inv-mismatch-section")?.scrollIntoView({ behavior: "smooth" });
+    }
+
+    function toggleMismatchPanel(id) {
+      const panel = document.getElementById("inv-reconcile-" + id);
+      if (!panel) return;
+      panel.style.display = panel.style.display === "none" ? "block" : "none";
+    }
+
+    function setInvType(mId, type, el) {
+      el.closest("div").querySelectorAll(".inv-type-btn").forEach(b => b.classList.remove("active"));
+      el.classList.add("active");
+    }
+
+    function submitMismatchReassign(mId, profile) {
+      const email = document.getElementById(mId + "-email").value.trim();
+      if (!email) { alert("Please enter a custodian email."); return; }
+      alert(`✓ ${profile} reassigned to: ${email}\nStatus updated to working_in_use. Alert resolved.`);
+      document.getElementById("inv-reconcile-" + mId).style.display = "none";
+      document.getElementById("mismatch-row-" + (mId === 'm1' ? '1' : '2')).style.opacity = "0.45";
+    }
+
+    function submitMismatchComment(mId, profile) {
+      const comment = document.getElementById(mId + "-comment").value.trim();
+      if (!comment) { alert("Please enter a diagnostic comment."); return; }
+      alert(`✓ Comment logged for ${profile}:\n"${comment}"\nDevice status remains broken. Alert acknowledged.`);
+      const n = mId === 'm1' ? '1' : '2';
+      const commentEl = document.getElementById("mismatch-" + n + "-comment");
+      commentEl.innerHTML = `💬 <em>${comment}</em>`;
+      commentEl.style.display = "block";
+      document.getElementById("inv-reconcile-" + mId).style.display = "none";
+    }
+
+    /* Intake Modal */
+    function openIntakeModal() {
+      document.getElementById("intake-modal-overlay").classList.add("open");
+      document.getElementById("intake-sn-input").focus();
+    }
+    function closeIntakeModal() {
+      document.getElementById("intake-modal-overlay").classList.remove("open");
+      document.getElementById("intake-sn-input").value = "";
+      document.getElementById("intake-sn-suggest").style.display = "none";
+    }
+    function handleIntakeSnType() {
+      const val = document.getElementById("intake-sn-input").value.trim();
+      const sug = document.getElementById("intake-sn-suggest");
+      sug.style.display = val.length > 1 ? "block" : "none";
+    }
+    function selectIntakeSn(sn, model) {
+      document.getElementById("intake-sn-input").value = sn;
+      document.getElementById("intake-sn-suggest").style.display = "none";
+    }
+    function submitIntake() {
+      const sn = document.getElementById("intake-sn-input").value.trim();
+      const op = document.getElementById("intake-operator-input").value.trim();
+      if (!sn) { alert("Please enter a serial number."); return; }
+      if (!op) { alert("Please enter the operator name."); return; }
+      const label = "LAP-" + (Math.floor(Math.random() * 900) + 100);
+      alert(`✓ Device registered!\nSerial: ${sn}\nAssigned Profile: ${label}\nOperator: ${op}\n\nLabel printed. Apply sticker to laptop chassis.`);
+      closeIntakeModal();
+    }
+    document.getElementById("intake-modal-overlay").addEventListener("click", e => {
+      if (e.target === e.currentTarget) closeIntakeModal();
+    });
+
+    renderInventory();
   </script>
+
+  <!-- INTAKE MODAL OVERLAY -->
+  <div class="intake-modal-overlay" id="intake-modal-overlay">
+    <div class="intake-modal">
+      <div class="intake-modal-head">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;">Hardware Intake Kiosk</div>
+          <div style="font-family:var(--font-serif);font-size:22px;font-weight:500;">Register Device</div>
+        </div>
+        <button class="btn-row" onclick="closeIntakeModal()" style="padding:6px 10px;"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="intake-modal-body">
+        <div>
+          <label class="intake-field-label">BIOS Serial Number</label>
+          <input type="text" class="inv-field" id="intake-sn-input" placeholder="Type or scan SN (e.g. SN-A9283F)..." oninput="handleIntakeSnType()" autocomplete="off" />
+          <div class="intake-autocomplete" id="intake-sn-suggest">
+            <div class="intake-autocomplete-item" onclick="selectIntakeSn('SN-A9283F','Dell Latitude 5490')"><strong>SN-A9283F</strong> <span style="color:var(--ink-3);font-size:11px;">Dell Latitude 5490 · was LAP-001</span></div>
+            <div class="intake-autocomplete-item" onclick="selectIntakeSn('SN-B1102E','HP ProBook 440')"><strong>SN-B1102E</strong> <span style="color:var(--ink-3);font-size:11px;">HP ProBook 440 · was LAP-002</span></div>
+            <div class="intake-autocomplete-item" onclick="selectIntakeSn('SN-NEW123','New Device')"><strong>SN-NEW123</strong> <span style="color:var(--muted);font-size:11px;">New — will generate new LAP-XXX</span></div>
+          </div>
+        </div>
+        <div>
+          <label class="intake-field-label">Symptom Checklist</label>
+          <div class="symptom-grid">
+            <label class="symptom-check"><input type="checkbox" checked /> SSD / Storage Fault</label>
+            <label class="symptom-check"><input type="checkbox" /> Password Lockout</label>
+            <label class="symptom-check"><input type="checkbox" /> Screen Crack</label>
+            <label class="symptom-check"><input type="checkbox" /> Keyboard / Trackpad</label>
+            <label class="symptom-check"><input type="checkbox" /> Battery / Power</label>
+            <label class="symptom-check"><input type="checkbox" /> Other</label>
+          </div>
+        </div>
+        <div>
+          <label class="intake-field-label">Additional Notes (optional)</label>
+          <textarea class="inv-field" rows="2" placeholder="Any extra context about the fault..." style="resize:none;"></textarea>
+        </div>
+        <div>
+          <label class="intake-field-label">Data Entry Person</label>
+          <input type="text" class="inv-field" id="intake-operator-input" placeholder="Your name (e.g. Eric)..." />
+        </div>
+      </div>
+      <div class="intake-modal-foot">
+        <button class="btn-row" onclick="closeIntakeModal()">Cancel</button>
+        <button class="btn-row" style="border-color:var(--warn);color:var(--warn);" onclick="submitIntake()">
+          <i class="ti ti-tag"></i> Register &amp; Print Label
+        </button>
+        <button class="btn-row primary" onclick="submitIntake()">
+          <i class="ti ti-alert-circle"></i> Mark Broken (Red Sticky)
+        </button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>
