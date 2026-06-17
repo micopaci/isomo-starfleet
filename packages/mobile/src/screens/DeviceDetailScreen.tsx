@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
   card:            { borderRadius: 0, borderWidth: 1, padding: 14, marginBottom: 12, gap: 8 },
   cardTitle:       { fontWeight: '600', fontSize: 14, marginBottom: 4 },
   statusRow:       { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  roleBadge:       { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  roleBadge:       { borderRadius: 0, paddingHorizontal: 6, paddingVertical: 2 },
   roleText:        { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
   infoRow:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
                      paddingVertical: 4 },
@@ -275,5 +275,5 @@ const styles = StyleSheet.create({
   actionBtnText:   { fontWeight: '600', fontSize: 13 },
   actionMsg:       { fontSize: 12, textAlign: 'center', marginTop: 4 },
   errorText:       { fontSize: 14 },
-  retryBtn:        { borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 },
+  retryBtn:        { borderWidth: 1, borderRadius: 0, paddingHorizontal: 12, paddingVertical: 6 },
 });

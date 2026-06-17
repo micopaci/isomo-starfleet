@@ -32,11 +32,19 @@ export function SettingsScreen({ colors, onLogout, role, email }: Props) {
     setTimeout(() => setSavedMsg(''), 4000);
   }
 
+  const isDeskMode = role === 'guest_operator';
+
   function handleLogout() {
-    Alert.alert('Sign out', 'Are you sure you want to sign out?', [
+    const title = isDeskMode ? 'Exit Desk Mode' : 'Sign out';
+    const message = isDeskMode 
+      ? 'Are you sure you want to exit rapid intake desk mode?' 
+      : 'Are you sure you want to sign out?';
+    const btnText = isDeskMode ? 'Exit Desk Mode' : 'Sign out';
+
+    Alert.alert(title, message, [
       { text: 'Cancel',   style: 'cancel' },
       {
-        text:  'Sign out',
+        text:  btnText,
         style: 'destructive',
         onPress: async () => {
           await clearToken();
@@ -106,12 +114,14 @@ export function SettingsScreen({ colors, onLogout, role, email }: Props) {
         <InfoRow label="Org"     value="Isomo Circles Rwanda" C={C} />
       </Section>
 
-      {/* Sign out */}
+      {/* Sign out / Exit Desk Mode */}
       <TouchableOpacity
         style={[styles.logoutBtn, { borderColor: C.bad }]}
         onPress={handleLogout}
       >
-        <Text style={[styles.logoutText, { color: C.bad }]}>Sign out</Text>
+        <Text style={[styles.logoutText, { color: C.bad }]}>
+          {isDeskMode ? 'Exit Desk Mode' : 'Sign out'}
+        </Text>
       </TouchableOpacity>
 
     </ScrollView>

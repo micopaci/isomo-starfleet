@@ -390,7 +390,31 @@ async function upsertAlert(client, alert) {
   );
 }
 
+let lastAlertsSync = 0;
+let syncPromise = null;
+
 async function syncDerivedAlerts() {
+  const now = Date.now();
+  if (syncPromise) {
+    return syncPromise;
+  }
+  if (now - lastAlertsSync < 15000) {
+    return;
+  }
+
+  syncPromise = (async () => {
+    try {
+      await _syncDerivedAlerts();
+      lastAlertsSync = Date.now();
+    } finally {
+      syncPromise = null;
+    }
+  })();
+
+  return syncPromise;
+}
+
+async function _syncDerivedAlerts() {
   const client = await pool.connect();
   const activeKeys = [];
   try {
@@ -580,7 +604,31 @@ async function syncDerivedAlerts() {
       }
     }
 
-    const derivedKeys = activeKeys.filter(key => key.startsWith('site:'));
+    // Inventory mismatches: device is marked broken but heartbeating
+    const inventoryMismatches = await client.query(`
+      SELECT id, profile_number, windows_sn AS serial_number, hardware_status, last_seen AS last_seen_at
+      FROM devices
+      WHERE hardware_status IN ('intake_broken', 'in_repair', 'decommissioned')
+        AND last_seen >= NOW() - INTERVAL '24 hours'
+    `);
+    for (const row of inventoryMismatches.rows) {
+      const active_key = `inventory-mismatch:${row.id}`;
+      activeKeys.push(active_key);
+      await upsertAlert(client, {
+        active_key,
+        source_type: 'derived',
+        source_id: String(row.id),
+        site_id: null,
+        device_id: row.id,
+        severity: 'critical',
+        category: 'inventory',
+        title: 'Inventory Mismatch',
+        message: `Device ${row.profile_number || row.serial_number} is marked as '${row.hardware_status}' but has recently connected.`,
+        metadata: { profile_number: row.profile_number, hardware_status: row.hardware_status, last_seen_at: row.last_seen_at }
+      });
+    }
+
+    const derivedKeys = activeKeys.filter(key => key.startsWith('site:') || key.startsWith('inventory-mismatch:'));
     if (derivedKeys.length) {
       await client.query(
         `UPDATE alert_events
@@ -1304,7 +1352,7 @@ router.get('/devices', async (req, res, next) => {
               d.last_seen AS agent_last_seen_at, d.intune_last_sync_at,
               d.intune_enrolled_at, d.last_ingest_ok_at, d.compliance_state,
               d.user_principal_name, d.os, d.os_version, d.device_category,
-              d.free_storage_bytes, d.total_storage_bytes,
+              d.free_storage_bytes, d.total_storage_bytes, d.profile_number, d.hardware_status,
               s.name AS site_name,
               dh.battery_pct, dh.battery_health_pct,
               dh.disk_smart_status, dh.disk_smart_predict_failure, dh.disk_media_type,
@@ -1882,6 +1930,127 @@ router.post('/alerts/:id/assign', requireAdmin, async (req, res, next) => {
     }
     res.json({ ok: true, assignee });
   } catch (err) { next(err); }
+});
+
+// ── POST /api/alerts/:id/reconcile (admin only) ──────────────────────────────
+router.post('/alerts/:id/reconcile', requireAdmin, async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+    const { action, comment, assignee_email, assignee_type, site_id } = req.body || {};
+
+    if (!['reassign', 'comment'].includes(action)) {
+      return res.status(400).json({ error: 'invalid action. Must be reassign or comment' });
+    }
+
+    await client.query('BEGIN');
+
+    // Fetch the alert event
+    const alertRes = await client.query('SELECT * FROM alert_events WHERE id = $1', [id]);
+    if (alertRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+    const alertRow = alertRes.rows[0];
+    if (alertRow.category !== 'inventory' || !alertRow.device_id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Reconciliation is only supported for inventory mismatch alerts' });
+    }
+
+    const deviceId = alertRow.device_id;
+    const operator = req.user?.email || 'unknown_operator';
+
+    // Fetch current device state
+    const devRes = await client.query('SELECT * FROM devices WHERE id = $1', [deviceId]);
+    if (devRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    const prevDevice = devRes.rows[0];
+
+    if (action === 'reassign') {
+      if (!assignee_email || !assignee_type) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'assignee_email and assignee_type are required for reassign' });
+      }
+
+      // Unassign existing active assignments
+      await client.query(
+        `UPDATE device_assignments
+         SET unassigned_at = NOW(), status = 'transferred', unassign_reason = 'role_change'
+         WHERE device_id = $1 AND status = 'active'`,
+        [deviceId]
+      );
+
+      // Create new assignment
+      await client.query(
+        `INSERT INTO device_assignments (device_id, assignee_email, assignee_type, site_id, status)
+         VALUES ($1, $2, $3, $4, 'active')`,
+        [deviceId, assignee_email, assignee_type, site_id || null]
+      );
+
+      // Update devices table (set status to working_in_use)
+      const updateRes = await client.query(
+        `UPDATE devices 
+         SET site_id = $1, user_principal_name = $2, hardware_status = 'working_in_use'
+         WHERE id = $3 
+         RETURNING *`,
+        [site_id || null, assignee_email, deviceId]
+      );
+      const updatedDevice = updateRes.rows[0];
+
+      // Log lifecycle ASSIGN
+      await client.query(
+        `INSERT INTO device_lifecycle_logs 
+         (device_id, operator_email, action_type, previous_state, new_state, repair_details)
+         VALUES ($1, $2, 'ASSIGN', $3, $4, $5)`,
+        [deviceId, operator, 'ASSIGN', JSON.stringify(prevDevice), JSON.stringify(updatedDevice), comment || 'Reassigned from alert console']
+      );
+
+      // Resolve the alert
+      await client.query(
+        `UPDATE alert_events
+         SET status = 'resolved', resolved_at = NOW(), metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('resolved_action', 'reassign', 'resolved_by', $1::text)
+         WHERE id = $2`,
+        [operator, id]
+      );
+
+      await client.query('COMMIT');
+      return res.json({ ok: true, resolved_action: 'reassign', device: updatedDevice });
+
+    } else if (action === 'comment') {
+      if (!comment || !comment.trim()) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'comment text is required' });
+      }
+
+      // Keep marked as broken but log validation comment
+      await client.query(
+        `INSERT INTO device_lifecycle_logs 
+         (device_id, operator_email, action_type, previous_state, new_state, repair_details)
+         VALUES ($1, $2, 'VERIFICATION_MISMATCH', $3, $4, $5)`,
+        [deviceId, operator, 'VERIFICATION_MISMATCH', JSON.stringify(prevDevice), JSON.stringify(prevDevice), comment.trim()]
+      );
+
+      // Resolve/Acknowledge the alert with comment details
+      await client.query(
+        `UPDATE alert_events
+         SET status = 'acknowledged', acknowledged_at = NOW(), acknowledged_by = $1,
+             metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('reconciliation_comment', $2::text, 'reconciled_by', $3::text)
+         WHERE id = $4`,
+        [req.user.id, comment.trim(), operator, id]
+      );
+
+      await client.query('COMMIT');
+      return res.json({ ok: true, resolved_action: 'comment' });
+    }
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 // Site-change events are now surfaced through the durable alerts API
@@ -2846,6 +3015,471 @@ router.delete('/sites/:id/biweekly-usage/:entryId', requireAdmin, async (req, re
     );
     if (!rowCount) return res.status(404).json({ error: 'Entry not found' });
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ── INVENTORY ONBOARDING & LIFECYCLE LEDGER ──────────────────────────────────
+
+// Helper to get next sequential LAP-XXX profile number
+async function getNextProfileNumber(client) {
+  const { rows } = await client.query(
+    `SELECT COALESCE(MAX(CAST(SUBSTRING(profile_number FROM '\\d+') AS INTEGER)), 0) AS max_num
+     FROM devices
+     WHERE profile_number LIKE 'LAP-%'`
+  );
+  const nextNum = rows[0].max_num + 1;
+  return 'LAP-' + String(nextNum).padStart(3, '0');
+}
+
+// POST /api/inventory/onboard
+router.post('/inventory/onboard', async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const { serial_number } = req.body || {};
+    if (!serial_number) {
+      return res.status(400).json({ error: 'serial_number is required' });
+    }
+    const normalized = serial_number.trim().toUpperCase().replace(/\s+/g, '');
+    if (!normalized) {
+      return res.status(400).json({ error: 'invalid serial_number' });
+    }
+
+    await client.query('BEGIN');
+
+    // Check if device already exists
+    const devRes = await client.query(
+      'SELECT * FROM devices WHERE serial_normalized = $1 OR UPPER(windows_sn) = $2',
+      [normalized, normalized]
+    );
+
+    let device;
+    const operator = req.user?.email || 'unknown_operator';
+
+    if (devRes.rows.length > 0) {
+      device = devRes.rows[0];
+      if (!device.profile_number) {
+        // Assign a profile number
+        const nextProfile = await getNextProfileNumber(client);
+        const updateRes = await client.query(
+          `UPDATE devices 
+           SET profile_number = $1, hardware_status = 'intake_broken' 
+           WHERE id = $2 
+           RETURNING *`,
+          [nextProfile, device.id]
+        );
+        device = updateRes.rows[0];
+
+        // Log BIND_LABEL
+        await client.query(
+          `INSERT INTO device_lifecycle_logs (device_id, operator_email, action_type, previous_state, new_state)
+           VALUES ($1, $2, 'BIND_LABEL', $3, $4)`,
+          [device.id, operator, JSON.stringify(devRes.rows[0]), JSON.stringify(device)]
+        );
+      } else {
+        // If it already has a profile_number, just ensure status is intake_broken
+        if (device.hardware_status !== 'intake_broken') {
+          const prev = { ...device };
+          const updateRes = await client.query(
+            `UPDATE devices SET hardware_status = 'intake_broken' WHERE id = $1 RETURNING *`,
+            [device.id]
+          );
+          device = updateRes.rows[0];
+          await client.query(
+            `INSERT INTO device_lifecycle_logs (device_id, operator_email, action_type, previous_state, new_state)
+             VALUES ($1, $2, 'INTAKE_BROKEN', $3, $4)`,
+            [device.id, operator, JSON.stringify(prev), JSON.stringify(device)]
+          );
+        }
+      }
+    } else {
+      // Create a brand new device
+      const nextProfile = await getNextProfileNumber(client);
+      const insertRes = await client.query(
+        `INSERT INTO devices (hostname, windows_sn, serial_normalized, profile_number, hardware_status, role)
+         VALUES ($1, $2, $3, $4, 'intake_broken', 'standard')
+         RETURNING *`,
+        [`LAP-ONBOARD-${nextProfile.replace('LAP-', '')}`, normalized, normalized, nextProfile]
+      );
+      device = insertRes.rows[0];
+
+      // Log REGISTER
+      await client.query(
+        `INSERT INTO device_lifecycle_logs (device_id, operator_email, action_type, new_state)
+         VALUES ($1, $2, 'REGISTER', $3)`,
+        [device.id, operator, JSON.stringify(device)]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ ok: true, device });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/inventory/mark-state
+router.post('/inventory/mark-state', async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const { deviceId, hardware_status, symptom_tags, repair_details, client_transaction_uuid } = req.body || {};
+    if (!deviceId || !hardware_status) {
+      return res.status(400).json({ error: 'deviceId and hardware_status are required' });
+    }
+
+    const validStatuses = ['working_in_use', 'intake_broken', 'in_repair', 'ready_for_reissue', 'decommissioned'];
+    if (!validStatuses.includes(hardware_status)) {
+      return res.status(400).json({ error: 'invalid hardware_status value' });
+    }
+
+    await client.query('BEGIN');
+
+    // Fetch current device state
+    const devRes = await client.query('SELECT * FROM devices WHERE id = $1', [deviceId]);
+    if (devRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    const prevDevice = devRes.rows[0];
+    const operator = req.user?.email || 'unknown_operator';
+
+    // If there's a client_transaction_uuid, check for duplicate processing
+    if (client_transaction_uuid) {
+      const dupRes = await client.query('SELECT id FROM device_lifecycle_logs WHERE client_transaction_uuid = $1', [client_transaction_uuid]);
+      if (dupRes.rows.length > 0) {
+        await client.query('COMMIT');
+        return res.json({ ok: true, message: 'Transaction already processed (idempotent)', device: prevDevice });
+      }
+    }
+
+    // Update hardware status
+    const updateRes = await client.query(
+      'UPDATE devices SET hardware_status = $1 WHERE id = $2 RETURNING *',
+      [hardware_status, deviceId]
+    );
+    const updatedDevice = updateRes.rows[0];
+
+    // Determine action_type
+    let action_type = 'INTAKE_BROKEN';
+    if (hardware_status === 'in_repair') action_type = 'REPAIR_START';
+    if (hardware_status === 'ready_for_reissue') action_type = 'REPAIR_COMPLETE';
+    if (hardware_status === 'decommissioned') action_type = 'DECOMMISSION';
+    if (hardware_status === 'working_in_use') action_type = 'REPAIR_COMPLETE'; // Fallback
+
+    // Log to lifecycle logs
+    await client.query(
+      `INSERT INTO device_lifecycle_logs 
+       (device_id, operator_email, action_type, previous_state, new_state, symptom_tags, repair_details, client_transaction_uuid)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        deviceId, 
+        operator, 
+        action_type, 
+        JSON.stringify(prevDevice), 
+        JSON.stringify(updatedDevice), 
+        symptom_tags || null, 
+        repair_details || null,
+        client_transaction_uuid || null
+      ]
+    );
+
+    // If marking as broken/decommissioned, automatically unassign active assignments
+    if (hardware_status === 'intake_broken' || hardware_status === 'decommissioned') {
+      await client.query(
+        `UPDATE device_assignments 
+         SET unassigned_at = NOW(), status = 'returned', unassign_reason = 'broken'
+         WHERE device_id = $1 AND status = 'active'`,
+        [deviceId]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ ok: true, device: updatedDevice });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/inventory/reassign
+router.post('/inventory/reassign', async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const { deviceId, assignee_email, assignee_type, site_id, client_transaction_uuid } = req.body || {};
+    if (!deviceId || !assignee_email || !assignee_type) {
+      return res.status(400).json({ error: 'deviceId, assignee_email, and assignee_type are required' });
+    }
+
+    if (!['student', 'staff', 'pool'].includes(assignee_type)) {
+      return res.status(400).json({ error: 'invalid assignee_type' });
+    }
+
+    await client.query('BEGIN');
+
+    // Fetch device
+    const devRes = await client.query('SELECT * FROM devices WHERE id = $1', [deviceId]);
+    if (devRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    const prevDevice = devRes.rows[0];
+    const operator = req.user?.email || 'unknown_operator';
+
+    // Idempotency check
+    if (client_transaction_uuid) {
+      const dupRes = await client.query('SELECT id FROM device_lifecycle_logs WHERE client_transaction_uuid = $1', [client_transaction_uuid]);
+      if (dupRes.rows.length > 0) {
+        await client.query('COMMIT');
+        return res.json({ ok: true, message: 'Transaction already processed (idempotent)', device: prevDevice });
+      }
+    }
+
+    // Unassign existing active assignments
+    await client.query(
+      `UPDATE device_assignments
+       SET unassigned_at = NOW(), status = 'transferred', unassign_reason = 'role_change'
+       WHERE device_id = $1 AND status = 'active'`,
+      [deviceId]
+    );
+
+    // Create new assignment
+    await client.query(
+      `INSERT INTO device_assignments (device_id, assignee_email, assignee_type, site_id, status)
+       VALUES ($1, $2, $3, $4, 'active')`,
+      [deviceId, assignee_email, assignee_type, site_id || null]
+    );
+
+    // Update devices table
+    const updateRes = await client.query(
+      `UPDATE devices 
+       SET site_id = $1, user_principal_name = $2, hardware_status = 'working_in_use'
+       WHERE id = $3 
+       RETURNING *`,
+      [site_id || null, assignee_email, deviceId]
+    );
+    const updatedDevice = updateRes.rows[0];
+
+    // Log lifecycle ASSIGN
+    await client.query(
+      `INSERT INTO device_lifecycle_logs 
+       (device_id, operator_email, action_type, previous_state, new_state, client_transaction_uuid)
+       VALUES ($1, $2, 'ASSIGN', $3, $4, $5)`,
+      [
+        deviceId,
+        operator,
+        'ASSIGN',
+        JSON.stringify(prevDevice),
+        JSON.stringify(updatedDevice),
+        client_transaction_uuid || null
+      ]
+    );
+
+    await client.query('COMMIT');
+    res.json({ ok: true, device: updatedDevice });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// POST /inventory/sync (offline transaction log replay)
+router.post('/inventory/sync', async (req, res, next) => {
+  const { transactions } = req.body || {};
+  if (!Array.isArray(transactions)) {
+    return res.status(400).json({ error: 'transactions array is required' });
+  }
+
+  const results = [];
+  const operator = req.user?.email || 'unknown_operator';
+
+  // Process transactions in chronological order
+  const sorted = [...transactions].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+  for (const tx of sorted) {
+    const { transaction_uuid, action_type, profile_number, payload, timestamp } = tx;
+    if (!transaction_uuid || !action_type || !profile_number) {
+      results.push({ transaction_uuid, status: 'failed', error: 'Missing core transaction fields' });
+      continue;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Idempotency check: see if client_transaction_uuid already exists in logs
+      const dupRes = await client.query('SELECT id FROM device_lifecycle_logs WHERE client_transaction_uuid = $1', [transaction_uuid]);
+      if (dupRes.rows.length > 0) {
+        await client.query('COMMIT');
+        results.push({ transaction_uuid, status: 'success', note: 'already processed' });
+        continue;
+      }
+
+      // Find device by profile_number
+      const devRes = await client.query('SELECT * FROM devices WHERE profile_number = $1', [profile_number]);
+      if (devRes.rows.length === 0) {
+        throw new Error(`Device profile ${profile_number} not found`);
+      }
+      const device = devRes.rows[0];
+      const deviceId = device.id;
+
+      let prevDevice = { ...device };
+      let updatedDevice = { ...device };
+
+      if (action_type === 'INTAKE_BROKEN' || action_type === 'REPAIR_START' || action_type === 'REPAIR_COMPLETE') {
+        let targetStatus = 'intake_broken';
+        if (action_type === 'REPAIR_START') targetStatus = 'in_repair';
+        if (action_type === 'REPAIR_COMPLETE') targetStatus = 'ready_for_reissue';
+
+        const updateRes = await client.query(
+          'UPDATE devices SET hardware_status = $1 WHERE id = $2 RETURNING *',
+          [targetStatus, deviceId]
+        );
+        updatedDevice = updateRes.rows[0];
+
+        // Log lifecycle event with transaction metadata and original timestamp
+        await client.query(
+          `INSERT INTO device_lifecycle_logs 
+           (device_id, operator_email, action_type, previous_state, new_state, symptom_tags, repair_details, client_transaction_uuid, recorded_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            deviceId,
+            operator,
+            action_type,
+            JSON.stringify(prevDevice),
+            JSON.stringify(updatedDevice),
+            payload?.symptom_tags || null,
+            payload?.notes || null,
+            transaction_uuid,
+            new Date(timestamp)
+          ]
+        );
+
+        if (targetStatus === 'intake_broken') {
+          await client.query(
+            `UPDATE device_assignments 
+             SET unassigned_at = $2, status = 'returned', unassign_reason = 'broken'
+             WHERE device_id = $1 AND status = 'active'`,
+            [deviceId, new Date(timestamp)]
+          );
+        }
+      } else if (action_type === 'ASSIGN') {
+        const { assignee_email, assignee_type, site_id } = payload || {};
+        if (!assignee_email || !assignee_type) {
+          throw new Error('assignee_email and assignee_type required for ASSIGN');
+        }
+
+        // Unassign existing active assignments
+        await client.query(
+          `UPDATE device_assignments
+           SET unassigned_at = $2, status = 'transferred', unassign_reason = 'role_change'
+           WHERE device_id = $1 AND status = 'active'`,
+          [deviceId, new Date(timestamp)]
+        );
+
+        // Create new assignment
+        await client.query(
+          `INSERT INTO device_assignments (device_id, assignee_email, assignee_type, site_id, status, assigned_at)
+           VALUES ($1, $2, $3, $4, 'active', $5)`,
+          [deviceId, assignee_email, assignee_type, site_id || null, new Date(timestamp)]
+        );
+
+        // Update devices table
+        const updateRes = await client.query(
+          `UPDATE devices 
+           SET site_id = $1, user_principal_name = $2, hardware_status = 'working_in_use'
+           WHERE id = $3 
+           RETURNING *`,
+          [site_id || null, assignee_email, deviceId]
+        );
+        updatedDevice = updateRes.rows[0];
+
+        // Log lifecycle ASSIGN
+        await client.query(
+          `INSERT INTO device_lifecycle_logs 
+           (device_id, operator_email, action_type, previous_state, new_state, client_transaction_uuid, recorded_at)
+           VALUES ($1, $2, 'ASSIGN', $3, $4, $5, $6)`,
+          [
+            deviceId,
+            operator,
+            'ASSIGN',
+            JSON.stringify(prevDevice),
+            JSON.stringify(updatedDevice),
+            transaction_uuid,
+            new Date(timestamp)
+          ]
+        );
+      } else if (action_type === 'UNASSIGN') {
+        // Unassign active assignment
+        await client.query(
+          `UPDATE device_assignments 
+           SET unassigned_at = $2, status = 'returned', unassign_reason = 'role_change'
+           WHERE device_id = $1 AND status = 'active'`,
+          [deviceId, new Date(timestamp)]
+        );
+
+        // Log lifecycle UNASSIGN
+        await client.query(
+          `INSERT INTO device_lifecycle_logs 
+           (device_id, operator_email, action_type, previous_state, new_state, client_transaction_uuid, recorded_at)
+           VALUES ($1, $2, 'UNASSIGN', $3, $4, $5, $6)`,
+          [
+            deviceId,
+            operator,
+            'UNASSIGN',
+            JSON.stringify(prevDevice),
+            JSON.stringify(updatedDevice),
+            transaction_uuid,
+            new Date(timestamp)
+          ]
+        );
+      } else {
+        throw new Error(`Unknown action_type: ${action_type}`);
+      }
+
+      await client.query('COMMIT');
+      results.push({ transaction_uuid, status: 'success' });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      results.push({ transaction_uuid, status: 'failed', error: err.message });
+    } finally {
+      client.release();
+    }
+  }
+
+  res.json({ ok: true, results });
+});
+
+// GET /api/inventory/devices/:deviceId/logs
+router.get('/inventory/devices/:deviceId/logs', async (req, res, next) => {
+  try {
+    const { deviceId } = req.params;
+    const { rows } = await pool.query(
+      `SELECT * FROM device_lifecycle_logs
+       WHERE device_id = $1
+       ORDER BY recorded_at DESC`,
+      [deviceId]
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// GET /api/inventory/devices/:deviceId/assignments
+router.get('/inventory/devices/:deviceId/assignments', async (req, res, next) => {
+  try {
+    const { deviceId } = req.params;
+    const { rows } = await pool.query(
+      `SELECT * FROM device_assignments
+       WHERE device_id = $1
+       ORDER BY assigned_at DESC`,
+      [deviceId]
+    );
+    res.json(rows);
   } catch (err) { next(err); }
 });
 

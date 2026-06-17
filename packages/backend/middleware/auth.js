@@ -43,6 +43,17 @@ function authMiddleware(req, res, next) {
   const header = req.headers['authorization'] || '';
   const token  = header.startsWith('Bearer ') ? header.slice(7) : null;
 
+  // Intake Desk Mode: inventory/autocomplete routes allow passwordless kiosk access,
+  // but only when the caller presents no JWT at all. A logged-in admin/user session
+  // (web dashboard) still goes through normal JWT verification below, so inventory
+  // actions taken from the web are tied to a real identity, not a spoofable header.
+  const isInventoryPath = req.path.startsWith('/inventory/') || req.path === '/devices' || req.path === '/students';
+  if (isInventoryPath && !token) {
+    const opEmail = req.headers['x-operator-email'] || 'anonymous_desk';
+    req.user = { email: opEmail, role: 'guest_operator' };
+    return next();
+  }
+
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });
   }

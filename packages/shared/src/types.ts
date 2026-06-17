@@ -194,6 +194,8 @@ export interface Device {
   stale_min?: number | null;
   /** Last successful ingest write timestamp (any ingest endpoint). */
   last_ingest_ok_at?: string | null;
+  profile_number?: string | null;
+  hardware_status?: 'working_in_use' | 'intake_broken' | 'in_repair' | 'ready_for_reissue' | 'decommissioned';
 }
 
 export interface SignalReading {
@@ -508,4 +510,46 @@ export interface Student {
   school: string;
   site_id: number | null;
   site_name: string | null;
+}
+
+// ── Device Assignments (ledger history) ──────────────────────────────────────
+export interface DeviceAssignment {
+  id: number;
+  device_id: number;
+  assignee_email: string;
+  assignee_type: 'student' | 'staff' | 'pool';
+  site_id: number | null;
+  assigned_at: string;
+  unassigned_at: string | null;
+  status: 'active' | 'returned' | 'transferred';
+  unassign_reason: 'broken' | 'graduated' | 'left_org' | 'upgraded' | 'role_change' | null;
+}
+
+// ── Device Lifecycle Logs ───────────────────────────────────────────────────
+export interface DeviceLifecycleLog {
+  id: number;
+  device_id: number;
+  operator_email: string;
+  action_type: 'REGISTER' | 'BIND_LABEL' | 'INTAKE_BROKEN' | 'REPAIR_START' | 'REPAIR_COMPLETE' | 'ASSIGN' | 'UNASSIGN' | 'DECOMMISSION' | 'VERIFICATION_MISMATCH';
+  previous_state: Record<string, any> | null;
+  new_state: Record<string, any> | null;
+  symptom_tags: string[] | null;
+  repair_details: string | null;
+  recorded_at: string;
+}
+
+// ── Offline Transaction Queue Item ─────────────────────────────────────────
+export interface OfflineTransaction {
+  transaction_uuid: string;
+  timestamp: string;
+  action_type: 'INTAKE_BROKEN' | 'REPAIR_START' | 'REPAIR_COMPLETE' | 'ASSIGN' | 'UNASSIGN';
+  profile_number: string;
+  payload: {
+    serial_number?: string;
+    assignee_email?: string;
+    assignee_type?: 'student' | 'staff' | 'pool';
+    site_id?: number;
+    symptom_tags?: string[];
+    notes?: string;
+  };
 }

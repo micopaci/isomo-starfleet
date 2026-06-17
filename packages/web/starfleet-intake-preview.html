@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Starfleet Intake & Reconciliation Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #141f1c;
+    --panel: #1b2b24;
+    --surface-2: #22332b;
+    --line: #33443c;
+    --line-2: #26362f;
+    --ink: #e6efe9;
+    --ink-2: #b8c5be;
+    --ink-3: #7c8a84;
+    --faint: #66746d;
+    --accent: #34b483; /* Starfleet Signal Green Accent */
+    --accent-soft: rgba(52, 180, 131, 0.15);
+    --accent-ink: #5fc28e;
+    --ok: #5fc28e;
+    --ok-soft: rgba(95, 194, 142, 0.15);
+    --warn: #d9a441;
+    --warn-soft: rgba(217, 164, 65, 0.15);
+    --bad: #cf5b48;
+    --bad-soft: rgba(207, 91, 72, 0.15);
+    --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    --serif: 'Newsreader', Georgia, serif;
+    --ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--ui);
+    font-size: 13.5px;
+    line-height: 1.45;
+    padding: 30px 20px 80px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .header-section {
+    max-width: 1200px;
+    margin: 0 auto 30px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 20px;
+  }
+  .header-section h1 {
+    font-family: var(--serif);
+    font-size: 26px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    color: var(--ink);
+  }
+  .header-section p {
+    color: var(--ink-2);
+    font-size: 14px;
+  }
+
+  .main-layout {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 40px;
+  }
+
+  @media (max-width: 960px) {
+    .main-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* --- Mobile Phone Shell Mockup --- */
+  .mobile-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .phone-shell {
+    width: 320px;
+    height: 640px;
+    background: #111;
+    border-radius: 40px;
+    border: 3px solid #222;
+    padding: 12px;
+    position: relative;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+  }
+  .phone-shell::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px;
+    height: 16px;
+    background: #000;
+    border-radius: 8px;
+    z-index: 100;
+  }
+  .screen {
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    border-radius: 30px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .status-bar {
+    height: 32px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 0 20px 4px;
+    font-size: 10px;
+    color: var(--ink-3);
+    font-family: var(--mono);
+  }
+  .mobile-app-bar {
+    height: 48px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    background: var(--panel);
+  }
+  .mobile-app-bar h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .mobile-app-bar .operator {
+    font-size: 10px;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    padding: 2px 6px;
+    font-family: var(--mono);
+  }
+
+  .screen-content {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Mobile UI elements */
+  .mobile-input-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--ink-3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .mobile-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    font-size: 13px;
+    outline: none;
+    font-family: inherit;
+    border-radius: 0;
+  }
+  .mobile-input:focus {
+    border-color: var(--accent);
+  }
+  .mobile-btn {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: var(--bg);
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+    font-size: 13px;
+    border-radius: 0;
+  }
+  .mobile-btn--secondary {
+    background: transparent;
+    color: var(--accent-ink);
+    border: 1px solid var(--accent);
+    border-radius: 0;
+  }
+
+  .autocomplete-box {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .autocomplete-item {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line-2);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .autocomplete-item:hover {
+    background: var(--surface-2);
+  }
+
+  .device-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-top: 4px solid var(--accent);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .device-card h4 { font-family: var(--serif); font-size: 15px; font-weight: 500; }
+  .device-card p { font-size: 11px; color: var(--ink-3); font-family: var(--mono); }
+
+  .mobile-action-buttons {
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    margin-top: auto;
+  }
+  .action-btn-red {
+    flex: 1;
+    background: var(--bad);
+    color: var(--ink);
+    padding: 10px 4px;
+    text-align: center;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 10.5px;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .action-btn-green {
+    flex: 1;
+    background: var(--ok);
+    color: var(--bg);
+    padding: 10px 4px;
+    text-align: center;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 10.5px;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .symptom-checkboxes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin: 8px 0;
+  }
+  .symptom-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--ink-2);
+  }
+
+  /* --- Web Console Mockup --- */
+  .web-console {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .web-header {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .web-title-wrap h2 {
+    font-family: var(--serif);
+    font-size: 20px;
+    font-weight: 500;
+  }
+  .web-title-wrap small {
+    font-family: var(--mono);
+    color: var(--ink-3);
+    font-size: 11px;
+  }
+
+  .alerts-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+  }
+  .alert-row-wrap {
+    border-bottom: 1px solid var(--line-2);
+  }
+  .alert-row-wrap:last-child {
+    border-bottom: none;
+  }
+
+  .alert-row {
+    display: grid;
+    grid-template-columns: 120px 1fr auto;
+    gap: 16px;
+    padding: 16px 12px;
+    align-items: center;
+  }
+  .alert-sev-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 2px 6px;
+    width: fit-content;
+    font-weight: 600;
+  }
+  .alert-sev--warning { background: var(--warn); color: var(--bg); }
+  .alert-sev--critical { background: var(--bad); color: var(--ink); }
+
+  .alert-message {
+    font-size: 13.5px;
+    color: var(--ink);
+  }
+  .alert-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-top: 4px;
+  }
+  .chip-48h {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    border: 1px solid var(--accent);
+    font-size: 9px;
+    padding: 1px 4px;
+    font-family: var(--mono);
+    margin-left: 8px;
+  }
+
+  .reconcile-panel {
+    background: var(--surface-2);
+    border-top: 1.5px dashed var(--line);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .reconcile-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 760px) {
+    .reconcile-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .reconcile-option-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .reconcile-option-card h4 {
+    font-size: 12.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .reconcile-option-card p {
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+
+  .web-input {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    font-size: 13px;
+    outline: none;
+    font-family: inherit;
+    border-radius: 0;
+  }
+  .web-select {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    font-size: 13px;
+    outline: none;
+    font-family: inherit;
+    border-radius: 0;
+  }
+  .web-btn {
+    padding: 8px 14px;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12.5px;
+    width: fit-content;
+    border-radius: 0;
+  }
+  .web-btn--secondary {
+    background: var(--surface-2);
+    color: var(--ink-2);
+    border: 1px solid var(--line);
+    border-radius: 0;
+  }
+
+  /* Comments representation */
+  .logged-comment {
+    margin-top: 6px;
+    padding: 6px 10px;
+    background: var(--surface-2);
+    border-left: 2px solid var(--accent);
+    font-size: 12px;
+    color: var(--ink);
+  }
+</style>
+</head>
+<body>
+
+<div class="header-section">
+  <h1>Hardware Intake & Kiosk Reconciliation Flow Preview</h1>
+  <p>Interactive simulation of the zero-typing pre-login intake screens (React Native) and backend status reconciliation alerts (Web Console).</p>
+</div>
+
+<div class="main-layout">
+  
+  <!-- LEFT: Mobile Intake App Mockup -->
+  <div class="mobile-container">
+    <div style="font-family: var(--mono); font-size: 11px; text-transform: uppercase; color: var(--ink-3)">Mobile Simulator</div>
+    <div class="phone-shell">
+      <div class="screen">
+        <div class="status-bar">
+          <span>14:32 📡</span>
+          <span>100% 🔋</span>
+        </div>
+        
+        <!-- SWITCHABLE SCREENS -->
+        
+        <!-- Screen 2: Intake Scan / Autofill (Starts active by default) -->
+        <div id="mob-screen-2" class="screen-content" style="display: flex; height: 100%;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 4px;">
+            <div>
+              <span class="mobile-input-label" style="color: var(--accent-ink)">Intake Kiosk</span>
+              <p style="font-size: 10px; color: var(--ink-3)">Rapid Device Check-in</p>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span class="mobile-input-label">Scan / Enter Serial Number</span>
+            <input id="serial-search-input" type="text" class="mobile-input" placeholder="Type serial (e.g. SN-XYZ)..." onkeyup="handleSerialType()" />
+            
+            <!-- Serial Autocomplete Suggestions -->
+            <div id="serial-suggestions" class="autocomplete-box" style="display: none;">
+              <div class="autocomplete-item" onclick="selectSerial('SN-A9283F')"><b>SN-A9283F</b> <span style="color:var(--ink-3)">(Dell 5490)</span></div>
+              <div class="autocomplete-item" onclick="selectSerial('SN-B1102E')"><b>SN-B1102E</b> <span style="color:var(--ink-3)">(HP ProBook)</span></div>
+              <div class="autocomplete-item" onclick="selectSerial('SN-C7738B')"><b>SN-C7738B</b> <span style="color:var(--ink-3)">(ThinkPad E14)</span></div>
+            </div>
+          </div>
+
+          <!-- Onboarding / Registration Button -->
+          <button id="register-trigger-btn" class="mobile-btn mobile-btn--secondary" style="padding: 8px;" onclick="openOnboardDialog()">+ Register Serial Without Sticker</button>
+
+          <!-- Scanned Device details and Actions -->
+          <div id="scanned-device-view" style="display: none; flex-direction: column; gap: 12px; flex: 1;">
+            <div class="device-card">
+              <span id="device-label-text" style="font-family: var(--mono); font-size: 10px; color: var(--accent-ink)">LAP-012 (BOUND)</span>
+              <h4 id="device-serial-title">Serial: SN-A9283F</h4>
+              <p>Model: Dell Latitude 5490</p>
+              <p>Status: <span style="color: var(--ok)">Working (In Use)</span></p>
+            </div>
+
+            <div>
+              <span class="mobile-input-label">Symptom Checklist</span>
+              <div class="symptom-checkboxes">
+                <label class="symptom-item"><input type="checkbox" checked /> SSD Fault</label>
+                <label class="symptom-item"><input type="checkbox" /> Lockout</label>
+                <label class="symptom-item"><input type="checkbox" /> Screen Crack</label>
+                <label class="symptom-item"><input type="checkbox" /> Keyboard</label>
+              </div>
+            </div>
+
+            <div style="margin-top: auto; display: flex; flex-direction: column; gap: 4px;">
+              <span class="mobile-input-label">Data Entry Person</span>
+              <input id="data-entry-person-input" type="text" class="mobile-input" placeholder="Your Name (e.g. Eric)..." />
+            </div>
+
+            <div class="mobile-action-buttons" style="margin-top: 8px;">
+              <div class="action-btn-red" onclick="markBroken()">MARK BROKEN (RED STICKY)</div>
+              <div class="action-btn-green" onclick="openReassignScreen()">REISSUE / ASSIGN (GREEN STICKY)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 3: Reassign Custodian -->
+        <div id="mob-screen-3" class="screen-content" style="display: none;">
+          <div style="display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 8px;">
+            <button class="mobile-btn" style="width: auto; padding: 4px 8px; font-size: 11px;" onclick="goBackToScan()">&larr; Back</button>
+            <span class="mobile-input-label">Assign Custodian</span>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <span class="mobile-input-label">Custodian Email (UPN)</span>
+            <input id="custodian-email-input" type="text" class="mobile-input" placeholder="Type email or name..." onkeyup="handleStudentType()" />
+
+            <!-- Student Autocomplete Suggestions -->
+            <div id="student-suggestions" class="autocomplete-box" style="display: none;">
+              <div class="autocomplete-item" onclick="selectStudent('john.doe@isomo.org')"><b>John Doe</b> <p style="font-size:10px; color:var(--ink-3)">john.doe@isomo.org (Student)</p></div>
+              <div class="autocomplete-item" onclick="selectStudent('sandrine.m@isomo.org')"><b>Sandrine Mutoni</b> <p style="font-size:10px; color:var(--ink-3)">sandrine.m@isomo.org (Student)</p></div>
+              <div class="autocomplete-item" onclick="selectStudent('teacher.jean@isomo.org')"><b>Jean Paul</b> <p style="font-size:10px; color:var(--ink-3)">teacher.jean@isomo.org (Staff)</p></div>
+            </div>
+            
+            <span class="mobile-input-label" style="margin-top: 6px;">Custodian Type</span>
+            <select class="mobile-input" style="padding: 8px;">
+              <option value="student">Student</option>
+              <option value="staff">Staff</option>
+              <option value="pool">General Pool</option>
+            </select>
+
+            <span class="mobile-input-label" style="margin-top: 6px;">Data Entry Person</span>
+            <input id="data-entry-person-reassign" type="text" class="mobile-input" placeholder="Your Name (e.g. Eric)..." />
+
+            <button class="mobile-btn" style="background: var(--ok); color: var(--bg); margin-top: 14px;" onclick="confirmReassign()">Confirm custody & Reissue</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Web Console Discrepancy Alerts and Reconciliation -->
+  <div class="web-console">
+    <div class="web-header">
+      <div class="web-title-wrap">
+        <h2>Open Discrepancies & Alerts</h2>
+        <small>Durable Admin Verification Queue</small>
+      </div>
+      <span class="chip-48h" style="border: none; background: var(--bad-soft); color: var(--bad)">1 Escalated Alert</span>
+    </div>
+
+    <ul class="alerts-list">
+      
+      <!-- ALERT ROW 1: Active Mismatch Alert -->
+      <li class="alert-row-wrap">
+        <div class="alert-row">
+          <div>
+            <span class="alert-sev-badge alert-sev--critical">critical</span>
+            <span class="chip-48h">&gt; 48H</span>
+          </div>
+          <div>
+            <div class="alert-message"><b>Inventory Mismatch: LAP-012</b></div>
+            <p class="alert-meta">Device LAP-012 heartbeated online, but is marked as 'intake_broken' in inventory.</p>
+            
+            <!-- Comment Section inside alert meta if reconciling comment was filled -->
+            <div id="reconciliation-comment-view" class="logged-comment" style="display: none;">
+              💬 Comment: <span id="comment-text-placeholder">Active motherboard diagnostics under progress on Kigali Bench.</span> <span class="muted" style="float: right;">by admin</span>
+            </div>
+          </div>
+          <div>
+            <button id="web-resolve-btn" class="web-btn" onclick="toggleReconciliationPanel()">Resolve Discrepancy</button>
+          </div>
+        </div>
+
+        <!-- RECONCILIATION PANEL (EXPORTS TWO ACTIONS) -->
+        <div id="web-reconcile-panel" class="reconcile-panel" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <h4 style="margin: 0; font-style: italic; color: var(--accent-ink); display: flex; align-items: center; gap: 6px; font-size: 13px;">
+              ⚠️ Resolve Telemetry Mismatch discrepancy
+            </h4>
+            <button class="web-btn web-btn--secondary" style="padding: 4px 10px; font-size: 11px;" onclick="toggleReconciliationPanel()">Cancel</button>
+          </div>
+
+          <div class="reconcile-grid">
+            
+            <!-- Option A: Reassign Custodian -->
+            <div class="reconcile-option-card">
+              <h4>Option A: Reassign Custodian</h4>
+              <p>Assign this laptop to a new custodian. This updates the device status to 'working_in_use' and resolves the alert.</p>
+              
+              <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">
+                <input id="web-reassign-email" type="text" class="web-input" placeholder="Custodian Email (UPN)..." />
+                
+                <div style="display: flex; gap: 6px;">
+                  <button class="web-btn" style="flex: 1; padding: 4px; font-size: 11px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink)" id="btn-type-student" onclick="setWebType('student')">Student</button>
+                  <button class="web-btn" style="flex: 1; padding: 4px; font-size: 11px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink)" id="btn-type-staff" onclick="setWebType('staff')">Staff</button>
+                  <button class="web-btn" style="flex: 1; padding: 4px; font-size: 11px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink)" id="btn-type-pool" onclick="setWebType('pool')">Pool</button>
+                </div>
+
+                <button class="web-btn" style="margin-top: 6px; width: 100%;" onclick="submitWebReassign()">Confirm Reassignment</button>
+              </div>
+            </div>
+
+            <!-- Option B: Diagnostic Comment -->
+            <div class="reconcile-option-card">
+              <h4>Option B: Confirm Active / Log Comment</h4>
+              <p>Keep the device status as broken in inventory, but input a comment confirming why it is online (e.g. diagnostics, testing). This acknowledges the alert.</p>
+              
+              <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px; flex: 1;">
+                <textarea id="web-comment-input" class="web-input" placeholder="Diagnostic notes or bench explanation..." rows="3" style="flex: 1; resize: none;"></textarea>
+                <button class="web-btn" style="margin-top: 6px; width: 100%;" onclick="submitWebComment()">Submit Comment</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </li>
+
+    </ul>
+  </div>
+
+</div>
+
+<script>
+  let activeOperator = "";
+  let currentWebType = "student";
+
+  // Serial Autocomplete Actions
+  function handleSerialType() {
+    const val = document.getElementById("serial-search-input").value.trim();
+    const sug = document.getElementById("serial-suggestions");
+    if (val.length > 1) {
+      sug.style.display = "block";
+    } else {
+      sug.style.display = "none";
+    }
+  }
+
+  function selectSerial(sn) {
+    document.getElementById("serial-search-input").value = sn;
+    document.getElementById("serial-suggestions").style.display = "none";
+    document.getElementById("device-serial-title").innerText = "Serial: " + sn;
+    document.getElementById("scanned-device-view").style.display = "flex";
+    document.getElementById("register-trigger-btn").style.display = "none";
+  }
+
+  function openOnboardDialog() {
+    const val = document.getElementById("serial-search-input").value.trim();
+    if (!val) {
+      alert("Type a serial tag in the search box first to bind it.");
+      return;
+    }
+    const labelId = "LAP-" + Math.floor(100 + Math.random() * 900);
+    alert("Onboarding complete!\nRegistered BIOS Serial: " + val + "\nAssigned Label Code: " + labelId + "\n\nPrinting label now. Apply label to laptop chassis.");
+    
+    document.getElementById("device-label-text").innerText = labelId + " (NEWLY REGISTERED)";
+    document.getElementById("device-serial-title").innerText = "Serial: " + val;
+    document.getElementById("scanned-device-view").style.display = "flex";
+    document.getElementById("register-trigger-btn").style.display = "none";
+  }
+
+  // State Updates in Simulator
+  function markBroken() {
+    const operator = document.getElementById("data-entry-person-input").value.trim();
+    if (!operator) {
+      alert("Please enter the Data Entry Person's name before submitting.");
+      document.getElementById("data-entry-person-input").focus();
+      return;
+    }
+    alert("Device marked BROKEN in local queue.\nData Entry: " + operator + "\nApply physical RED sticky note to the laptop.");
+    document.getElementById("serial-search-input").value = "";
+    document.getElementById("data-entry-person-input").value = "";
+    document.getElementById("scanned-device-view").style.display = "none";
+    document.getElementById("register-trigger-btn").style.display = "block";
+  }
+
+  function openReassignScreen() {
+    const operator = document.getElementById("data-entry-person-input").value.trim();
+    if (!operator) {
+      alert("Please enter the Data Entry Person's name before proceeding.");
+      document.getElementById("data-entry-person-input").focus();
+      return;
+    }
+    // Pre-populate data entry person name on reassign screen
+    document.getElementById("data-entry-person-reassign").value = operator;
+    document.getElementById("mob-screen-2").style.display = "none";
+    document.getElementById("mob-screen-3").style.display = "flex";
+  }
+
+  function goBackToScan() {
+    document.getElementById("mob-screen-3").style.display = "none";
+    document.getElementById("mob-screen-2").style.display = "flex";
+  }
+
+  // Student Autocomplete Actions
+  function handleStudentType() {
+    const val = document.getElementById("custodian-email-input").value.trim();
+    const sug = document.getElementById("student-suggestions");
+    if (val.length > 1) {
+      sug.style.display = "block";
+    } else {
+      sug.style.display = "none";
+    }
+  }
+
+  function selectStudent(email) {
+    document.getElementById("custodian-email-input").value = email;
+    document.getElementById("student-suggestions").style.display = "none";
+  }
+
+  function confirmReassign() {
+    const email = document.getElementById("custodian-email-input").value.trim();
+    const operator = document.getElementById("data-entry-person-reassign").value.trim();
+    if (!email) {
+      alert("Custodian Email required.");
+      return;
+    }
+    if (!operator) {
+      alert("Please enter the Data Entry Person's name before confirming.");
+      document.getElementById("data-entry-person-reassign").focus();
+      return;
+    }
+    alert("Device reassigned to: " + email + "\nData Entry: " + operator + "\nSticky notes removed. Device marked as active.");
+    document.getElementById("serial-search-input").value = "";
+    document.getElementById("custodian-email-input").value = "";
+    document.getElementById("data-entry-person-input").value = "";
+    document.getElementById("data-entry-person-reassign").value = "";
+    document.getElementById("scanned-device-view").style.display = "none";
+    document.getElementById("register-trigger-btn").style.display = "block";
+    document.getElementById("mob-screen-3").style.display = "none";
+    document.getElementById("mob-screen-2").style.display = "flex";
+  }
+
+  // --- Web Console actions ---
+  function toggleReconciliationPanel() {
+    const panel = document.getElementById("web-reconcile-panel");
+    const btn = document.getElementById("web-resolve-btn");
+    if (panel.style.display === "none") {
+      panel.style.display = "flex";
+      btn.innerText = "Close";
+    } else {
+      panel.style.display = "none";
+      btn.innerText = "Resolve Discrepancy";
+    }
+  }
+
+  function setWebType(type) {
+    currentWebType = type;
+    document.getElementById("btn-type-student").style.background = type === 'student' ? 'var(--accent)' : 'var(--surface-2)';
+    document.getElementById("btn-type-staff").style.background = type === 'staff' ? 'var(--accent)' : 'var(--surface-2)';
+    document.getElementById("btn-type-pool").style.background = type === 'pool' ? 'var(--accent)' : 'var(--surface-2)';
+  }
+
+  function submitWebReassign() {
+    const email = document.getElementById("web-reassign-email").value.trim();
+    if (!email) {
+      alert("Please input a Custodian Email (UPN).");
+      return;
+    }
+    alert("Reassignment submitted!\nCustodian: " + email + "\nDevice LAP-012 status updated to 'working_in_use'.\nAlert resolved.");
+    document.getElementById("web-reconcile-panel").style.display = "none";
+    document.getElementById("web-resolve-btn").style.display = "none";
+    document.querySelector(".alert-sev-badge").innerText = "RESOLVED";
+    document.querySelector(".alert-sev-badge").className = "alert-sev-badge";
+    document.querySelector(".alert-sev-badge").style.background = "var(--ok)";
+    document.querySelector(".alert-sev-badge").style.color = "var(--bg)";
+    document.querySelector(".alert-row").style.opacity = "0.5";
+  }
+
+  function submitWebComment() {
+    const comment = document.getElementById("web-comment-input").value.trim();
+    if (!comment) {
+      alert("Please input a comment.");
+      return;
+    }
+    alert("Reconciliation comment logged!\nComment: " + comment + "\nDevice will remain marked as 'intake_broken' in inventory.\nAlert acknowledged.");
+    
+    document.getElementById("comment-text-placeholder").innerText = comment;
+    document.getElementById("reconciliation-comment-view").style.display = "block";
+    
+    document.getElementById("web-reconcile-panel").style.display = "none";
+    document.getElementById("web-resolve-btn").style.display = "none";
+    document.querySelector(".alert-sev-badge").innerText = "ACKNOWLEDGED";
+    document.querySelector(".alert-sev-badge").className = "alert-sev-badge";
+    document.querySelector(".alert-sev-badge").style.background = "var(--faint)";
+    document.querySelector(".alert-sev-badge").style.color = "var(--ink)";
+    document.querySelector(".alert-row").style.opacity = "0.7";
+  }
+
+  // Init web type
+  setWebType('student');
+</script>
+
+</body>
+</html>

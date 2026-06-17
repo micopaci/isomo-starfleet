@@ -8,6 +8,7 @@ import { MapScreen }         from '../screens/MapScreen';
 import { StarlinksScreen }   from '../screens/StarlinksScreen';
 import { AlertsScreen }      from '../screens/AlertsScreen';
 import { SettingsScreen }    from '../screens/SettingsScreen';
+import { InventoryScreen }   from '../screens/InventoryScreen';
 import { Colors }            from '../theme/colors';
 import { getApi }            from '../store/auth';
 
@@ -39,68 +40,89 @@ export function AppNavigator({ colors, onLogout, role, email }: Props) {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor:  colors.rule,
-          borderTopWidth:  1,
-          paddingBottom:   4,
-          height:          58,
-        },
-        tabBarActiveTintColor:   colors.accent,
-        tabBarInactiveTintColor: colors.ink3,
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginTop: 2 },
-      }}
-    >
-      <Tab.Screen
-        name="Overview"
-        component={OverviewScreen}
-        options={{ tabBarIcon: ({ color }) => <TabIcon icon="🏠" color={color} />, tabBarLabel: 'Overview' }}
-      />
-      <Tab.Screen
-        name="Map"
-        component={MapScreen}
-        options={{
-          tabBarIcon: ({ color }) => <TabIcon icon="🗺️" color={color} />,
-          tabBarLabel: 'Map',
-          headerShown: true,
-          headerTitle: 'Fleet Map',
-          headerStyle:     { backgroundColor: colors.surface },
-          headerTintColor: colors.ink,
-          headerShadowVisible: false,
-        }}
-      />
-      <Tab.Screen
-        name="Sites"
-        component={SitesStack}
-        options={{ tabBarIcon: ({ color }) => <TabIcon icon="📡" color={color} />, tabBarLabel: 'Campuses' }}
-      />
-      <Tab.Screen
-        name="Starlinks"
-        component={StarlinksScreen}
-        options={{ tabBarIcon: ({ color }) => <TabIcon icon="📶" color={color} />, tabBarLabel: 'Starlinks' }}
-      />
-      <Tab.Screen
-        name="Alerts"
-        options={{
-          tabBarIcon:  ({ color }) => <TabIcon icon="🔔" color={color} />,
-          tabBarLabel: 'Alerts',
-          tabBarBadge: alertCount > 0 ? alertCount : undefined,
-          tabBarBadgeStyle: { backgroundColor: colors.bad, fontSize: 10 },
+    const isDeskMode = role === 'guest_operator';
+
+    return (
+      <Tab.Navigator
+        screenOptions={{
+          headerShown: false,
+          tabBarStyle: {
+            backgroundColor: colors.surface,
+            borderTopColor:  colors.rule,
+            borderTopWidth:  1,
+            paddingBottom:   4,
+            height:          58,
+          },
+          tabBarActiveTintColor:   colors.accent,
+          tabBarInactiveTintColor: colors.ink3,
+          tabBarLabelStyle: { fontSize: 10, fontWeight: '600', marginTop: 2 },
         }}
       >
-        {() => <AlertsScreen colors={colors} role={role} onAlertCountChange={setAlertCount} />}
-      </Tab.Screen>
-      <Tab.Screen
-        name="Settings"
-        options={{ tabBarIcon: ({ color }) => <TabIcon icon="SET" color={color} />, tabBarLabel: 'Settings' }}
-      >
-        {() => <SettingsScreen colors={colors} onLogout={onLogout} role={role} email={email} />}
-      </Tab.Screen>
-    </Tab.Navigator>
+        {!isDeskMode && (
+          <Tab.Screen
+            name="Overview"
+            component={OverviewScreen}
+            options={{ tabBarIcon: ({ color }) => <TabIcon icon="🏠" color={color} />, tabBarLabel: 'Overview' }}
+          />
+        )}
+        {!isDeskMode && (
+          <Tab.Screen
+            name="Map"
+            component={MapScreen}
+            options={{
+              tabBarIcon: ({ color }) => <TabIcon icon="🗺️" color={color} />,
+              tabBarLabel: 'Map',
+              headerShown: true,
+              headerTitle: 'Fleet Map',
+              headerStyle:     { backgroundColor: colors.surface },
+              headerTintColor: colors.ink,
+              headerShadowVisible: false,
+            }}
+          />
+        )}
+        {!isDeskMode && (
+          <Tab.Screen
+            name="Sites"
+            component={SitesStack}
+            options={{ tabBarIcon: ({ color }) => <TabIcon icon="📡" color={color} />, tabBarLabel: 'Campuses' }}
+          />
+        )}
+        {!isDeskMode && (
+          <Tab.Screen
+            name="Starlinks"
+            component={StarlinksScreen}
+            options={{ tabBarIcon: ({ color }) => <TabIcon icon="📶" color={color} />, tabBarLabel: 'Starlinks' }}
+          />
+        )}
+        {!isDeskMode && (
+          <Tab.Screen
+            name="Alerts"
+            options={{
+              tabBarIcon:  ({ color }) => <TabIcon icon="🔔" color={color} />,
+              tabBarLabel: 'Alerts',
+              tabBarBadge: alertCount > 0 ? alertCount : undefined,
+              tabBarBadgeStyle: { backgroundColor: colors.bad, fontSize: 10 },
+            }}
+          >
+            {() => <AlertsScreen colors={colors} role={role} onAlertCountChange={setAlertCount} />}
+          </Tab.Screen>
+        )}
+        <Tab.Screen
+          name="Inventory"
+          options={{ tabBarIcon: ({ color }) => <TabIcon icon="📦" color={color} />, tabBarLabel: 'Inventory' }}
+        >
+          {() => <InventoryScreen colors={colors} role={role} />}
+        </Tab.Screen>
+        <Tab.Screen
+          name="Settings"
+          options={{ 
+            tabBarIcon: ({ color }) => <TabIcon icon="SET" color={color} />, 
+            tabBarLabel: isDeskMode ? 'Exit Desk' : 'Settings'
+          }}
+        >
+          {() => <SettingsScreen colors={colors} onLogout={onLogout} role={role} email={email} />}
+        </Tab.Screen>
+      </Tab.Navigator>
   );
 }
 

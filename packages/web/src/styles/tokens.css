@@ -1,0 +1,176 @@
+/* ═══════════════════════════════════════════════════════════════
+   Starfleet Design Tokens — all palettes, modes, and accents
+   Canonical source: DESIGN.md
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Field Green (light — default) ── */
+  --bg:           #f3f6f1;
+  --rail:         #e8eee8;
+  --surface:      #fbfcf8;
+  --surface-2:    #eef4ee;
+  --ink:          #222b27;
+  --ink-2:        #44514b;
+  --ink-3:        #68756e;
+  --muted:        #84908a;
+  --rule:         #cfd9d2;
+  --rule-2:       #dfe6e1;
+  --accent:       #24825f;
+  --accent-2:     #0e3d2b;
+  --accent-soft:  #d7eadf;
+  --accent-ink:   #0e3d2b;
+  --ok:           #347a56;
+  --ok-soft:      #dceade;
+  --warn:         #9b6f18;
+  --warn-soft:    #eee1bd;
+  --bad:          #b45142;
+  --bad-soft:     #edd5d1;
+  --info:         #2a7a82;
+  --mute:         #84908a;
+  --mute-soft:    #e4ebe5;
+
+  --font-ui:    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --font-mono:  "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --radius:     0px;
+  --row-pad:    14px 16px;
+  --panel-pad:  20px;
+  --sidebar-w:  228px;
+}
+
+/* ── Field Green dark ── */
+[data-theme="dark"] {
+  --bg:           #141f1c;
+  --rail:         #17251f;
+  --surface:      #1b2b24;
+  --surface-2:    #22332b;
+  --ink:          #e6efe9;
+  --ink-2:        #b8c5be;
+  --ink-3:        #7c8a84;
+  --muted:        #66746d;
+  --rule:         #33443c;
+  --rule-2:       #26362f;
+  --accent:       #34b483;
+  --accent-2:     #5fc28e;
+  --accent-soft:  #15382a;
+  --accent-ink:   #10241b;
+  --ok:           #5fc28e;
+  --ok-soft:      #183526;
+  --warn:         #d9a441;
+  --warn-soft:    #392d14;
+  --bad:          #cf5b48;
+  --bad-soft:     #3b1e1a;
+  --info:         #75b8bd;
+  --mute:         #7c8a84;
+  --mute-soft:    #22312b;
+}
+
+/* ── Navy ── */
+[data-palette="navy"] {
+  --bg: #0c1320; --rail: #0f172a; --surface: #131d2e; --surface-2: #192535;
+  --ink: #e9e4d6; --ink-2: #c4bfb2; --ink-3: #7a7568; --muted: #585450;
+  --rule: #22304a; --rule-2: #1a263c;
+  --accent: #d2674c; --accent-2: #f0896e; --accent-soft: #2e1b17; --accent-ink: #f0896e;
+  --ok: #4daa72; --ok-soft: #143221;
+  --warn: #d4a038; --warn-soft: #382c12;
+  --bad: #d95a5a; --bad-soft: #3a1c1c;
+  --info: #5bb8bd;
+}
+
+/* ── Carbon ── */
+[data-palette="carbon"] {
+  --bg: #0b0b0d; --rail: #0e0e11; --surface: #141418; --surface-2: #1c1c21;
+  --ink: #f2f2f2; --ink-2: #c0c0c0; --ink-3: #7a7a7a; --muted: #545454;
+  --rule: #242429; --rule-2: #1d1d22;
+  --accent: #d9a441; --accent-2: #f2c360; --accent-soft: #332712; --accent-ink: #f2c360;
+  --ok: #48a870; --ok-soft: #123020;
+  --warn: #d9a441; --warn-soft: #332712;
+  --bad: #d45252; --bad-soft: #361717;
+  --info: #5ab4b9;
+}
+
+/* ── Slate ── */
+[data-palette="slate"] {
+  --bg: #11161d; --rail: #141a22; --surface: #181f28; --surface-2: #1e2630;
+  --ink: #e8ecf1; --ink-2: #bec5cf; --ink-3: #78838e; --muted: #546068;
+  --rule: #252f3c; --rule-2: #1c2531;
+  --accent: #4f8fd1; --accent-2: #7ab0e4; --accent-soft: #14253a; --accent-ink: #7ab0e4;
+  --ok: #4aae74; --ok-soft: #123321;
+  --warn: #d4a040; --warn-soft: #382a12;
+  --bad: #d45858; --bad-soft: #381b1b;
+  --info: #56b4ba;
+}
+
+/* ── Warm Paper (light) ── */
+[data-palette="warm-paper"] {
+  --bg: #f6f3ec; --rail: #ede9e0; --surface: #fdfaf5; --surface-2: #f0ece3;
+  --ink: #141414; --ink-2: #3c3830; --ink-3: #7a7268; --muted: #9c9288;
+  --rule: #d8d0c4; --rule-2: #e4ddd5;
+  --accent: #c8553d; --accent-2: #9c3e2a; --accent-soft: #fbeee9; --accent-ink: #9c3e2a;
+  --ok: #287a52; --ok-soft: #e3f3eb;
+  --warn: #a06818; --warn-soft: #faf0da;
+  --bad: #b83636; --bad-soft: #fce8e8;
+  --info: #2a7a82;
+}
+
+/* ── Chalk (light) ── */
+[data-palette="chalk"] {
+  --bg: #f5f7fb; --rail: #edf0f7; --surface: #ffffff; --surface-2: #eef1f8;
+  --ink: #141820; --ink-2: #38405a; --ink-3: #6878a0; --muted: #96a0b8;
+  --rule: #ccd4e8; --rule-2: #dae0f0;
+  --accent: #3d67cc; --accent-2: #2a4a9c; --accent-soft: #ebf0fc; --accent-ink: #2a4a9c;
+  --ok: #1e8850; --ok-soft: #e6f6ee;
+  --warn: #987412; --warn-soft: #faf2da;
+  --bad: #c03030; --bad-soft: #fdebeb;
+  --info: #2878a0;
+}
+
+/* ── Stone (light) ── */
+[data-palette="stone"] {
+  --bg: #f0eeea; --rail: #e5e2db; --surface: #faf8f5; --surface-2: #e8e5de;
+  --ink: #1a1816; --ink-2: #44403a; --ink-3: #7c7870; --muted: #a09890;
+  --rule: #ccc8c0; --rule-2: #d8d4cc;
+  --accent: #6b5030; --accent-2: #48341a; --accent-soft: #f7f3ed; --accent-ink: #48341a;
+  --ok: #2a7e50; --ok-soft: #e7f5ed;
+  --warn: #8c6218; --warn-soft: #f9f0db;
+  --bad: #b02828; --bad-soft: #fbeaea;
+  --info: #2a6878;
+}
+
+/* ── Typography Typesets ── */
+[data-typeset="compact"] {
+  --font-serif: var(--font-ui) !important;
+}
+[data-typeset="fun"] {
+  --font-ui: "Quicksand", "Nunito", "Comic Sans MS", sans-serif !important;
+  --font-serif: "Fredoka", "Quicksand", "Comic Sans MS", sans-serif !important;
+  --font-mono: "Courier New", Courier, monospace !important;
+}
+
+/* ── High Contrast overrides ── */
+[data-contrast="high"] {
+  --ink:   #000000 !important;
+  --ink-2: #181f1c !important;
+  --ink-3: #38453f !important;
+  --rule:  #8f9e94 !important;
+  --rule-2:#aab8af !important;
+}
+[data-theme="dark"][data-contrast="high"] {
+  --ink:   #ffffff !important;
+  --ink-2: #f0f5f2 !important;
+  --ink-3: #c2cfc9 !important;
+  --rule:  #60756b !important;
+  --rule-2:#4a5c53 !important;
+}
+
+/* ── Custom Accent overrides ── */
+[data-accent-color="signal-green"]                         { --accent: #24825f; --accent-2: #0e3d2b; }
+[data-theme="dark"][data-accent-color="signal-green"]      { --accent: #34b483; --accent-2: #5fc28e; }
+[data-accent-color="indigo"]                               { --accent: #3b5bdb; --accent-2: #1c2e8a; --accent-soft: #edf0fd; }
+[data-theme="dark"][data-accent-color="indigo"]            { --accent: #5c7cfa; --accent-2: #91a7ff; --accent-soft: #192147; }
+[data-accent-color="terracotta"]                           { --accent: #b23b2e; --accent-2: #5a150e; --accent-soft: #fcebeb; }
+[data-theme="dark"][data-accent-color="terracotta"]        { --accent: #cf5b48; --accent-2: #e58a7b; --accent-soft: #3b1c1a; }
+[data-accent-color="ochre"]                                { --accent: #9a6a12; --accent-2: #4e3204; --accent-soft: #faf3e5; }
+[data-theme="dark"][data-accent-color="ochre"]             { --accent: #d9a441; --accent-2: #f3c875; --accent-soft: #392b13; }
+[data-accent-color="plum"]                                 { --accent: #6d3b8e; --accent-2: #341249; --accent-soft: #f6eefc; }
+[data-theme="dark"][data-accent-color="plum"]              { --accent: #9e6ec2; --accent-2: #c5a3dd; --accent-soft: #2f193c; }
