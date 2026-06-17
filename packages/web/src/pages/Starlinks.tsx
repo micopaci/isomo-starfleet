@@ -19,10 +19,14 @@ function tone(status: Status): 'ok' | 'warn' | 'bad' | 'mute' {
 }
 
 export default function Starlinks() {
-  const { dishes, loading } = useData();
+  const { dishes: activeDishes, inactiveDishes, loading } = useData();
   const [filter, setFilter] = useState<string | 'all'>('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Dish | null>(null);
+
+  // The Starlinks list is terminal-aware: it shows the active site-based fleet
+  // plus suspended/disabled service lines (which never surface through /api/sites).
+  const dishes = useMemo(() => [...activeDishes, ...inactiveDishes], [activeDishes, inactiveDishes]);
 
   const filtered = useMemo(() =>
     dishes.filter(d => {

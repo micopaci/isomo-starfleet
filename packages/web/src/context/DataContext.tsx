@@ -61,6 +61,7 @@ export interface Intel {
 
 interface DataContextType {
   dishes: Dish[];
+  inactiveDishes: Dish[];
   alerts: Alert[];
   inventory: InventoryDevice[];
   intel: Intel;
@@ -93,6 +94,7 @@ function getRegionForDistrict(district: string | null): string {
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [dishes, setDishes] = useState<Dish[]>([]);
+  const [inactiveDishes, setInactiveDishes] = useState<Dish[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [inventory, setInventory] = useState<InventoryDevice[]>([]);
   const [intel, setIntel] = useState<Intel>({ kpIndex: null, kpLabel: null, satCount: null });
@@ -209,6 +211,45 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }) : [];
 
+      // 2b. Inactive (portal-suspended) terminals — kept SEPARATE from dishes.
+      // /api/sites is site-centric (one active terminal per site), so disabled
+      // service lines (dead/replaced kits) never surface there. Pull them from the
+      // terminal-centric endpoint into their own list so the Starlinks page can
+      // show them (Inactive tab) WITHOUT inflating Overview/Reports/Map totals,
+      // which keep using the site-based `dishes` above.
+      const seenLines = new Set<string>(
+        Array.isArray(rawSites)
+          ? rawSites.map((s: any) => s.starlink_terminal?.service_line_id).filter(Boolean)
+          : []
+      );
+      const mappedInactive: Dish[] = [];
+      try {
+        const termRes = await fetch('/api/starlink-terminals', { headers });
+        const termJson = await termRes.json();
+        const terminals: any[] = Array.isArray(termJson?.terminals) ? termJson.terminals : [];
+        for (const t of terminals) {
+          if (String(t.current_status || '').toLowerCase() !== 'inactive') continue;
+          if (t.service_line_id && seenLines.has(t.service_line_id)) continue;
+          const consumed = Array.isArray(t.usage_trend) ? t.usage_trend.map((u: any) => Number(u.consumed_gb)) : [];
+          const spark = consumed.length > 0 ? consumed.slice(-10) : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+          while (spark.length < 10) spark.unshift(0);
+          mappedInactive.push({
+            name: t.nickname || t.site_name || t.service_line_id,
+            campus: t.site_name || 'Unassigned',
+            region: '—',
+            status: 'inactive',
+            latency: 0, snr: 0, down: 0, up: 0, uptime: 0, rain: 0, laptops: 0,
+            serial: t.service_line_id,
+            lat_coord: 0, lng_coord: 0,
+            spark,
+            pingDrop: 0,
+            agent: false,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load inactive terminals:', err);
+      }
+
       // 3. Fetch Devices (Inventory)
       const inventoryRes = await fetch('/api/devices', { headers });
       const rawInventory = await inventoryRes.json();
@@ -249,6 +290,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }) : [];
 
       setDishes(mappedDishes);
+      setInactiveDishes(mappedInactive);
       setAlerts(mappedAlerts);
       setInventory(mappedInventory);
 
@@ -273,7 +315,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <DataContext.Provider value={{ dishes, alerts, inventory, intel, loading, refreshData }}>
+    <DataContext.Provider value={{ dishes, inactiveDishes, alerts, inventory, intel, loading, refreshData }}>
       {children}
     </DataContext.Provider>
   );

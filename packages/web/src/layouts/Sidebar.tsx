@@ -13,15 +13,16 @@ export default function Sidebar() {
   const nav = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { dishes, alerts, inventory, intel, loading } = useData();
+  const { dishes, inactiveDishes, alerts, inventory, intel, loading } = useData();
 
   const openAlertsCount = alerts.filter(a => a.open).length;
   const campusesCount = new Set(dishes.map(d => d.campus).filter(Boolean)).size;
   const offlineDishes = dishes.filter(d => d.status !== 'online').length;
+  const totalStarlinks = dishes.length + inactiveDishes.length;
 
   const items = [
     { path: '/overview',   label: 'Overview',     icon: 'ti-layout-dashboard', count: loading ? '' : String(offlineDishes) },
-    { path: '/starlinks',  label: 'Starlinks',     icon: 'ti-antenna',          count: loading ? '' : String(dishes.length) },
+    { path: '/starlinks',  label: 'Starlinks',     icon: 'ti-antenna',          count: loading ? '' : String(totalStarlinks) },
     { path: '/computers',  label: 'Computers',     icon: 'ti-device-laptop',    count: loading ? '' : String(inventory.length) },
     { path: '/alerts',     label: 'Alerts',        icon: 'ti-bell',             count: loading ? '' : String(openAlertsCount) },
     { path: '/campuses',   label: 'Campuses',      icon: 'ti-school',           count: loading ? '' : String(campusesCount) },
