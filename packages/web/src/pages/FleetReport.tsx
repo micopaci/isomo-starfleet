@@ -11,10 +11,11 @@ export default function FleetReport() {
     );
   }
 
-  const totalLaptops = dishes.reduce((s, d) => s + d.laptops, 0);
-  const totalSites = dishes.length;
-  const onlineSites = dishes.filter(d => d.status === 'online').length;
-  const totalTB = +(dishes.reduce((acc, d) => acc + (0.5 + d.laptops * 0.15), 0)).toFixed(1);
+  const activeDishes = dishes.filter(d => d.status !== 'inactive');
+  const totalLaptops = activeDishes.reduce((s, d) => s + d.laptops, 0);
+  const totalSites = activeDishes.length;
+  const onlineSites = activeDishes.filter(d => d.status === 'online').length;
+  const totalTB = +(activeDishes.reduce((acc, d) => acc + (0.5 + d.laptops * 0.15), 0)).toFixed(1);
   return (
     <div className="sf-view">
       <div className="sf-view-head">
@@ -75,7 +76,7 @@ export default function FleetReport() {
               </tr>
             </thead>
             <tbody>
-              {dishes
+              {activeDishes
                 .slice()
                 .sort((a, b) => b.laptops - a.laptops)
                 .map(d => {

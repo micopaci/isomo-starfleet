@@ -283,7 +283,8 @@ function loadTerminalInventoryFromEnv() {
   if (!Array.isArray(entries)) {
     throw new Error('Starlink terminal inventory must be an array or { terminals: [...] }');
   }
-  const includeInactive = process.env.STARLINK_INCLUDE_INACTIVE_TERMINALS === 'true';
+  // Always load all terminals so inactive ones can be seeded with current_status='Inactive'.
+  // Filtering to active-only happens in ensureTerminalInventory before polling.
   return entries.map(entry => ({
     service_line_id: String(entry.service_line_id || entry.serviceLineId || entry.service_line || '').trim(),
     account_id: String(entry.account_id || entry.accountId || '').trim(),
@@ -293,12 +294,7 @@ function loadTerminalInventoryFromEnv() {
       ? null
       : Number(entry.site_id),
     billing_cycle_start: entry.billing_cycle_start || entry.billingCycleStart || null,
-  })).filter(entry => {
-    if (!entry.service_line_id || !entry.account_id) return false;
-    if (includeInactive) return true;
-    const status = String(entry.status || '').trim().toLowerCase();
-    return !status || status === 'active';
-  });
+  })).filter(entry => entry.service_line_id && entry.account_id);
 }
 
 function normalizeTerminalInventory(raw) {
@@ -369,16 +365,22 @@ async function seedConfiguredTerminals(client, inventory) {
       continue;
     }
     const siteId = await resolveSiteId(client, terminal);
+    const portalInactive = String(terminal.status || '').trim().toLowerCase() === 'inactive';
     await client.query(
       `INSERT INTO starlink_terminals
-         (service_line_id, account_id, nickname, site_id, billing_cycle_start)
-       VALUES ($1, $2, $3, $4, $5)
+         (service_line_id, account_id, nickname, site_id, billing_cycle_start, current_status)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (service_line_id)
        DO UPDATE SET
          account_id = EXCLUDED.account_id,
          nickname = COALESCE(EXCLUDED.nickname, starlink_terminals.nickname),
          site_id = COALESCE(EXCLUDED.site_id, starlink_terminals.site_id),
          billing_cycle_start = COALESCE(EXCLUDED.billing_cycle_start, starlink_terminals.billing_cycle_start),
+         current_status = CASE
+           WHEN $6 = 'Inactive' THEN 'Inactive'
+           WHEN starlink_terminals.current_status = 'Inactive' AND $6 != 'Inactive' THEN 'Unknown'
+           ELSE starlink_terminals.current_status
+         END,
          updated_at = NOW()`,
       [
         terminal.service_line_id,
@@ -386,6 +388,7 @@ async function seedConfiguredTerminals(client, inventory) {
         terminal.nickname,
         siteId,
         terminal.billing_cycle_start,
+        portalInactive ? 'Inactive' : 'Unknown',
       ],
     );
     seeded += 1;
@@ -394,20 +397,28 @@ async function seedConfiguredTerminals(client, inventory) {
 }
 
 async function loadTerminals(client) {
+  // Inactive terminals are stored in the DB for display but excluded from polling.
   const { rows } = await client.query(
     `SELECT service_line_id, account_id, nickname, site_id, billing_cycle_start::text AS billing_cycle_start
      FROM starlink_terminals
+     WHERE current_status != 'Inactive'
      ORDER BY COALESCE(site_id, 999999), nickname NULLS LAST, service_line_id`,
   );
   return rows;
 }
 
 async function ensureTerminalInventory(client, { dryRun = false } = {}) {
-  const inventory = loadTerminalInventoryFromEnv();
-  const seeded = inventory.length && !dryRun ? await seedConfiguredTerminals(client, inventory) : 0;
-  const terminals = dryRun && inventory.length ? inventory : await loadTerminals(client);
+  const allInventory = loadTerminalInventoryFromEnv();
+  // Seed all terminals (including inactive so they appear in the DB with current_status='Inactive').
+  const seeded = allInventory.length && !dryRun ? await seedConfiguredTerminals(client, allInventory) : 0;
+  // Only return active terminals for polling.
+  const activeInventory = allInventory.filter(t => {
+    const s = String(t.status || '').trim().toLowerCase();
+    return !s || s === 'active';
+  });
+  const terminals = dryRun && allInventory.length ? activeInventory : await loadTerminals(client);
   if (!terminals.length) {
-    throw new Error('No Starlink terminals configured. Seed starlink_terminals with STARLINK_TERMINALS_FILE or STARLINK_TERMINALS_JSON.');
+    throw new Error('No active Starlink terminals configured. Seed starlink_terminals with STARLINK_TERMINALS_FILE or STARLINK_TERMINALS_JSON.');
   }
   return { seeded, terminals };
 }
