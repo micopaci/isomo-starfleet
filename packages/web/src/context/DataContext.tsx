@@ -206,7 +206,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }) : [];
 
       // 3. Fetch Devices (Inventory)
-      const inventoryRes = await fetch('/api/inventory', { headers });
+      const inventoryRes = await fetch('/api/devices', { headers });
       const rawInventory = await inventoryRes.json();
 
       const mappedInventory: InventoryDevice[] = Array.isArray(rawInventory) ? rawInventory.map((r: any) => {
@@ -217,18 +217,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         else if (hs === 'ready_to_reissue') status = 'ready';
         else if (hs === 'decommissioned') status = 'decommissioned';
 
-        const lastSeenAt = r.last_seen_at ? new Date(r.last_seen_at).getTime() : null;
+        const lastSeenAt = r.last_seen ? new Date(r.last_seen).getTime() : null;
         const online = lastSeenAt != null && (Date.now() - lastSeenAt) <= ONLINE_WINDOW_MS;
 
         return {
           id: Number(r.id),
           profile: r.profile_number || `LAP-${String(r.id).padStart(3, '0')}`,
-          serial: r.serial_number || '—',
-          model: r.model || 'Unknown Laptop',
+          serial: r.windows_sn || '—',
+          model: r.model || 'Unknown Device',
           status,
-          assignee: r.assignee_email || '—',
-          lastIntake: r.last_action_at ? new Date(r.last_action_at).toISOString().split('T')[0] : '—',
-          operator: r.last_operator || '—',
+          assignee: r.user_principal_name || '—',
+          lastIntake: r.intune_enrolled_at ? new Date(r.intune_enrolled_at).toISOString().split('T')[0] : '—',
+          operator: r.site_name || '—',
           mismatch: mismatchIds.has(r.id),
           lastSeenAt,
           online,
