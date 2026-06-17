@@ -246,7 +246,7 @@ def parse_usage_payload(payload, terminal, from_date, to_date):
             continue
         for day_index, point in enumerate(cycle.get("dailyData") or []):
             log_date = cycle_start + timedelta(days=day_index)
-            if log_date > today_utc:
+            if log_date >= today_utc:  # skip today — UTC day not complete until 00:00 UTC next day
                 continue
             if from_date and log_date < from_date:
                 continue
@@ -358,9 +358,17 @@ def fetch_status_rows(page, terminals):
 def fetch_usage(page, terminal, from_date, to_date):
     url = (
         "https://starlink.com/api/telemetryagg/v1/data-usage/"
-        f"account/{terminal['account_id']}/service-line/{terminal['service_line_id']}"
+        f"account/{terminal['account_id']}/service-line/{terminal['service_line_id']}/annotated"
     )
-    return parse_usage_payload(fetch_json(page, url), terminal, from_date, to_date)
+    try:
+        payload = fetch_json(page, url)
+    except Exception:
+        legacy_url = (
+            "https://starlink.com/api/telemetryagg/v1/data-usage/"
+            f"account/{terminal['account_id']}/service-line/{terminal['service_line_id']}"
+        )
+        payload = fetch_json(page, legacy_url)
+    return parse_usage_payload(payload, terminal, from_date, to_date)
 
 
 def write_json(path, payload):
@@ -484,9 +492,19 @@ def main():
             output["status"].extend(fetch_status_rows(page, terminals))
 
         if args.usage:
+            # Group by account so we call set_account_context once per account before fetching.
+            # telemetryagg validates the starlink.com.account_number cookie, same as webagg.
+            terminals_by_account = {}
             for terminal in terminals:
-                print(f"Fetching {terminal.get('nickname') or terminal['service_line_id']} [{terminal['service_line_id']}]")
-                output["usage"].extend(fetch_usage(page, terminal, args.from_date, args.to_date))
+                terminals_by_account.setdefault(terminal["account_id"], []).append(terminal)
+            for account_id, account_terminals in terminals_by_account.items():
+                set_account_context(page, account_id)
+                for terminal in account_terminals:
+                    print(f"Fetching {terminal.get('nickname') or terminal['service_line_id']} [{terminal['service_line_id']}]")
+                    try:
+                        output["usage"].extend(fetch_usage(page, terminal, args.from_date, args.to_date))
+                    except Exception as exc:
+                        print(f"  WARNING: usage fetch failed for {terminal['service_line_id']}: {exc}", file=sys.stderr)
 
         write_json(args.output, output)
         print(f"Wrote {args.output}")

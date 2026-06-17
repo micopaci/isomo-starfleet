@@ -33,7 +33,7 @@ test('parseTerminalStatus maps WebAgg offline flag and lastConnected timestamp',
   assert.equal(parsed.ping_drop_pct, 2.5);
 });
 
-test('parseUsageHistory expands billingCyclesAnnotated dailyData and skips future entries', () => {
+test('parseUsageHistory expands billingCyclesAnnotated dailyData and skips today+future entries', () => {
   const parsed = parseUsageHistory(
     {
       content: {
@@ -43,7 +43,7 @@ test('parseUsageHistory expands billingCyclesAnnotated dailyData and skips futur
             dailyData: [
               { consumedGB: 3.25 },
               4.5,
-              { consumedMb: 1024 },
+              { consumedMb: 1024 }, // June 12 = today (UTC) → skipped; UTC day not yet complete
               0,
               0,
             ],
@@ -60,7 +60,36 @@ test('parseUsageHistory expands billingCyclesAnnotated dailyData and skips futur
     [
       ['2026-06-10', 3.25],
       ['2026-06-11', 4.5],
-      ['2026-06-12', 1],
+      // June 12 excluded: sync runs at 02:00 CAT (00:00 UTC), today is always incomplete mid-day
+    ],
+  );
+});
+
+test('parseUsageHistory handles nested dailyData arrays returned by annotated usage endpoint', () => {
+  const parsed = parseUsageHistory(
+    {
+      content: {
+        billingCyclesAnnotated: [
+          {
+            startDate: '2026-06-10',
+            dailyData: [
+              [7.25],
+              [0],
+              [1024, 512], // June 12 = today → skipped
+            ],
+          },
+        ],
+      },
+    },
+    { now: new Date('2026-06-12T12:00:00Z') },
+  );
+
+  assert.deepEqual(
+    parsed.history.map(row => [row.log_date, row.consumed_gb]),
+    [
+      ['2026-06-10', 7.25],
+      ['2026-06-11', 0],
+      // June 12 excluded
     ],
   );
 });
