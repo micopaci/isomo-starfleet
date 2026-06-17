@@ -9,6 +9,12 @@ export default function Login() {
   const nav = useNavigate();
   const { refreshData } = useData();
 
+  // Already authenticated — skip login form
+  if (localStorage.getItem('sf_auth') === 'true') {
+    nav('/overview', { replace: true });
+    return null;
+  }
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');

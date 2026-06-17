@@ -248,6 +248,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const isAuth = localStorage.getItem('sf_auth') === 'true';
     if (isAuth) {
       refreshData();
+    } else {
+      setLoading(false);
     }
   }, []);
 

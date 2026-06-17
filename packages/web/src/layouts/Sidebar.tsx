@@ -118,6 +118,14 @@ export default function Sidebar() {
             >
               <i className={`ti ${theme === 'dark' ? 'ti-sun' : 'ti-moon'}`} aria-hidden="true" />
             </button>
+            <button
+              className="btn btn--sm btn--icon"
+              onClick={() => { localStorage.removeItem('sf_token'); localStorage.removeItem('sf_auth'); nav('/login'); }}
+              id="btn-logout"
+              aria-label="Sign out"
+            >
+              <i className="ti ti-logout" aria-hidden="true" />
+            </button>
           </div>
         </div>
       </aside>
