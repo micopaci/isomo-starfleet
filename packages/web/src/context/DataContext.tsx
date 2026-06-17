@@ -37,6 +37,7 @@ export interface Alert {
 export interface InventoryDevice {
   id: number;
   profile: string;
+  hostname: string;
   serial: string;
   model: string;
   status: 'working' | 'broken' | 'ready' | 'decommissioned';
@@ -214,7 +215,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const hs = r.hardware_status;
         if (hs === 'working_in_use' || hs === 'working_spare') status = 'working';
         else if (hs === 'intake_broken' || hs === 'in_repair') status = 'broken';
-        else if (hs === 'ready_to_reissue') status = 'ready';
+        else if (hs === 'ready_for_reissue' || hs === 'ready_to_reissue') status = 'ready';
         else if (hs === 'decommissioned') status = 'decommissioned';
 
         const lastSeenAt = r.last_seen ? new Date(r.last_seen).getTime() : null;
@@ -223,6 +224,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return {
           id: Number(r.id),
           profile: r.profile_number || `LAP-${String(r.id).padStart(3, '0')}`,
+          hostname: r.hostname || '—',
           serial: r.windows_sn || '—',
           model: r.model || 'Unknown Device',
           status,

@@ -21,11 +21,11 @@ export default function Computers() {
 
   const fetchInventory = () => {
     const token = localStorage.getItem('sf_token');
-    if (!token) return;
-    fetch('/api/inventory', { headers: { Authorization: `Bearer ${token}` } })
+    if (!token) { setLoading(false); return; }
+    fetch('/api/devices', { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
-      .then(data => { setComputerList(data); setLoading(false); })
-      .catch(console.error);
+      .then(data => { setComputerList(Array.isArray(data) ? data : []); setLoading(false); })
+      .catch(err => { console.error(err); setLoading(false); });
   };
 
   useEffect(() => {
@@ -56,13 +56,13 @@ export default function Computers() {
       const mappedStatus = c.hardware_status === 'working_in_use' ? 'healthy' : c.hardware_status;
       const matchFilter = filter === 'all' || mappedStatus === filter;
       const q = search.toLowerCase();
-      const matchSearch = !q || (c.profile_number || '').toLowerCase().includes(q) || (c.assignee_email || '').toLowerCase().includes(q) || (c.model || '').toLowerCase().includes(q) || (c.serial_number || '').toLowerCase().includes(q);
+      const matchSearch = !q || (c.profile_number || '').toLowerCase().includes(q) || (c.user_principal_name || '').toLowerCase().includes(q) || (c.model || '').toLowerCase().includes(q) || (c.hostname || '').toLowerCase().includes(q) || (c.windows_sn || '').toLowerCase().includes(q);
       return matchFilter && matchSearch;
     }), [filter, search, computerList]);
 
   const handleSelect = (c: any) => {
     setSelected(c);
-    setEditEmail(c.assignee_email || '');
+    setEditEmail(c.user_principal_name || '');
     setEditStatus(c.hardware_status === 'working_in_use' ? 'healthy' : c.hardware_status);
   };
 
@@ -124,6 +124,7 @@ export default function Computers() {
           <table className="tbl" aria-label="Computer fleet">
             <thead>
               <tr>
+                <th>Name</th>
                 <th>Profile</th>
                 <th>Serial</th>
                 <th>Assignee</th>
@@ -136,13 +137,14 @@ export default function Computers() {
             <tbody>
               {filtered.map(c => (
                 <tr key={c.id} onClick={() => handleSelect(c)}>
-                  <td className="cell-primary" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{c.profile_number || '—'}</td>
-                  <td className="cell-mono">{c.serial_number}</td>
-                  <td style={{ fontSize: 12 }}>{c.assignee_email || '—'}</td>
-                  <td style={{ fontSize: 12 }}>{c.model}</td>
-                  <td className="cell-mono">{c.os_info?.release || '—'}</td>
-                  <td><StatusChip label={c.hardware_status.toUpperCase().replace(/_/g, ' ')} tone={c.hardware_status === 'working_in_use' ? 'ok' : 'bad'} size="sm" /></td>
-                  <td className="num cell-mono">{new Date(c.last_seen_at).toLocaleDateString()}</td>
+                  <td className="cell-primary" style={{ fontSize: 12 }}>{c.hostname || '—'}</td>
+                  <td className="cell-mono" style={{ fontSize: 12 }}>{c.profile_number || '—'}</td>
+                  <td className="cell-mono">{c.windows_sn || '—'}</td>
+                  <td style={{ fontSize: 12 }}>{c.user_principal_name || '—'}</td>
+                  <td style={{ fontSize: 12 }}>{c.model || '—'}</td>
+                  <td className="cell-mono">{c.os_version || c.os || '—'}</td>
+                  <td><StatusChip label={(c.hardware_status || 'unknown').toUpperCase().replace(/_/g, ' ')} tone={c.hardware_status === 'working_in_use' ? 'ok' : c.hardware_status === 'decommissioned' ? 'mute' : 'bad'} size="sm" /></td>
+                  <td className="num cell-mono">{c.last_seen ? new Date(c.last_seen).toLocaleDateString() : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -182,7 +184,7 @@ export default function Computers() {
           <div className="sf-drawer-head">
             <div>
               <p className="sf-timecode">Device Profile</p>
-              <div className="sf-drawer-title">{selected.profile_number || selected.serial_number}</div>
+              <div className="sf-drawer-title">{selected.hostname || selected.profile_number || selected.windows_sn || '—'}</div>
               <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 3 }}>
                 <input 
                   type="email" 
@@ -212,9 +214,9 @@ export default function Computers() {
           </div>
 
           <div className="sf-drawer-grid">
-            <div className="kpi"><div className="kpi-label">Model</div><div className="kpi-value" style={{ fontSize: 14 }}>{selected.model}</div></div>
-            <div className="kpi"><div className="kpi-label">Serial</div><div className="kpi-value" style={{ fontSize: 14 }}>{selected.serial_number}</div></div>
-            <div className="kpi"><div className="kpi-label">Last Seen</div><div className="kpi-value" style={{ fontSize: 14 }}>{new Date(selected.last_seen_at).toLocaleDateString()}</div></div>
+            <div className="kpi"><div className="kpi-label">Model</div><div className="kpi-value" style={{ fontSize: 14 }}>{selected.model || '—'}</div></div>
+            <div className="kpi"><div className="kpi-label">Serial</div><div className="kpi-value" style={{ fontSize: 14 }}>{selected.windows_sn || '—'}</div></div>
+            <div className="kpi"><div className="kpi-label">Last Seen</div><div className="kpi-value" style={{ fontSize: 14 }}>{selected.last_seen ? new Date(selected.last_seen).toLocaleDateString() : '—'}</div></div>
           </div>
           <div className="sf-drawer-foot" style={{ flexDirection: 'column', gap: 12 }}>
             <button className="btn btn--primary" style={{ width: '100%', justifyContent: 'center' }} onClick={handleSave}>Save Changes</button>

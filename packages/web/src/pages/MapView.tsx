@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useData, type Dish } from '../context/DataContext';
+import rwandaProvinces from '../data/geo/rwanda-provinces.json';
+import rwandaBorder from '../data/geo/rwanda-border.json';
 
 // Rwanda bounding box: roughly -1.05 to -2.84 lat, 28.86 to 30.90 lng
 const RWANDA_CENTER: [number, number] = [-1.94, 29.87];
@@ -41,6 +43,38 @@ export default function MapView() {
       subdomains: 'abcd',
       maxZoom: 19,
     }).addTo(map);
+
+    // Province boundaries (subtle interior lines + faint fill + labels)
+    const provinces = L.geoJSON(rwandaProvinces as GeoJSON.GeoJsonObject, {
+      style: {
+        color: '#4a8c6f',
+        weight: 1,
+        opacity: 0.55,
+        fillColor: '#34b483',
+        fillOpacity: 0.04,
+      },
+      onEachFeature: (feature, layer) => {
+        const name = feature?.properties?.shapeName;
+        if (name) {
+          layer.bindTooltip(name, {
+            permanent: true,
+            direction: 'center',
+            className: 'province-label',
+            offset: [0, 0],
+          });
+        }
+      },
+    }).addTo(map);
+    provinces.eachLayer(l => (l as L.Path).bringToBack?.());
+
+    // National border (heavier outline, no fill)
+    L.geoJSON(rwandaBorder as GeoJSON.GeoJsonObject, {
+      style: { color: '#7fd1ad', weight: 2.5, opacity: 0.9, fill: false },
+      interactive: false,
+    }).addTo(map);
+
+    // Fit the viewport to Rwanda's actual extent
+    map.fitBounds(provinces.getBounds(), { padding: [20, 20] });
 
     leafletRef.current = map;
 

@@ -450,18 +450,22 @@ export default function Inventory() {
           <table className="tbl" aria-label="Device inventory">
             <thead>
               <tr>
+                <th style={{ width: 150 }}>Name</th>
                 <th style={{ width: 100 }}>Profile #</th>
                 <th style={{ width: 140 }}>Serial (BIOS)</th>
                 <th>Model</th>
                 <th style={{ width: 160 }}>Status</th>
                 <th>Assignee</th>
                 <th style={{ width: 120 }}>Last Intake</th>
-                <th style={{ width: 110 }}>Operator</th>
+                <th style={{ width: 110 }}>Site</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(d => (
-                <tr key={d.profile + d.serial} aria-label={`${d.profile} — ${d.status}`}>
+                <tr key={d.profile + d.serial} aria-label={`${d.hostname} — ${d.status}`}>
+                  <td>
+                    <span style={{ fontWeight: 600, color: 'var(--ink)', fontSize: 12 }}>{d.hostname}</span>
+                  </td>
                   <td>
                     <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--ink)', fontSize: 12 }}>{d.profile}</span>
                   </td>

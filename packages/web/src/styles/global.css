@@ -789,3 +789,19 @@ p { margin: 0; }
 [data-density="large"] .kpi { min-height: 120px; padding: 20px 24px; }
 [data-density="large"] .btn { padding: 10px 16px; font-size: 14px; }
 [data-density="large"] .sf-alert { padding: 20px 24px; gap: 24px; }
+
+/* Leaflet province labels on the fleet map */
+.province-label {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--muted, #8a9a93);
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.85), 0 0 2px rgba(0, 0, 0, 0.85);
+  pointer-events: none;
+}
+.province-label::before { display: none; }
