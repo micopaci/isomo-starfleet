@@ -110,15 +110,15 @@ export default function Overview() {
             <div className="mix-lines">
               <div className="mix-line">
                 <StatusChip label={`${online} Online`} tone="ok" size="sm" />
-                <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{((online / dishes.length) * 100).toFixed(0)}%</span>
+                <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{dishes.length ? ((online / dishes.length) * 100).toFixed(0) : 0}%</span>
               </div>
               <div className="mix-line">
                 <StatusChip label={`${degraded} Degraded`} tone="warn" size="sm" />
-                <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{((degraded / dishes.length) * 100).toFixed(0)}%</span>
+                <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{dishes.length ? ((degraded / dishes.length) * 100).toFixed(0) : 0}%</span>
               </div>
               <div className="mix-line">
                 <StatusChip label={`${offline} Offline`} tone="bad" size="sm" />
-                <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{((offline / dishes.length) * 100).toFixed(0)}%</span>
+                <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{dishes.length ? ((offline / dishes.length) * 100).toFixed(0) : 0}%</span>
               </div>
             </div>
           </div>
@@ -139,15 +139,15 @@ export default function Overview() {
             <div className="mix-lines">
               <div className="mix-line">
                 <StatusChip label={`${compWorking} Working`} tone="ok" size="sm" />
-                <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{((compWorking / totalComp) * 100).toFixed(0)}%</span>
+                <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{totalComp ? ((compWorking / totalComp) * 100).toFixed(0) : 0}%</span>
               </div>
               <div className="mix-line">
                 <StatusChip label={`${compReady} Ready`} tone="warn" size="sm" />
-                <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{((compReady / totalComp) * 100).toFixed(0)}%</span>
+                <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{totalComp ? ((compReady / totalComp) * 100).toFixed(0) : 0}%</span>
               </div>
               <div className="mix-line">
                 <StatusChip label={`${compRepair} In Repair`} tone="bad" size="sm" />
-                <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{((compRepair / totalComp) * 100).toFixed(0)}%</span>
+                <span className="muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{totalComp ? ((compRepair / totalComp) * 100).toFixed(0) : 0}%</span>
               </div>
             </div>
           </div>

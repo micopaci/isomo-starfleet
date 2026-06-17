@@ -133,6 +133,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // 1. Fetch Alerts
       const alertsRes = await fetch('/api/alerts', { headers });
+      if (alertsRes.status === 401) {
+        localStorage.removeItem('sf_token');
+        localStorage.removeItem('sf_auth');
+        window.location.replace('/login');
+        return;
+      }
       const rawAlerts = await alertsRes.json();
       
       const mappedAlerts: Alert[] = Array.isArray(rawAlerts) ? rawAlerts.map((a: any) => ({
