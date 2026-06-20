@@ -1283,36 +1283,70 @@ router.post('/starlink-terminals/decommission-stale', requireAdmin, async (req, 
     const dryRun = req.body?.dryRun === true;
     const days = weeks * 7;
 
-    // "Hasn't reported" = last telemetry (last_seen_utc, else status_updated_at)
-    // is older than the cutoff. Terminals already Inactive are left alone.
-    const where = `
-      WHERE current_status != 'Inactive'
-        AND COALESCE(last_seen_utc, status_updated_at) IS NOT NULL
-        AND COALESCE(last_seen_utc, status_updated_at) < NOW() - ($1::int * INTERVAL '1 day')`;
+    // "Hasn't reported" = NO daily usage record in starlink_usage_history within
+    // the cutoff. last_seen_utc is unreliable (stale even for active dishes), so
+    // recent data consumption is the real activity signal. Already-Inactive
+    // terminals are left alone.
+    const staleFilter = `
+      WHERE st.current_status != 'Inactive'
+        AND NOT EXISTS (
+          SELECT 1 FROM starlink_usage_history h
+          WHERE h.service_line_id = st.service_line_id
+            AND h.log_date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')
+        )`;
 
     if (dryRun) {
       const { rows } = await pool.query(
-        `SELECT service_line_id, nickname, current_status,
-                COALESCE(last_seen_utc, status_updated_at) AS last_reported
-         FROM starlink_terminals ${where}
-         ORDER BY last_reported ASC`,
+        `SELECT st.service_line_id, st.nickname, st.current_status,
+                (SELECT MAX(h.log_date) FROM starlink_usage_history h WHERE h.service_line_id = st.service_line_id) AS last_usage_date
+         FROM starlink_terminals st ${staleFilter}
+         ORDER BY last_usage_date ASC NULLS FIRST`,
         [days]
       );
       return res.json({ dryRun: true, weeks, count: rows.length, terminals: rows });
     }
 
-    const reason = `No telemetry for ${weeks}+ weeks (auto)`;
+    const reason = `No data usage for ${weeks}+ weeks (auto)`;
     const { rows } = await pool.query(
       `UPDATE starlink_terminals
           SET current_status = 'Inactive',
               decommissioned_at = COALESCE(decommissioned_at, NOW()),
               decommission_reason = COALESCE(decommission_reason, $2),
               updated_at = NOW()
-        ${where}
+        WHERE service_line_id IN (
+          SELECT st.service_line_id FROM starlink_terminals st ${staleFilter}
+        )
         RETURNING service_line_id`,
       [days, reason]
     );
     res.json({ dryRun: false, weeks, decommissioned: rows.length, service_line_ids: rows.map(r => r.service_line_id) });
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/starlink-terminals/restore-active ───────────────────────────────
+// Recover terminals that were AUTO-decommissioned but actually have recent data
+// usage (i.e. were wrongly flagged). Clears decommission + resets to 'Unknown'
+// so the status sync re-evaluates them. Manual decommissions are left untouched.
+router.post('/starlink-terminals/restore-active', requireAdmin, async (req, res, next) => {
+  try {
+    const weeks = Math.max(1, Math.min(Number(req.body?.weeks || 3), 52));
+    const days = weeks * 7;
+    const { rows } = await pool.query(
+      `UPDATE starlink_terminals st
+          SET current_status = 'Unknown',
+              decommissioned_at = NULL,
+              decommission_reason = NULL,
+              updated_at = NOW()
+        WHERE st.decommission_reason LIKE '%(auto)'
+          AND EXISTS (
+            SELECT 1 FROM starlink_usage_history h
+            WHERE h.service_line_id = st.service_line_id
+              AND h.log_date >= CURRENT_DATE - ($1::int * INTERVAL '1 day')
+          )
+        RETURNING service_line_id`,
+      [days]
+    );
+    res.json({ restored: rows.length, service_line_ids: rows.map(r => r.service_line_id) });
   } catch (err) { next(err); }
 });
 
