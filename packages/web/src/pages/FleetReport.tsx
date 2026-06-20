@@ -29,8 +29,10 @@ export default function FleetReport() {
         alert(`Export failed (${res.status}). ${msg.slice(0, 200)}`);
         return;
       }
-      const rows = await res.json();
-      if (!Array.isArray(rows) || rows.length === 0) {
+      const json = await res.json();
+      // /api/starlink-usage returns { from, to, rows: [...] }
+      const rows = Array.isArray(json) ? json : (json?.rows || []);
+      if (rows.length === 0) {
         alert(`No usage records found for ${from} → ${to}.`);
         return;
       }

@@ -20,6 +20,35 @@ export default function Decommissioned() {
   const [reason, setReason] = useState('');
   const [date, setDate] = useState('');
   const [saving, setSaving] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const decommissionStale = async () => {
+    setBulkBusy(true);
+    try {
+      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('sf_token')}` };
+      // Preview first so the operator sees the count before anything changes.
+      const dry = await fetch('/api/starlink-terminals/decommission-stale', {
+        method: 'POST', headers, body: JSON.stringify({ weeks: 3, dryRun: true }),
+      });
+      if (!dry.ok) { alert(`Failed: ${dry.status}`); return; }
+      const preview = await dry.json();
+      if (!preview.count) { alert('No terminals have been silent for 3+ weeks.'); return; }
+      const names = preview.terminals.slice(0, 12).map((t: any) => `• ${t.nickname || t.service_line_id}`).join('\n');
+      const more = preview.count > 12 ? `\n…and ${preview.count - 12} more` : '';
+      if (!confirm(`Decommission ${preview.count} terminal(s) silent for 3+ weeks?\n\n${names}${more}`)) return;
+      const apply = await fetch('/api/starlink-terminals/decommission-stale', {
+        method: 'POST', headers, body: JSON.stringify({ weeks: 3 }),
+      });
+      if (!apply.ok) { alert(`Failed: ${apply.status}`); return; }
+      const result = await apply.json();
+      alert(`Decommissioned ${result.decommissioned} terminal(s).`);
+      await refreshData();
+    } catch (err: any) {
+      alert(`Failed: ${err?.message || 'network error'}`);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const startEdit = (d: Dish) => {
     setEditing(d.serviceLineId);
@@ -70,6 +99,11 @@ export default function Decommissioned() {
             {inactiveDishes.length} suspended / retired service line{inactiveDishes.length === 1 ? '' : 's'}, excluded from fleet reports.
             {' '}{recorded} have a recorded decommission date.
           </p>
+        </div>
+        <div className="sf-view-actions">
+          <button className="btn btn--danger-outline" onClick={decommissionStale} disabled={bulkBusy} id="btn-decommission-stale">
+            <i className="ti ti-circle-off" aria-hidden="true" /> {bulkBusy ? 'Checking…' : 'Decommission silent 3+ weeks'}
+          </button>
         </div>
       </div>
 

@@ -1274,6 +1274,48 @@ router.post('/starlink-terminals/:serviceLineId/decommission', requireAdmin, asy
   } catch (err) { next(err); }
 });
 
+// ── POST /api/starlink-terminals/decommission-stale ──────────────────────────
+// Bulk-decommission terminals with no telemetry for N weeks (default 3).
+// Pass { dryRun: true } to preview the affected terminals without changing them.
+router.post('/starlink-terminals/decommission-stale', requireAdmin, async (req, res, next) => {
+  try {
+    const weeks = Math.max(1, Math.min(Number(req.body?.weeks || 3), 52));
+    const dryRun = req.body?.dryRun === true;
+    const days = weeks * 7;
+
+    // "Hasn't reported" = last telemetry (last_seen_utc, else status_updated_at)
+    // is older than the cutoff. Terminals already Inactive are left alone.
+    const where = `
+      WHERE current_status != 'Inactive'
+        AND COALESCE(last_seen_utc, status_updated_at) IS NOT NULL
+        AND COALESCE(last_seen_utc, status_updated_at) < NOW() - ($1::int * INTERVAL '1 day')`;
+
+    if (dryRun) {
+      const { rows } = await pool.query(
+        `SELECT service_line_id, nickname, current_status,
+                COALESCE(last_seen_utc, status_updated_at) AS last_reported
+         FROM starlink_terminals ${where}
+         ORDER BY last_reported ASC`,
+        [days]
+      );
+      return res.json({ dryRun: true, weeks, count: rows.length, terminals: rows });
+    }
+
+    const reason = `No telemetry for ${weeks}+ weeks (auto)`;
+    const { rows } = await pool.query(
+      `UPDATE starlink_terminals
+          SET current_status = 'Inactive',
+              decommissioned_at = COALESCE(decommissioned_at, NOW()),
+              decommission_reason = COALESCE(decommission_reason, $2),
+              updated_at = NOW()
+        ${where}
+        RETURNING service_line_id`,
+      [days, reason]
+    );
+    res.json({ dryRun: false, weeks, decommissioned: rows.length, service_line_ids: rows.map(r => r.service_line_id) });
+  } catch (err) { next(err); }
+});
+
 function mapPingSampleRow(row) {
   return {
     recorded_at: row.recorded_at,
