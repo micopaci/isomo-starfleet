@@ -73,3 +73,6 @@ data_usage/auth/debug/
 .preview/
 /Starfleet*.pdf
 /package-lock.json
+
+# Generated report artifacts
+output/
