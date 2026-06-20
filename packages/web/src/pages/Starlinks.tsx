@@ -236,6 +236,7 @@ export default function Starlinks() {
             <div className="kpi"><div className="kpi-label">Upload</div><div className="kpi-value">{selected.up > 0 ? `${selected.up}M` : '—'}</div></div>
             <div className="kpi"><div className="kpi-label">SNR</div><div className="kpi-value">{selected.snr > 0 ? `${selected.snr.toFixed(1)}dB` : '—'}</div></div>
             <div className="kpi"><div className="kpi-label">Obstruction</div><div className="kpi-value" style={{ color: selected.obstruction > 1 ? 'var(--warn)' : undefined }}>{selected.obstruction > 0 ? `${selected.obstruction.toFixed(2)}%` : '—'}</div></div>
+            <div className="kpi"><div className="kpi-label">Alignment</div><div className="kpi-value" style={{ fontSize: 14 }}>{selected.alignmentEl != null || selected.alignmentAz != null ? `${selected.alignmentEl != null ? `${selected.alignmentEl.toFixed(1)}° el` : ''}${selected.alignmentEl != null && selected.alignmentAz != null ? ' · ' : ''}${selected.alignmentAz != null ? `${selected.alignmentAz.toFixed(1)}° az` : ''}` : '—'}</div></div>
             <div className="kpi"><div className="kpi-label">Data (7d)</div><div className="kpi-value">{selected.dataGb > 0 ? `${selected.dataGb.toFixed(1)}GB` : '—'}</div></div>
             <div className="kpi"><div className="kpi-label">Uptime</div><div className="kpi-value">{selected.uptime > 0 ? `${selected.uptime.toFixed(1)}%` : '—'}</div></div>
           </div>

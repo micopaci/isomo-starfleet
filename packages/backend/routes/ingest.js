@@ -352,6 +352,7 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
       pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
       download_mbps, upload_mbps,
       lat, lon,
+      azimuth_deg, elevation_deg,
       starlink_id, starlink_uuid, starlink_sn, kit_id,
       is_snr_above_noise_floor, starlink_alerts, disablement_code, ready_states,
       dl_bandwidth_restricted_reason, ul_bandwidth_restricted_reason,
@@ -410,9 +411,10 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
             starlink_id, starlink_uuid, starlink_sn, kit_id,
             is_snr_above_noise_floor, starlink_alerts, disablement_code, ready_states,
             dl_bandwidth_restricted_reason, ul_bandwidth_restricted_reason,
-            dish_uptime_s, dish_bootcount, dish_grpc_reachable, starlink_power_verdict)
+            dish_uptime_s, dish_bootcount, dish_grpc_reachable, starlink_power_verdict,
+            boresight_azimuth_deg, boresight_elevation_deg)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-                 $16, $17::jsonb, $18, $19::jsonb, $20, $21, $22, $23, $24, $25)`,
+                 $16, $17::jsonb, $18, $19::jsonb, $20, $21, $22, $23, $24, $25, $26, $27)`,
         [site_id, device_id, timestamp_utc || new Date().toISOString(),
           pop_latency_ms, snr, obstruction_pct, ping_drop_pct,
           download_mbps ?? null, upload_mbps ?? null,
@@ -427,7 +429,9 @@ router.post('/signal', signalLimiter, async (req, res, next) => {
           dish_uptime_s ?? null,
           dish_bootcount ?? null,
           dish_grpc_reachable ?? null,
-          starlink_power_verdict || null]
+          starlink_power_verdict || null,
+          azimuth_deg ?? null,
+          elevation_deg ?? null]
       );
 
       const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();

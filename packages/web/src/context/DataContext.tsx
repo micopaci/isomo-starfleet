@@ -11,6 +11,8 @@ export interface Dish {
   latency: number;
   snr: number;
   obstruction: number;
+  alignmentAz: number | null;
+  alignmentEl: number | null;
   down: number;
   up: number;
   uptime: number;
@@ -210,6 +212,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Never fabricate a placeholder SNR when there is no signal.
           snr: Number(s.signal?.snr ?? 0),
           obstruction: Number(s.signal?.obstruction_pct ?? 0),
+          alignmentAz: s.signal?.boresight_azimuth_deg ?? null,
+          alignmentEl: s.signal?.boresight_elevation_deg ?? null,
           down: Number(s.download_mbps || 0),
           up: Number(s.upload_mbps || 0),
           uptime: Number(s.uptime_pct ?? 0),
@@ -261,7 +265,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             campus: t.site_name || 'Unassigned',
             region: '—',
             status: 'inactive',
-            latency: 0, snr: 0, obstruction: 0, down: 0, up: 0, uptime: 0, rain: 0, laptops: 0,
+            latency: 0, snr: 0, obstruction: 0, alignmentAz: null, alignmentEl: null, down: 0, up: 0, uptime: 0, rain: 0, laptops: 0,
             serial: t.service_line_id,
             lat_coord: 0, lng_coord: 0,
             spark,
