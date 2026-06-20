@@ -255,7 +255,7 @@ async function getSiteSignal(siteId) {
             confidence, recorded_at
      FROM signal_readings
      WHERE site_id = $1
-       AND recorded_at > NOW() - INTERVAL '2 hours'
+       AND recorded_at > NOW() - INTERVAL '12 hours'
      ORDER BY recorded_at DESC
      LIMIT 1`,
     [siteId]
@@ -450,7 +450,7 @@ async function _syncDerivedAlerts() {
         SELECT pop_latency_ms, snr, obstruction_pct, ping_drop_pct, confidence
         FROM signal_readings
         WHERE site_id = s.id
-          AND recorded_at > NOW() - INTERVAL '2 hours'
+          AND recorded_at > NOW() - INTERVAL '12 hours'
         ORDER BY recorded_at DESC
         LIMIT 1
       ) sig ON TRUE
@@ -495,7 +495,7 @@ async function _syncDerivedAlerts() {
           severity: 'critical',
           category: 'connectivity',
           title: 'Site unreachable',
-          message: `${siteLabel} has not reported signal in the last 2 hours.`,
+          message: `${siteLabel} has not reported signal in the last 12 hours.`,
           metadata: { starlink_sn: row.starlink_sn },
         });
       } else if (score != null && score < 60) {

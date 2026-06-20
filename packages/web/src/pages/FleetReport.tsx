@@ -20,7 +20,8 @@ export default function FleetReport() {
     setExporting(true);
     try {
       const token = localStorage.getItem('sf_token');
-      const res = await fetch(`/api/export/site-usage-daily?from=${from}&to=${to}`, {
+      // Real portal usage lives in starlink_usage_history, served by /api/starlink-usage.
+      const res = await fetch(`/api/starlink-usage?from=${from}&to=${to}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
@@ -28,11 +29,22 @@ export default function FleetReport() {
         alert(`Export failed (${res.status}). ${msg.slice(0, 200)}`);
         return;
       }
-      const blob = await res.blob();
+      const rows = await res.json();
+      if (!Array.isArray(rows) || rows.length === 0) {
+        alert(`No usage records found for ${from} → ${to}.`);
+        return;
+      }
+      const headers = ['log_date', 'site_name', 'nickname', 'service_line_id', 'account_id', 'consumed_gb', 'billing_cycle_start', 'collected_at'];
+      const esc = (v: any) => {
+        const s = v == null ? '' : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const csv = [headers.join(','), ...rows.map((r: any) => headers.map(h => esc(r[h])).join(','))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `site_usage_daily_${from}_${to}.csv`;
+      a.download = `starlink_usage_${from}_${to}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
