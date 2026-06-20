@@ -28,6 +28,8 @@ export interface Dish {
   billingCycleStart: string | null;
   accountId: string | null;
   serviceLineId: string | null;
+  decommissionedAt: string | null;
+  decommissionReason: string | null;
 }
 
 export interface Alert {
@@ -224,6 +226,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           billingCycleStart: terminal?.billing_cycle_start || null,
           accountId: terminal?.account_id || null,
           serviceLineId: terminal?.service_line_id || s.starlink_sn || null,
+          decommissionedAt: terminal?.decommissioned_at || null,
+          decommissionReason: terminal?.decommission_reason || null,
         };
       }) : [];
 
@@ -268,6 +272,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             billingCycleStart: t.billing_cycle_start || null,
             accountId: t.account_id || null,
             serviceLineId: t.service_line_id || null,
+            decommissionedAt: t.decommissioned_at || null,
+            decommissionReason: t.decommission_reason || null,
           });
         }
       } catch (err) {

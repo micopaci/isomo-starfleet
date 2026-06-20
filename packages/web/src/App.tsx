@@ -9,6 +9,7 @@ import Alerts from './pages/Alerts';
 import Campuses from './pages/Campuses';
 import MapView from './pages/MapView';
 import Inventory from './pages/Inventory';
+import Decommissioned from './pages/Decommissioned';
 import FleetReport from './pages/FleetReport';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -36,6 +37,7 @@ export default function App() {
               <Route path="campuses"   element={<Campuses />} />
               <Route path="map"        element={<MapView />} />
               <Route path="inventory"  element={<Inventory />} />
+              <Route path="decommissioned" element={<Decommissioned />} />
               <Route path="report"     element={<FleetReport />} />
               <Route path="*"          element={<Navigate to="/overview" replace />} />
             </Route>

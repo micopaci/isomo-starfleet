@@ -6,6 +6,7 @@ import { useData } from '../context/DataContext';
 
 const REPORT_NAV = [
   { path: '/report', label: 'Fleet Report', icon: 'ti-file-analytics', count: '' },
+  { path: '/decommissioned', label: 'Decommissioned', icon: 'ti-circle-off', count: '' },
 ];
 
 export default function Sidebar() {
@@ -71,7 +72,7 @@ export default function Sidebar() {
                   className={`sf-nav-item${isActive(item.path) ? ' is-active' : ''}`}
                   onClick={() => nav(item.path)}
                   aria-current={isActive(item.path) ? 'page' : undefined}
-                  id="nav-fleet-report"
+                  id={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                 >
                   <span className="sf-nav-item-icon"><i className={`ti ${item.icon}`} aria-hidden="true" /></span>
                   <span className="sf-nav-item-label">{item.label}</span>

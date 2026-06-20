@@ -163,6 +163,8 @@ function mapStarlinkTerminalRow(row) {
     last_seen_utc: row.last_seen_utc || null,
     billing_cycle_start: row.billing_cycle_start || null,
     status_updated_at: row.status_updated_at || null,
+    decommissioned_at: row.decommissioned_at || null,
+    decommission_reason: row.decommission_reason || null,
     latest_usage: row.latest_log_date
       ? {
           log_date: row.latest_log_date,
@@ -1176,6 +1178,8 @@ router.get('/starlink-terminals', async (req, res, next) => {
               st.last_seen_utc,
               st.billing_cycle_start::text AS billing_cycle_start,
               st.status_updated_at,
+              st.decommissioned_at,
+              st.decommission_reason,
               latest.log_date::text AS latest_log_date,
               latest.consumed_gb AS latest_consumed_gb,
               latest.collected_at AS latest_collected_at,
@@ -1228,6 +1232,45 @@ router.get('/starlink-terminals', async (req, res, next) => {
       days,
       terminals: rows.map(mapStarlinkTerminalRow),
     });
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/starlink-terminals/:serviceLineId/decommission ──────────────────
+// Mark a service line decommissioned (with reason + date) or clear it.
+// Decommissioning also flips current_status to 'Inactive' so it leaves reports.
+router.post('/starlink-terminals/:serviceLineId/decommission', requireAdmin, async (req, res, next) => {
+  try {
+    const { serviceLineId } = req.params;
+    const { reason, decommissioned_at, clear } = req.body || {};
+
+    if (clear === true) {
+      const { rows } = await pool.query(
+        `UPDATE starlink_terminals
+            SET decommissioned_at = NULL, decommission_reason = NULL, updated_at = NOW()
+          WHERE service_line_id = $1
+          RETURNING service_line_id`,
+        [serviceLineId]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Terminal not found' });
+      return res.json({ ok: true, service_line_id: serviceLineId, decommissioned: false });
+    }
+
+    const when = decommissioned_at ? new Date(decommissioned_at) : new Date();
+    if (isNaN(when.getTime())) {
+      return res.status(400).json({ error: 'decommissioned_at must be a valid date' });
+    }
+    const { rows } = await pool.query(
+      `UPDATE starlink_terminals
+          SET decommissioned_at = $2,
+              decommission_reason = $3,
+              current_status = 'Inactive',
+              updated_at = NOW()
+        WHERE service_line_id = $1
+        RETURNING service_line_id`,
+      [serviceLineId, when.toISOString(), reason ? String(reason).trim() : null]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Terminal not found' });
+    res.json({ ok: true, service_line_id: serviceLineId, decommissioned: true });
   } catch (err) { next(err); }
 });
 
