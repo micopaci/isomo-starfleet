@@ -324,20 +324,61 @@ function IntakeModal({ onClose, onIntakeComplete }: {
   );
 }
 
+const INV_SORT: Record<string, (d: InventoryDevice) => string | number> = {
+  profile: d => d.profile.toLowerCase(),
+  hostname: d => d.hostname.toLowerCase(),
+  serial: d => d.serial.toLowerCase(),
+  model: d => d.model.toLowerCase(),
+  os: d => d.os.toLowerCase(),
+  status: d => d.status,
+  connectivity: d => d.connectivity,
+  assignee: d => d.assignee.toLowerCase(),
+  lastSeen: d => d.lastSeenAt ?? 0,
+};
+
+function lastSeenLabel(ts: number | null): string {
+  if (!ts) return '—';
+  const diff = Date.now() - ts;
+  if (diff < 0) return '—';
+  const days = Math.floor(diff / 86400000);
+  if (days >= 1) return `${days}d ago`;
+  const hrs = Math.floor(diff / 3600000);
+  if (hrs >= 1) return `${hrs}h ago`;
+  const mins = Math.floor(diff / 60000);
+  return mins >= 1 ? `${mins}m ago` : 'just now';
+}
+
+const CONN_TONE: Record<string, 'ok' | 'warn' | 'bad' | 'mute'> = {
+  online: 'ok', stale: 'warn', offline: 'bad', unknown: 'mute',
+};
+
 export default function Inventory() {
   const { inventory: devices, loading, refreshData } = useData();
   const [filter, setFilter] = useState<InvFilter>('all');
   const [search, setSearch] = useState('');
   const [openReconcile, setOpenReconcile] = useState<string | null>(null);
   const [showIntake, setShowIntake] = useState(false);
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'hostname', dir: 'asc' });
 
-  const filtered = useMemo(() =>
-    devices.filter(d => {
+  const toggleSort = (key: string) =>
+    setSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' });
+
+  const filtered = useMemo(() => {
+    const rows = devices.filter(d => {
       const matchFilter = filter === 'all' || d.status === filter;
       const q = search.toLowerCase();
-      const matchSearch = !q || d.profile.toLowerCase().includes(q) || d.serial.toLowerCase().includes(q) || d.model.toLowerCase().includes(q) || d.assignee.toLowerCase().includes(q);
+      const matchSearch = !q || d.profile.toLowerCase().includes(q) || d.hostname.toLowerCase().includes(q) || d.serial.toLowerCase().includes(q) || d.model.toLowerCase().includes(q) || d.assignee.toLowerCase().includes(q);
       return matchFilter && matchSearch;
-    }), [devices, filter, search]);
+    });
+    const accessor = INV_SORT[sort.key] || INV_SORT.hostname;
+    const factor = sort.dir === 'asc' ? 1 : -1;
+    return rows.sort((a, b) => {
+      const av = accessor(a), bv = accessor(b);
+      if (av < bv) return -1 * factor;
+      if (av > bv) return 1 * factor;
+      return 0;
+    });
+  }, [devices, filter, search, sort]);
 
   const mismatches = devices.filter(d => d.mismatch);
   const counts = {
@@ -450,41 +491,44 @@ export default function Inventory() {
           <table className="tbl" aria-label="Device inventory">
             <thead>
               <tr>
-                <th style={{ width: 150 }}>Name</th>
-                <th style={{ width: 100 }}>Profile #</th>
-                <th style={{ width: 140 }}>Serial (BIOS)</th>
-                <th>Model</th>
-                <th style={{ width: 130 }}>Status</th>
-                <th style={{ width: 110 }}>Connection</th>
-                <th>Assignee</th>
-                <th style={{ width: 120 }}>Last Intake</th>
-                <th style={{ width: 110 }}>Site</th>
+                {([
+                  ['hostname', 'Name', ''], ['profile', 'Profile #', ''], ['serial', 'Serial (BIOS)', ''],
+                  ['model', 'Model', ''], ['os', 'OS', ''], ['status', 'Status', ''],
+                  ['connectivity', 'Connection', ''], ['assignee', 'Assignee', ''], ['lastSeen', 'Last Seen', ''],
+                ] as [string, string, string][]).map(([key, label, cls]) => (
+                  <th
+                    key={key}
+                    className={cls}
+                    onClick={() => toggleSort(key)}
+                    style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                    aria-sort={sort.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  >
+                    {label}
+                    <span style={{ opacity: sort.key === key ? 0.9 : 0.25, marginLeft: 4 }}>
+                      {sort.key === key ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map(d => (
                 <tr key={d.profile + d.serial} aria-label={`${d.hostname} — ${d.status}`}>
-                  <td>
-                    <span style={{ fontWeight: 600, color: 'var(--ink)', fontSize: 12 }}>{d.hostname}</span>
-                  </td>
-                  <td>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--ink)', fontSize: 12 }}>{d.profile}</span>
-                  </td>
-                  <td>
-                    <span className="cell-mono" style={{ fontSize: 11 }}>{d.serial}</span>
-                  </td>
+                  <td><span style={{ fontWeight: 600, color: 'var(--ink)', fontSize: 12 }}>{d.hostname}</span></td>
+                  <td><span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--ink)', fontSize: 12 }}>{d.profile}</span></td>
+                  <td><span className="cell-mono" style={{ fontSize: 11 }}>{d.serial}</span></td>
                   <td>{d.model}</td>
+                  <td><span className="cell-mono" style={{ fontSize: 11 }}>{d.os}</span></td>
                   <td><DeviceStatusBadge status={d.status} mismatch={d.mismatch} /></td>
                   <td>
                     <StatusChip
                       label={d.connectivity.toUpperCase()}
-                      tone={d.connectivity === 'online' ? 'ok' : d.connectivity === 'stale' ? 'warn' : d.connectivity === 'offline' ? 'bad' : 'mute'}
+                      tone={CONN_TONE[d.connectivity] || 'mute'}
                       size="sm"
                     />
                   </td>
                   <td style={{ fontSize: 12, color: 'var(--ink-2)' }}>{d.assignee}</td>
-                  <td><span className="cell-mono" style={{ fontSize: 11 }}>{d.lastIntake}</span></td>
-                  <td style={{ fontSize: 12, color: 'var(--ink-3)' }}>{d.operator}</td>
+                  <td><span className="cell-mono" style={{ fontSize: 11 }} title={d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleString() : ''}>{lastSeenLabel(d.lastSeenAt)}</span></td>
                 </tr>
               ))}
             </tbody>

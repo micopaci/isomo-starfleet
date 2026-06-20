@@ -5,7 +5,6 @@ import Shell from './layouts/Shell';
 import Login from './pages/Login';
 import Overview from './pages/Overview';
 import Starlinks from './pages/Starlinks';
-import Computers from './pages/Computers';
 import Alerts from './pages/Alerts';
 import Campuses from './pages/Campuses';
 import MapView from './pages/MapView';
@@ -32,7 +31,7 @@ export default function App() {
               <Route index element={<Navigate to="/overview" replace />} />
               <Route path="overview"   element={<Overview />} />
               <Route path="starlinks"  element={<Starlinks />} />
-              <Route path="computers"  element={<Computers />} />
+              <Route path="computers"  element={<Navigate to="/inventory" replace />} />
               <Route path="alerts"     element={<Alerts />} />
               <Route path="campuses"   element={<Campuses />} />
               <Route path="map"        element={<MapView />} />

@@ -23,11 +23,10 @@ export default function Sidebar() {
   const items = [
     { path: '/overview',   label: 'Overview',     icon: 'ti-layout-dashboard', count: loading ? '' : String(offlineDishes) },
     { path: '/starlinks',  label: 'Starlinks',     icon: 'ti-antenna',          count: loading ? '' : String(totalStarlinks) },
-    { path: '/computers',  label: 'Computers',     icon: 'ti-device-laptop',    count: loading ? '' : String(inventory.length) },
     { path: '/alerts',     label: 'Alerts',        icon: 'ti-bell',             count: loading ? '' : String(openAlertsCount) },
     { path: '/campuses',   label: 'Campuses',      icon: 'ti-school',           count: loading ? '' : String(campusesCount) },
     { path: '/map',        label: 'Map',           icon: 'ti-map',              count: 'RW' },
-    { path: '/inventory',  label: 'Inventory',     icon: 'ti-package',          count: loading ? '' : String(inventory.length) },
+    { path: '/inventory',  label: 'Computers',     icon: 'ti-device-laptop',    count: loading ? '' : String(inventory.length) },
   ];
 
   function isActive(path: string) {

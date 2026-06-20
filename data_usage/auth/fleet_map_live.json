@@ -1,0 +1,44 @@
+[
+  {
+    "service_line_id": "SL-606903-86751-28",
+    "account_id": "ACC-4011560-47995-16",
+    "nickname": "ES Gikonko",
+    "status": "active"
+  },
+  {
+    "service_line_id": "SL-606976-33865-36",
+    "account_id": "ACC-4011560-47995-16",
+    "nickname": "GS Nyange - Standard 2nd",
+    "status": "active"
+  },
+  {
+    "service_line_id": "SL-606978-36896-45",
+    "account_id": "ACC-4011560-47995-16",
+    "nickname": "GS Nyagasambu",
+    "status": "active"
+  },
+  {
+    "service_line_id": "SL-606979-62252-31",
+    "account_id": "ACC-4011560-47995-16",
+    "nickname": "Ecole des sciences Gisenyi",
+    "status": "active"
+  },
+  {
+    "service_line_id": "SL-DF-8997922-28832-77",
+    "account_id": "ACC-4011560-47995-16",
+    "nickname": "ES Mubuga II",
+    "status": "active"
+  },
+  {
+    "service_line_id": "SL-DF-8997964-58028-83",
+    "account_id": "ACC-4011560-47995-16",
+    "nickname": "ES Juru",
+    "status": "active"
+  },
+  {
+    "service_line_id": "SL-DF-9677223-78421-66",
+    "account_id": "ACC-4011560-47995-16",
+    "nickname": "GS Remera Protestant",
+    "status": "active"
+  }
+]

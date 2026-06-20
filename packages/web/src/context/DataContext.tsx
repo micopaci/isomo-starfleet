@@ -51,6 +51,7 @@ export interface InventoryDevice {
   model: string;
   status: 'working' | 'broken' | 'ready' | 'decommissioned';
   connectivity: Connectivity;
+  os: string;
   assignee: string;
   lastIntake: string;
   operator: string;
@@ -303,6 +304,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           model: r.model || 'Unknown Device',
           status,
           connectivity,
+          os: r.os_version || r.os || '—',
           assignee: r.user_principal_name || '—',
           lastIntake: r.intune_enrolled_at ? new Date(r.intune_enrolled_at).toISOString().split('T')[0] : '—',
           operator: r.site_name || '—',
