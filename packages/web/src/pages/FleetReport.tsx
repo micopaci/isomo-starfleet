@@ -1,7 +1,48 @@
+import { useState } from 'react';
 import { useData } from '../context/DataContext';
+
+function defaultRange(): { from: string; to: string } {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 14);
+  const iso = (d: Date) => d.toISOString().split('T')[0];
+  return { from: iso(from), to: iso(to) };
+}
 
 export default function FleetReport() {
   const { dishes, loading } = useData();
+  const init = defaultRange();
+  const [from, setFrom] = useState(init.from);
+  const [to, setTo] = useState(init.to);
+  const [exporting, setExporting] = useState(false);
+
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const token = localStorage.getItem('sf_token');
+      const res = await fetch(`/api/export/site-usage-daily?from=${from}&to=${to}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '');
+        alert(`Export failed (${res.status}). ${msg.slice(0, 200)}`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `site_usage_daily_${from}_${to}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(`Export failed: ${err?.message || 'network error'}`);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -15,7 +56,9 @@ export default function FleetReport() {
   const totalLaptops = activeDishes.reduce((s, d) => s + d.laptops, 0);
   const totalSites = activeDishes.length;
   const onlineSites = activeDishes.filter(d => d.status === 'online').length;
-  const totalTB = +(activeDishes.reduce((acc, d) => acc + (0.5 + d.laptops * 0.15), 0)).toFixed(1);
+  // Real data consumption (last 7 days) from the portal usage sync.
+  const totalDataGb = +(activeDishes.reduce((acc, d) => acc + (d.dataGb || 0), 0)).toFixed(1);
+  const reportingSchools = activeDishes.filter(d => d.dataGb > 0).length;
   return (
     <div className="sf-view">
       <div className="sf-view-head">
@@ -24,31 +67,25 @@ export default function FleetReport() {
           <h1 className="sf-view-title">Fleet <em>Report</em></h1>
           <p className="sf-view-lede">Full operational summary for the Isomo EdTech fleet. Generated automatically from telemetry snapshots.</p>
           <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-            <input type="date" className="sf-input" defaultValue="2026-06-01" style={{ width: 'auto' }} />
+            <input type="date" className="sf-input" value={from} max={to} onChange={e => setFrom(e.target.value)} style={{ width: 'auto' }} />
             <span style={{ color: 'var(--ink-3)', alignSelf: 'center' }}>to</span>
-            <input type="date" className="sf-input" defaultValue="2026-06-15" style={{ width: 'auto' }} />
-            <select className="sf-input" defaultValue="all" style={{ width: 'auto' }}>
-              <option value="all">All Regions</option>
-              <option value="kigali">Kigali</option>
-              <option value="north">Northern Province</option>
-              <option value="south">Southern Province</option>
-            </select>
+            <input type="date" className="sf-input" value={to} min={from} onChange={e => setTo(e.target.value)} style={{ width: 'auto' }} />
           </div>
         </div>
         <div className="sf-view-actions">
-          <button className="btn btn--primary" onClick={() => alert('Generating PDF...')} id="btn-export-report">
-            <i className="ti ti-file-analytics" aria-hidden="true" /> Export PDF
+          <button className="btn btn--primary" onClick={() => window.print()} id="btn-export-report">
+            <i className="ti ti-printer" aria-hidden="true" /> Print / PDF
           </button>
-          <button className="btn" onClick={() => alert('Generating CSV...')} id="btn-export-csv">
-            <i className="ti ti-file-spreadsheet" aria-hidden="true" /> Export CSV
+          <button className="btn" onClick={exportCsv} disabled={exporting} id="btn-export-csv">
+            <i className="ti ti-file-spreadsheet" aria-hidden="true" /> {exporting ? 'Exporting…' : 'Export CSV'}
           </button>
         </div>
       </div>
 
       {/* Summary KPIs */}
       <div className="kpi-strip" style={{ '--kpi-cols': '4' } as React.CSSProperties}>
-        <div className="kpi"><div className="kpi-label">Data This Month</div><div className="kpi-value">{totalTB} TB</div><div className="kpi-sub">+11% vs last month</div></div>
-        <div className="kpi"><div className="kpi-label">Avg per School</div><div className="kpi-value">{(totalTB / onlineSites).toFixed(2)} TB</div><div className="kpi-sub">month to date</div></div>
+        <div className="kpi"><div className="kpi-label">Data (last 7d)</div><div className="kpi-value">{totalDataGb} GB</div><div className="kpi-sub">across active fleet</div></div>
+        <div className="kpi"><div className="kpi-label">Avg per School</div><div className="kpi-value">{reportingSchools ? (totalDataGb / reportingSchools).toFixed(1) : '0'} GB</div><div className="kpi-sub">{reportingSchools} reporting usage</div></div>
         <div className="kpi">
           <div className="kpi-label">Schools Reporting</div>
           <div className="kpi-value" style={{ color: onlineSites < totalSites ? 'var(--warn)' : 'var(--ok)' }}>{onlineSites}/{totalSites}</div>
@@ -61,7 +98,7 @@ export default function FleetReport() {
       <div className="panel">
         <div className="panel-head">
           <h2>Data Usage by School</h2>
-          <span className="meta">June 1 – 15, 2026</span>
+          <span className="meta">{from} → {to}</span>
         </div>
         <div className="table-scroll">
           <table className="tbl" aria-label="Fleet data usage">
@@ -71,17 +108,16 @@ export default function FleetReport() {
                 <th>Region</th>
                 <th className="num">Status</th>
                 <th className="num">Laptops</th>
-                <th className="num">Estimated Usage</th>
+                <th className="num">Data (7d)</th>
                 <th>Share of Fleet</th>
               </tr>
             </thead>
             <tbody>
               {activeDishes
                 .slice()
-                .sort((a, b) => b.laptops - a.laptops)
+                .sort((a, b) => b.dataGb - a.dataGb)
                 .map(d => {
-                  const tb = +(0.5 + d.laptops * 0.15).toFixed(2);
-                  const pct = Math.round((tb / totalTB) * 100);
+                  const pct = totalDataGb ? Math.round((d.dataGb / totalDataGb) * 100) : 0;
                   return (
                     <tr key={d.serial}>
                       <td className="cell-primary">{d.name}</td>
@@ -92,7 +128,7 @@ export default function FleetReport() {
                         </span>
                       </td>
                       <td className="num cell-mono">{d.laptops}</td>
-                      <td className="num cell-mono">{tb} TB</td>
+                      <td className="num cell-mono">{d.dataGb > 0 ? `${d.dataGb.toFixed(1)} GB` : '—'}</td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <div style={{ flex: 1, height: 6, background: 'var(--surface-2)', border: '1px solid var(--rule)' }}>
@@ -109,26 +145,6 @@ export default function FleetReport() {
         </div>
       </div>
 
-      {/* Uptime chart */}
-      <div className="panel">
-        <div className="panel-head"><h2>Uptime Trend</h2><span className="meta">Last 14 days</span></div>
-        <div style={{ padding: '16px 20px' }}>
-          <svg viewBox="0 0 480 100" style={{ width: '100%', height: 100 }} aria-label="Uptime trend chart">
-            <line x1="0" y1="80" x2="480" y2="80" stroke="var(--rule)" strokeWidth="1" />
-            <polyline
-              fill="none"
-              stroke="var(--accent)"
-              strokeWidth="2"
-              points="0,40 36,30 72,46 108,34 144,52 180,28 216,44 252,30 288,60 324,38 360,32 396,42 432,30 468,36"
-            />
-          </svg>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)', marginTop: 8 }}>
-            <span>June 1</span>
-            <span>June 7</span>
-            <span>June 15</span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

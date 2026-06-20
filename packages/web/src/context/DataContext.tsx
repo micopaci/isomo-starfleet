@@ -22,6 +22,12 @@ export interface Dish {
   pingDrop: number;
   agent: boolean;
   dataGb: number; // data consumed over the last 7 days (from portal usage sync)
+  lastSeen: string | null;        // last telemetry seen (terminal or ping), ISO
+  statusUpdatedAt: string | null; // when current_status last changed, ISO
+  latestUsageDate: string | null; // date of most recent daily usage record
+  billingCycleStart: string | null;
+  accountId: string | null;
+  serviceLineId: string | null;
 }
 
 export interface Alert {
@@ -211,6 +217,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           pingDrop: Number(terminal?.latest_ping_drop_pct || 0),
           agent: s.total_laptops > 0,
           dataGb,
+          lastSeen: terminal?.last_seen_utc || terminal?.latest_ping?.last_seen_utc || null,
+          statusUpdatedAt: terminal?.status_updated_at || null,
+          latestUsageDate: terminal?.latest_usage?.log_date || null,
+          billingCycleStart: terminal?.billing_cycle_start || null,
+          accountId: terminal?.account_id || null,
+          serviceLineId: terminal?.service_line_id || s.starlink_sn || null,
         };
       }) : [];
 
@@ -249,6 +261,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             pingDrop: 0,
             agent: false,
             dataGb: inactiveDataGb,
+            lastSeen: t.last_seen_utc || null,
+            statusUpdatedAt: t.status_updated_at || null,
+            latestUsageDate: t.latest_usage?.log_date || null,
+            billingCycleStart: t.billing_cycle_start || null,
+            accountId: t.account_id || null,
+            serviceLineId: t.service_line_id || null,
           });
         }
       } catch (err) {

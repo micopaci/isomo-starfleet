@@ -18,6 +18,27 @@ function tone(status: Status): 'ok' | 'warn' | 'bad' | 'mute' {
   return 'bad';
 }
 
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function fmtRelative(iso: string | null): string {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return '';
+  const diff = Date.now() - t;
+  if (diff < 0) return '';
+  const days = Math.floor(diff / 86400000);
+  if (days >= 1) return `${days}d ago`;
+  const hrs = Math.floor(diff / 3600000);
+  if (hrs >= 1) return `${hrs}h ago`;
+  const mins = Math.floor(diff / 60000);
+  return mins >= 1 ? `${mins}m ago` : 'just now';
+}
+
 const SORT_ACCESSORS: Record<string, (d: Dish) => string | number> = {
   name: d => d.name.toLowerCase(),
   region: d => d.region.toLowerCase(),
@@ -189,32 +210,60 @@ export default function Starlinks() {
               <i className="ti ti-x" aria-hidden="true" />
             </button>
           </div>
-          <div className="sf-drawer-section">
+          <div className="sf-drawer-section" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <StatusChip label={selected.status.toUpperCase()} tone={tone(selected.status)} />
+            {selected.statusUpdatedAt && (
+              <span style={{ color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                since {fmtDate(selected.statusUpdatedAt)} · {fmtRelative(selected.statusUpdatedAt)}
+              </span>
+            )}
           </div>
+
+          {/* At-a-glance dates / identity */}
+          <div style={{ display: 'grid', gap: 1, background: 'var(--rule)', border: '1px solid var(--rule)', marginBottom: 16 }}>
+            {[
+              { l: 'Last seen', v: fmtDate(selected.lastSeen), s: fmtRelative(selected.lastSeen) },
+              { l: 'Latest data', v: fmtDate(selected.latestUsageDate), s: selected.dataGb > 0 ? `${selected.dataGb.toFixed(1)} GB / 7d` : '' },
+              { l: 'Billing cycle start', v: fmtDate(selected.billingCycleStart), s: '' },
+              { l: 'Service line', v: selected.serviceLineId || '—', s: selected.accountId ? `acct ${selected.accountId}` : '' },
+            ].map(row => (
+              <div key={row.l} style={{ background: 'var(--surface)', padding: '9px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+                <span style={{ color: 'var(--muted)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>{row.l}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink)', textAlign: 'right' }}>
+                  {row.v}{row.s && <span style={{ color: 'var(--muted)', marginLeft: 6 }}>{row.s}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+
           <div className="sf-drawer-grid">
             <div className="kpi"><div className="kpi-label">Latency</div><div className="kpi-value" style={{ color: selected.latency > 150 ? 'var(--warn)' : selected.latency === 0 ? 'var(--bad)' : 'var(--ok)' }}>{selected.latency > 0 ? `${selected.latency}ms` : '—'}</div></div>
             <div className="kpi"><div className="kpi-label">Download</div><div className="kpi-value">{selected.down > 0 ? `${selected.down}M` : '—'}</div></div>
             <div className="kpi"><div className="kpi-label">Upload</div><div className="kpi-value">{selected.up > 0 ? `${selected.up}M` : '—'}</div></div>
             <div className="kpi"><div className="kpi-label">SNR</div><div className="kpi-value">{selected.snr > 0 ? `${selected.snr.toFixed(1)}dB` : '—'}</div></div>
-            <div className="kpi"><div className="kpi-label">Ping Drop</div><div className="kpi-value">{selected.pingDrop}%</div></div>
+            <div className="kpi"><div className="kpi-label">Data (7d)</div><div className="kpi-value">{selected.dataGb > 0 ? `${selected.dataGb.toFixed(1)}GB` : '—'}</div></div>
             <div className="kpi"><div className="kpi-label">Uptime</div><div className="kpi-value">{selected.uptime > 0 ? `${selected.uptime.toFixed(1)}%` : '—'}</div></div>
           </div>
           <div className="sf-drawer-section">
-            <h3 style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8 }}>10-day uptime trend</h3>
-            <svg viewBox="0 0 360 60" style={{ width: '100%', height: 60 }}>
-              {selected.spark.map((v, i) => (
-                <rect
-                  key={i}
-                  x={i * 38}
-                  y={60 - (v / 100) * 56}
-                  width={30}
-                  height={(v / 100) * 56}
-                  fill={v >= 90 ? 'var(--ok)' : v >= 70 ? 'var(--warn)' : 'var(--bad)'}
-                  opacity={.85}
-                />
-              ))}
-            </svg>
+            <h3 style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8 }}>10-day data usage (GB)</h3>
+            {(() => {
+              const max = Math.max(...selected.spark, 1);
+              return (
+                <svg viewBox="0 0 360 60" style={{ width: '100%', height: 60 }}>
+                  {selected.spark.map((v, i) => (
+                    <rect
+                      key={i}
+                      x={i * 38}
+                      y={60 - (v / max) * 56}
+                      width={30}
+                      height={(v / max) * 56}
+                      fill="var(--accent)"
+                      opacity={.85}
+                    />
+                  ))}
+                </svg>
+              );
+            })()}
           </div>
           <div className="sf-drawer-foot">
             <button className="btn btn--primary" onClick={() => alert('Initiating diagnostics sweep...')}>Diagnostics</button>
