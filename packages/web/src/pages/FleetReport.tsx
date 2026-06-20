@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useData } from '../context/DataContext';
+import { buildStarlinkReportHtml } from '../lib/starlinkReport';
 
 function defaultRange(): { from: string; to: string } {
   const to = new Date();
@@ -15,6 +16,34 @@ export default function FleetReport() {
   const [from, setFrom] = useState(init.from);
   const [to, setTo] = useState(init.to);
   const [exporting, setExporting] = useState(false);
+  const [printing, setPrinting] = useState(false);
+
+  const generateReport = async () => {
+    setPrinting(true);
+    try {
+      const token = localStorage.getItem('sf_token');
+      const headers = { Authorization: `Bearer ${token}` };
+      const [usageRes, termRes] = await Promise.all([
+        fetch(`/api/starlink-usage?from=${from}&to=${to}`, { headers }),
+        fetch('/api/starlink-terminals?days=400', { headers }),
+      ]);
+      if (!usageRes.ok) { alert(`Report failed (${usageRes.status}).`); return; }
+      const usageJson = await usageRes.json();
+      const rows = Array.isArray(usageJson) ? usageJson : (usageJson?.rows || []);
+      if (rows.length === 0) { alert(`No usage records for ${from} → ${to}.`); return; }
+      const termJson = termRes.ok ? await termRes.json() : { terminals: [] };
+      const terminals = Array.isArray(termJson?.terminals) ? termJson.terminals : [];
+      const html = buildStarlinkReportHtml(rows, terminals, from, to);
+      const w = window.open('', '_blank');
+      if (!w) { alert('Popup blocked — allow popups to generate the report.'); return; }
+      w.document.write(html);
+      w.document.close();
+    } catch (err: any) {
+      alert(`Report failed: ${err?.message || 'network error'}`);
+    } finally {
+      setPrinting(false);
+    }
+  };
 
   const exportCsv = async () => {
     setExporting(true);
@@ -87,8 +116,8 @@ export default function FleetReport() {
           </div>
         </div>
         <div className="sf-view-actions">
-          <button className="btn btn--primary" onClick={() => window.print()} id="btn-export-report">
-            <i className="ti ti-printer" aria-hidden="true" /> Print / PDF
+          <button className="btn btn--primary" onClick={generateReport} disabled={printing} id="btn-export-report">
+            <i className="ti ti-file-analytics" aria-hidden="true" /> {printing ? 'Generating…' : 'Generate PDF Report'}
           </button>
           <button className="btn" onClick={exportCsv} disabled={exporting} id="btn-export-csv">
             <i className="ti ti-file-spreadsheet" aria-hidden="true" /> {exporting ? 'Exporting…' : 'Export CSV'}
