@@ -52,7 +52,7 @@ const SORT_ACCESSORS: Record<string, (d: Dish) => string | number> = {
 };
 
 export default function Starlinks() {
-  const { dishes: activeDishes, inactiveDishes, loading } = useData();
+  const { dishes: activeDishes, inactiveDishes, loading, refreshData } = useData();
   const [filter, setFilter] = useState<string | 'all'>('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Dish | null>(null);
@@ -60,6 +60,41 @@ export default function Starlinks() {
 
   const toggleSort = (key: string) =>
     setSort(prev => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' });
+
+  const decommissionDish = async (dish: Dish) => {
+    if (!dish.serviceLineId) { alert('No service line on this dish.'); return; }
+    const reason = prompt(`Decommission "${dish.name}"?\nEnter a reason (e.g. dish dead / replaced):`, dish.decommissionReason || '');
+    if (reason === null) return;
+    try {
+      const res = await fetch(`/api/starlink-terminals/${encodeURIComponent(dish.serviceLineId)}/decommission`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('sf_token')}` },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(`Failed: ${e.error || res.status}`); return; }
+      setSelected(null);
+      await refreshData();
+    } catch (err: any) {
+      alert(`Failed: ${err?.message || 'network error'}`);
+    }
+  };
+
+  const restoreDish = async (dish: Dish) => {
+    if (!dish.serviceLineId) return;
+    if (!confirm(`Restore "${dish.name}" to active (clear decommission)?`)) return;
+    try {
+      const res = await fetch(`/api/starlink-terminals/${encodeURIComponent(dish.serviceLineId)}/decommission`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('sf_token')}` },
+        body: JSON.stringify({ clear: true }),
+      });
+      if (!res.ok) { alert(`Failed: ${res.status}`); return; }
+      setSelected(null);
+      await refreshData();
+    } catch (err: any) {
+      alert(`Failed: ${err?.message || 'network error'}`);
+    }
+  };
 
   // The Starlinks list is terminal-aware: it shows the active site-based fleet
   // plus suspended/disabled service lines (which never surface through /api/sites).
@@ -262,9 +297,11 @@ export default function Starlinks() {
             })()}
           </div>
           <div className="sf-drawer-foot">
-            <button className="btn btn--primary" onClick={() => alert('Initiating diagnostics sweep...')}>Diagnostics</button>
-            <button className="btn" onClick={() => alert('Sending ping...')}>Ping dish</button>
-            <button className="btn btn--danger-outline" onClick={() => { if (confirm('Reboot this terminal?')) alert('Reboot dispatched.'); }}>Reboot</button>
+            {selected.status === 'inactive' || selected.decommissionedAt ? (
+              <button className="btn" onClick={() => restoreDish(selected)}>Restore (un-decommission)</button>
+            ) : (
+              <button className="btn btn--danger-outline" onClick={() => decommissionDish(selected)}>Decommission</button>
+            )}
           </div>
         </Drawer>
       )}
