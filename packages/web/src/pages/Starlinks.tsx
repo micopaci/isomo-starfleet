@@ -18,6 +18,17 @@ function tone(status: Status): 'ok' | 'warn' | 'bad' | 'mute' {
   return 'bad';
 }
 
+// Starlink account_id → account holder (the people who own each portal account).
+// Source: data_usage/auth/fleet_map.json. Move to the DB if accounts change often.
+const ACCOUNT_HOLDERS: Record<string, string> = {
+  'ACC-3049739-23188-22': 'Chaste Niwe',
+  'ACC-4002603-73895-12': 'Liliane Umutoni',
+  'ACC-4011560-47995-16': 'Amen Mugisha',
+  'ACC-DF-10883628-35889-65': 'Isomo Circles',
+  'ACC-DF-9503269-58369-13': 'Benon Mugisha',
+  'ACC-DF-9562628-79172-12': 'Thierry Maniragaba',
+};
+
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -254,7 +265,9 @@ export default function Starlinks() {
               { l: 'Last seen', v: fmtDate(selected.lastSeen), s: fmtRelative(selected.lastSeen) },
               { l: 'Latest data', v: fmtDate(selected.latestUsageDate), s: selected.dataGb > 0 ? `${selected.dataGb.toFixed(1)} GB / 7d` : '' },
               { l: 'Billing cycle start', v: fmtDate(selected.billingCycleStart), s: '' },
-              { l: 'Service line', v: selected.serviceLineId || '—', s: selected.accountId ? `acct ${selected.accountId}` : '' },
+              { l: 'Serial', v: selected.serial || '—', s: '' },
+              { l: 'Service line', v: selected.serviceLineId || '—', s: '' },
+              { l: 'Account', v: (selected.accountId && ACCOUNT_HOLDERS[selected.accountId]) || selected.accountId || '—', s: (selected.accountId && ACCOUNT_HOLDERS[selected.accountId]) ? selected.accountId : '' },
             ].map(row => (
               <div key={row.l} style={{ background: 'var(--surface)', padding: '9px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
                 <span style={{ color: 'var(--muted)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>{row.l}</span>
