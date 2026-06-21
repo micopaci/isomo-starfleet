@@ -764,7 +764,13 @@ router.get('/sites', async (req, res, next) => {
          ) h
        ) usage_trend ON TRUE
        WHERE resolved.site_id IS NOT NULL
-       ORDER BY resolved.site_id, st.status_updated_at DESC NULLS LAST, st.updated_at DESC`
+       -- One terminal per site: prefer ACTIVE over Inactive (so a decommissioned
+       -- same-name terminal never hijacks a site's status), then Online, then most
+       -- recently updated.
+       ORDER BY resolved.site_id,
+                (st.current_status = 'Inactive') ASC,
+                (st.current_status = 'Online') DESC,
+                st.status_updated_at DESC NULLS LAST, st.updated_at DESC`
     );
     const uptimeBy  = Object.fromEntries(uptimeRes.rows.map(r => [r.site_id, Number(r.uptime_pct)]));
     const dataBy    = Object.fromEntries(dataRes.rows.map(r => [r.site_id, Number(r.data_mb_today)]));
