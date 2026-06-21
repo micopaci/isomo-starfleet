@@ -203,8 +203,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const dataGb = consumedGb.slice(-7).reduce((sum: number, v: any) => sum + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
 
         return {
-          name: s.name,
-          campus: s.district || 'Unassigned',
+          // Distinguish dishes by the terminal's own portal nickname (its real
+          // identity), not the site name — the terminal↔site match is fuzzy, so
+          // the site name can hide which actual dish (working vs broken) is here.
+          name: terminal?.nickname || s.name,
+          campus: s.name || s.district || 'Unassigned',
           region: getRegionForDistrict(s.district),
           status,
           latency: Number(terminal?.latest_ping_latency_ms || 0),
