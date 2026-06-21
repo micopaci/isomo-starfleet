@@ -764,10 +764,11 @@ router.get('/sites', async (req, res, next) => {
          ) h
        ) usage_trend ON TRUE
        WHERE resolved.site_id IS NOT NULL
-       -- One terminal per site: prefer ACTIVE over Inactive (so a decommissioned
-       -- same-name terminal never hijacks a site's status), then Online, then most
-       -- recently updated.
+       -- One terminal per site: prefer ACTIVE over Inactive/decommissioned (so a
+       -- decommissioned same-name terminal never hijacks a site's status), then
+       -- Online, then most recently updated.
        ORDER BY resolved.site_id,
+                (st.decommissioned_at IS NOT NULL) ASC,
                 (st.current_status = 'Inactive') ASC,
                 (st.current_status = 'Online') DESC,
                 st.status_updated_at DESC NULLS LAST, st.updated_at DESC`

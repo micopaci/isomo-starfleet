@@ -184,11 +184,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const mappedDishes: Dish[] = Array.isArray(rawSites) ? rawSites.map((s: any) => {
         const terminal = s.starlink_terminal;
         const statusVal = terminal?.current_status?.toLowerCase();
+        // A terminal with a decommission date is inactive no matter what
+        // current_status says — the status sync can re-seed current_status back
+        // to Offline, but the decommission decision is sticky.
+        const isDecommissioned = !!terminal?.decommissioned_at;
         // Cloud terminal status when present; otherwise derive from signal
         // freshness. With no telemetry at all we treat the dish as offline
         // (unreachable) rather than inventing a "degraded" state.
         const hasSignal = s.signal && s.signal.snr != null;
         const status: Status =
+          isDecommissioned ? 'inactive' :
           statusVal === 'inactive' ? 'inactive' :
           statusVal === 'online' ? 'online' :
           statusVal === 'offline' ? 'offline' :

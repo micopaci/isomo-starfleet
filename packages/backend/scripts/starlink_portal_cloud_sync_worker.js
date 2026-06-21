@@ -378,6 +378,9 @@ async function seedConfiguredTerminals(client, inventory) {
          billing_cycle_start = COALESCE(EXCLUDED.billing_cycle_start, starlink_terminals.billing_cycle_start),
          current_status = CASE
            WHEN $6 = 'Inactive' THEN 'Inactive'
+           -- Never resurrect a manually decommissioned terminal, even if the
+           -- portal inventory still lists it as active.
+           WHEN starlink_terminals.decommissioned_at IS NOT NULL THEN 'Inactive'
            WHEN starlink_terminals.current_status = 'Inactive' AND $6 != 'Inactive' THEN 'Unknown'
            ELSE starlink_terminals.current_status
          END,
@@ -397,11 +400,12 @@ async function seedConfiguredTerminals(client, inventory) {
 }
 
 async function loadTerminals(client) {
-  // Inactive terminals are stored in the DB for display but excluded from polling.
+  // Inactive / decommissioned terminals are stored for display but excluded from polling.
   const { rows } = await client.query(
     `SELECT service_line_id, account_id, nickname, site_id, billing_cycle_start::text AS billing_cycle_start
      FROM starlink_terminals
      WHERE current_status != 'Inactive'
+       AND decommissioned_at IS NULL
      ORDER BY COALESCE(site_id, 999999), nickname NULLS LAST, service_line_id`,
   );
   return rows;
