@@ -715,6 +715,8 @@ router.get('/sites', async (req, res, next) => {
               st.nickname,
               st.account_id,
               st.current_status,
+              st.decommissioned_at,
+              st.decommission_reason,
               st.last_seen_utc,
               st.billing_cycle_start::text AS billing_cycle_start,
               st.status_updated_at,
