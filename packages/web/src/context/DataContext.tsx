@@ -262,6 +262,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const termJson = await termRes.json();
         const terminals: any[] = Array.isArray(termJson?.terminals) ? termJson.terminals : [];
         for (const t of terminals) {
+          // Decommissioned terminals live ONLY in the dedicated Decommissioned
+          // view — never in the Starlinks fleet list (avoids duplication).
+          if (t.decommissioned_at) continue;
           if (String(t.current_status || '').toLowerCase() !== 'inactive') continue;
           if (t.service_line_id && seenLines.has(t.service_line_id)) continue;
           const consumed = Array.isArray(t.usage_trend) ? t.usage_trend.map((u: any) => Number(u.consumed_gb)) : [];
@@ -334,7 +337,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }) : [];
 
-      setDishes(mappedDishes);
+      // Decommissioned dishes are excluded from the active fleet entirely — they
+      // belong only in the Decommissioned view, not the Starlinks list / Overview
+      // / Map / Reports (prevents the same dish appearing in two places).
+      setDishes(mappedDishes.filter(d => !d.decommissionedAt));
       setInactiveDishes(mappedInactive);
       setAlerts(mappedAlerts);
       setInventory(mappedInventory);

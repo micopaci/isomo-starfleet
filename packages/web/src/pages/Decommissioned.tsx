@@ -39,8 +39,10 @@ export default function Decommissioned() {
       const res = await fetch('/api/starlink-terminals?days=45', { headers: authHeaders() });
       const json = await res.json();
       const all: Terminal[] = Array.isArray(json?.terminals) ? json.terminals : [];
-      // Decommissioned = has a decommission date OR is marked Inactive.
-      setTerminals(all.filter(t => t.decommissioned_at || String(t.current_status).toLowerCase() === 'inactive'));
+      // Decommissioned view is keyed strictly off the decommission date so it
+      // never overlaps the Starlinks "Inactive" tab (which shows suspended-but-
+      // not-decommissioned lines). Decommission a dish to move it here.
+      setTerminals(all.filter(t => t.decommissioned_at));
     } catch (err) {
       console.error(err);
     } finally {
