@@ -19,6 +19,7 @@ export interface Dish {
   rain: number;
   laptops: number;
   serial: string;
+  kitId: string | null;
   lat_coord: number;
   lng_coord: number;
   spark: number[];
@@ -33,6 +34,8 @@ export interface Dish {
   serviceLineId: string | null;
   decommissionedAt: string | null;
   decommissionReason: string | null;
+  sourceType: 'terminal' | 'retired_asset';
+  replacementKitId: string | null;
 }
 
 export interface Alert {
@@ -206,12 +209,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           spark.unshift(0);
         }
         const dataGb = consumedGb.slice(-7).reduce((sum: number, v: any) => sum + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
+        const portalName = String(terminal?.nickname || '').trim();
+        const displayName = portalName && !['disabled', 'dead'].includes(portalName.toLowerCase()) ? portalName : s.name;
 
         return {
-          // Distinguish dishes by the terminal's own portal nickname (its real
-          // identity), not the site name — the terminal↔site match is fuzzy, so
-          // the site name can hide which actual dish (working vs broken) is here.
-          name: terminal?.nickname || s.name,
+          // Prefer the terminal's portal nickname, except for generic inactive
+          // labels that hide the real site identity.
+          name: displayName,
           campus: s.name || s.district || 'Unassigned',
           region: getRegionForDistrict(s.district),
           status,
@@ -242,6 +246,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           serviceLineId: terminal?.service_line_id || s.starlink_sn || null,
           decommissionedAt: terminal?.decommissioned_at || null,
           decommissionReason: terminal?.decommission_reason || null,
+          kitId: terminal?.kit_id || s.kit_id || null,
+          sourceType: 'terminal',
+          replacementKitId: terminal?.replacement_kit_id || null,
         };
       }) : [];
 
@@ -291,6 +298,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             serviceLineId: t.service_line_id || null,
             decommissionedAt: t.decommissioned_at || null,
             decommissionReason: t.decommission_reason || null,
+            kitId: t.kit_id || null,
+            sourceType: t.source_type === 'retired_asset' ? 'retired_asset' : 'terminal',
+            replacementKitId: t.replacement_kit_id || null,
           });
         }
       } catch (err) {

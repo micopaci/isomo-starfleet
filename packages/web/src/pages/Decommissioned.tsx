@@ -1,9 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 
 interface Terminal {
-  service_line_id: string;
+  service_line_id: string | null;
+  source_type?: 'terminal' | 'retired_asset';
+  retired_asset_id?: number;
   nickname: string | null;
   site_name: string | null;
+  starlink_sn?: string | null;
+  starlink_uuid?: string | null;
+  kit_id?: string | null;
+  replacement_kit_id?: string | null;
   current_status: string;
   decommissioned_at: string | null;
   decommission_reason: string | null;
@@ -24,6 +30,10 @@ function isoDay(iso: string | null): string {
 }
 
 const authHeaders = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('sf_token')}` });
+
+function terminalKey(t: Terminal): string {
+  return t.service_line_id || `retired-${t.retired_asset_id || t.kit_id || t.starlink_sn || t.site_name}`;
+}
 
 export default function Decommissioned() {
   const [terminals, setTerminals] = useState<Terminal[]>([]);
@@ -53,7 +63,8 @@ export default function Decommissioned() {
   useEffect(() => { load(); }, [load]);
 
   const startEdit = (t: Terminal) => {
-    setEditing(t.service_line_id);
+    if (!t.service_line_id) return;
+    setEditing(terminalKey(t));
     setReason(t.decommission_reason || '');
     setDate(isoDay(t.decommissioned_at) || new Date().toISOString().split('T')[0]);
   };
@@ -172,6 +183,8 @@ export default function Decommissioned() {
             <thead>
               <tr>
                 <th>Terminal</th>
+                <th>Kit</th>
+                <th>Serial</th>
                 <th>Service line</th>
                 <th>Last data</th>
                 <th>Decommissioned</th>
@@ -181,33 +194,43 @@ export default function Decommissioned() {
             </thead>
             <tbody>
               {terminals.length === 0 ? (
-                <tr><td colSpan={6} className="cell-mono" style={{ color: 'var(--muted)', textAlign: 'center', padding: '18px 0' }}>No decommissioned terminals.</td></tr>
+                <tr><td colSpan={8} className="cell-mono" style={{ color: 'var(--muted)', textAlign: 'center', padding: '18px 0' }}>No decommissioned terminals.</td></tr>
               ) : terminals.map(t => (
-                editing === t.service_line_id ? (
-                  <tr key={t.service_line_id}>
+                editing === terminalKey(t) ? (
+                  <tr key={terminalKey(t)}>
                     <td className="cell-primary">{t.nickname || t.site_name || t.service_line_id}</td>
+                    <td className="cell-mono" style={{ fontSize: 11 }}>{t.kit_id || '—'}</td>
+                    <td className="cell-mono" style={{ fontSize: 11 }}>{t.starlink_sn || '—'}</td>
                     <td className="cell-mono" style={{ fontSize: 11 }}>{t.service_line_id}</td>
                     <td className="cell-mono" style={{ fontSize: 11 }}>{fmtDate(t.latest_usage?.log_date || null)}</td>
                     <td><input type="date" className="sf-input" value={date} onChange={e => setDate(e.target.value)} style={{ width: 'auto', padding: '4px 8px', fontSize: 12 }} /></td>
                     <td><input type="text" className="sf-input" value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. dish dead / replaced" style={{ padding: '4px 8px', fontSize: 12, width: '100%' }} /></td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn--primary btn--sm" disabled={saving} onClick={() => save(t.service_line_id)}>{saving ? '…' : 'Save'}</button>
+                        <button className="btn btn--primary btn--sm" disabled={saving || !t.service_line_id} onClick={() => t.service_line_id && save(t.service_line_id)}>{saving ? '…' : 'Save'}</button>
                         <button className="btn btn--sm" disabled={saving} onClick={() => setEditing(null)}>×</button>
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  <tr key={t.service_line_id}>
+                  <tr key={terminalKey(t)}>
                     <td className="cell-primary">{t.nickname || t.site_name || t.service_line_id}</td>
-                    <td className="cell-mono" style={{ fontSize: 11 }}>{t.service_line_id}</td>
+                    <td className="cell-mono" style={{ fontSize: 11 }}>{t.kit_id || '—'}</td>
+                    <td className="cell-mono" style={{ fontSize: 11 }}>{t.starlink_sn || '—'}</td>
+                    <td className="cell-mono" style={{ fontSize: 11 }}>{t.service_line_id || 'Historical asset'}</td>
                     <td className="cell-mono" style={{ fontSize: 11, color: t.latest_usage?.log_date ? 'var(--ink-2)' : 'var(--muted)' }}>{fmtDate(t.latest_usage?.log_date || null)}</td>
                     <td className="cell-mono" style={{ fontSize: 12, color: t.decommissioned_at ? 'var(--ink)' : 'var(--muted)' }}>{fmtDate(t.decommissioned_at)}</td>
                     <td style={{ fontSize: 12, color: t.decommission_reason ? 'var(--ink-2)' : 'var(--muted)' }}>{t.decommission_reason || '—'}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn--sm" onClick={() => startEdit(t)}>Edit</button>
-                        <button className="btn btn--sm" onClick={() => restore(t.service_line_id)}>Restore</button>
+                        {t.service_line_id ? (
+                          <>
+                            <button className="btn btn--sm" onClick={() => startEdit(t)}>Edit</button>
+                            <button className="btn btn--sm" onClick={() => restore(t.service_line_id!)}>Restore</button>
+                          </>
+                        ) : (
+                          <span className="cell-mono" style={{ color: 'var(--muted)', fontSize: 11 }}>Recorded</span>
+                        )}
                       </div>
                     </td>
                   </tr>

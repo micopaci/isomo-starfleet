@@ -155,10 +155,15 @@ function mapStarlinkTerminalRow(row) {
     : [];
   return {
     service_line_id: row.service_line_id,
+    source_type: row.source_type || 'terminal',
     site_id: row.site_id == null ? null : Number(row.site_id),
     site_name: row.site_name || null,
     nickname: row.nickname || null,
     account_id: row.account_id || null,
+    starlink_sn: row.starlink_sn || null,
+    starlink_uuid: row.starlink_uuid || null,
+    kit_id: row.kit_id || null,
+    replacement_kit_id: row.replacement_kit_id || null,
     current_status: row.current_status || 'Unknown',
     last_seen_utc: row.last_seen_utc || null,
     billing_cycle_start: row.billing_cycle_start || null,
@@ -184,6 +189,74 @@ function mapStarlinkTerminalRow(row) {
       : null,
     usage_trend: usageTrend,
   };
+}
+
+function mapRetiredStarlinkAssetRow(row) {
+  if (!row) return null;
+  return {
+    service_line_id: row.service_line_id || null,
+    source_type: 'retired_asset',
+    retired_asset_id: Number(row.id),
+    site_id: row.site_id == null ? null : Number(row.site_id),
+    site_name: row.site_name || null,
+    nickname: row.site_name || row.kit_id || null,
+    account_id: row.account_id || null,
+    starlink_sn: row.starlink_sn || null,
+    starlink_uuid: row.starlink_uuid || null,
+    kit_id: row.kit_id || null,
+    replacement_kit_id: row.replacement_kit_id || null,
+    current_status: 'Inactive',
+    last_seen_utc: null,
+    billing_cycle_start: null,
+    status_updated_at: row.updated_at || row.decommissioned_at || null,
+    decommissioned_at: row.decommissioned_at || null,
+    decommission_reason: row.decommission_reason || null,
+    latest_usage: null,
+    latest_ping: null,
+    usage_trend: [],
+  };
+}
+
+function timeValue(value) {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function starlinkTerminalStatusScore(terminal) {
+  if (!terminal || terminal.decommissioned_at) return 0;
+  const pingStatus = String(terminal.latest_ping?.current_status || '').toLowerCase();
+  const currentStatus = String(terminal.current_status || '').toLowerCase();
+  if (terminal.latest_ping?.is_offline === true) return 0;
+  if (pingStatus === 'online' || currentStatus === 'online') return 3;
+  if (pingStatus === 'offline' || currentStatus === 'inactive' || currentStatus === 'offline') return 1;
+  return 2;
+}
+
+function compareStarlinkTerminalForKit(a, b) {
+  const statusDelta = starlinkTerminalStatusScore(b) - starlinkTerminalStatusScore(a);
+  if (statusDelta) return statusDelta;
+  const updatedDelta = timeValue(b.status_updated_at) - timeValue(a.status_updated_at);
+  if (updatedDelta) return updatedDelta;
+  const pingDelta = timeValue(b.latest_ping?.recorded_at) - timeValue(a.latest_ping?.recorded_at);
+  if (pingDelta) return pingDelta;
+  return String(a.service_line_id || '').localeCompare(String(b.service_line_id || ''));
+}
+
+function normalizeStarlinkTerminalList(terminals) {
+  const byKit = new Map();
+  for (const terminal of terminals) {
+    if (!terminal?.kit_id) continue;
+    const existing = byKit.get(terminal.kit_id);
+    if (!existing || compareStarlinkTerminalForKit(terminal, existing) < 0) {
+      byKit.set(terminal.kit_id, terminal);
+    }
+  }
+  return [...byKit.values()].sort((a, b) => {
+    const aName = a.site_name || a.nickname || a.service_line_id || '';
+    const bName = b.site_name || b.nickname || b.service_line_id || '';
+    return aName.localeCompare(bName) || String(a.kit_id || '').localeCompare(String(b.kit_id || ''));
+  });
 }
 
 function dailyUsageFromTerminal(terminal) {
@@ -721,6 +794,9 @@ router.get('/sites', async (req, res, next) => {
               st.billing_cycle_start::text AS billing_cycle_start,
               st.status_updated_at,
               resolved.site_name,
+              resolved.starlink_sn,
+              resolved.starlink_uuid,
+              resolved.kit_id,
               latest.log_date::text AS latest_log_date,
               latest.consumed_gb AS latest_consumed_gb,
               latest.collected_at AS latest_collected_at,
@@ -733,7 +809,7 @@ router.get('/sites', async (req, res, next) => {
               usage_trend.usage_trend
        FROM starlink_terminals st
        LEFT JOIN LATERAL (
-         SELECT s.id AS site_id, s.name AS site_name
+         SELECT s.id AS site_id, s.name AS site_name, s.starlink_sn, s.starlink_uuid, s.kit_id
          FROM sites s
          WHERE s.id = st.site_id
             OR ${sqlTerminalSiteMatch('s', 'st')}
@@ -1192,6 +1268,9 @@ router.get('/starlink-terminals', async (req, res, next) => {
               st.status_updated_at,
               st.decommissioned_at,
               st.decommission_reason,
+              resolved.starlink_sn,
+              resolved.starlink_uuid,
+              resolved.kit_id,
               latest.log_date::text AS latest_log_date,
               latest.consumed_gb AS latest_consumed_gb,
               latest.collected_at AS latest_collected_at,
@@ -1204,7 +1283,7 @@ router.get('/starlink-terminals', async (req, res, next) => {
               usage_trend.usage_trend
        FROM starlink_terminals st
        LEFT JOIN LATERAL (
-         SELECT s.id AS site_id, s.name AS site_name
+         SELECT s.id AS site_id, s.name AS site_name, s.starlink_sn, s.starlink_uuid, s.kit_id
          FROM sites s
          WHERE s.id = st.site_id
             OR ${sqlTerminalSiteMatch('s', 'st')}
@@ -1240,9 +1319,36 @@ router.get('/starlink-terminals', async (req, res, next) => {
       [days]
     );
 
+    const retiredAssetsRes = await pool.query(
+      `SELECT id,
+              site_id,
+              site_name,
+              starlink_sn,
+              starlink_uuid,
+              kit_id,
+              service_line_id,
+              account_id,
+              status,
+              decommissioned_at,
+              decommission_reason,
+              replacement_kit_id,
+              updated_at
+       FROM starlink_retired_assets
+       ORDER BY decommissioned_at DESC, site_name, kit_id`
+    );
+
+    const activeTerminals = normalizeStarlinkTerminalList(rows.map(mapStarlinkTerminalRow));
+    const activeKitIds = new Set(activeTerminals.map(terminal => terminal.kit_id));
+    const retiredAssets = retiredAssetsRes.rows
+      .map(mapRetiredStarlinkAssetRow)
+      .filter(asset => asset?.kit_id && !activeKitIds.has(asset.kit_id));
+
     res.json({
       days,
-      terminals: rows.map(mapStarlinkTerminalRow),
+      terminals: [
+        ...activeTerminals,
+        ...retiredAssets,
+      ],
     });
   } catch (err) { next(err); }
 });

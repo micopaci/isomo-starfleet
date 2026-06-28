@@ -115,7 +115,14 @@ export default function Starlinks() {
     const rows = dishes.filter(d => {
       const matchFilter = filter === 'all' || d.status === filter;
       const q = search.toLowerCase();
-      const matchSearch = !q || d.name.toLowerCase().includes(q) || d.campus.toLowerCase().includes(q) || d.region.toLowerCase().includes(q);
+      const matchSearch = !q || [
+        d.name,
+        d.campus,
+        d.region,
+        d.kitId,
+        d.serial,
+        d.serviceLineId,
+      ].some(value => String(value || '').toLowerCase().includes(q));
       return matchFilter && matchSearch;
     });
     const accessor = SORT_ACCESSORS[sort.key] || SORT_ACCESSORS.name;
@@ -265,6 +272,7 @@ export default function Starlinks() {
               { l: 'Last seen', v: fmtDate(selected.lastSeen), s: fmtRelative(selected.lastSeen) },
               { l: 'Latest data', v: fmtDate(selected.latestUsageDate), s: selected.dataGb > 0 ? `${selected.dataGb.toFixed(1)} GB / 7d` : '' },
               { l: 'Billing cycle start', v: fmtDate(selected.billingCycleStart), s: '' },
+              { l: 'Kit ID', v: selected.kitId || '—', s: selected.replacementKitId ? `replaced by ${selected.replacementKitId}` : '' },
               { l: 'Serial', v: selected.serial || '—', s: '' },
               { l: 'Service line', v: selected.serviceLineId || '—', s: '' },
               { l: 'Account', v: (selected.accountId && ACCOUNT_HOLDERS[selected.accountId]) || selected.accountId || '—', s: (selected.accountId && ACCOUNT_HOLDERS[selected.accountId]) ? selected.accountId : '' },
