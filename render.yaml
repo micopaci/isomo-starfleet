@@ -1,0 +1,85 @@
+# Render Blueprint for the Starfleet backend (migration off GCP Cloud Run).
+# Deploys the existing self-contained Dockerfile at packages/backend/Dockerfile.
+# Secrets (sync: false) are entered once in the Render dashboard — never commit values.
+# See docs/MIGRATION_GCP_TO_NEON_RENDER.md for the full procedure.
+
+services:
+  - type: web
+    name: starfleet-backend
+    runtime: docker
+    rootDir: packages/backend
+    dockerfilePath: ./Dockerfile
+    plan: starter            # ~$7/mo, always-on (free plan SLEEPS — breaks node-cron + WebSocket)
+    region: frankfurt        # closest Render region to Rwanda; oregon/ohio also fine
+    healthCheckPath: /health
+    autoDeploy: true         # deploy on push to the connected branch
+    envVars:
+      # ── Core (required) ────────────────────────────────────────────────
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL          # Neon pooled connection string (?sslmode=require)
+        sync: false
+      # NOTE: do NOT set INSTANCE_CONNECTION_NAME / DB_USER / DB_PASSWORD / DB_NAME —
+      # leaving them unset makes db.js use the DATABASE_URL + SSL path (Neon/Supabase).
+      - key: ALLOWED_ORIGINS       # e.g. https://starfleet.icircles.rw
+        sync: false
+      - key: DASHBOARD_URL
+        value: https://starfleet.icircles.rw
+
+      # ── Auth (carry over EXACTLY from GCP or every login/token breaks) ───
+      - key: JWT_SECRET            # if HS256; OR use the RS256 pair below
+        sync: false
+      - key: JWT_PRIVATE_KEY       # if RS256 (auth.js prefers this when set)
+        sync: false
+      - key: JWT_PUBLIC_KEY
+        sync: false
+
+      # ── Microsoft Graph / Intune sync ──────────────────────────────────
+      - key: GRAPH_TENANT_ID
+        sync: false
+      - key: GRAPH_CLIENT_ID
+        sync: false
+      - key: GRAPH_CLIENT_SECRET
+        sync: false
+      - key: GRAPH_INTUNE_SYNC_ENABLED
+        value: "true"
+      - key: GRAPH_INTUNE_SYNC_INTERVAL_MIN
+        value: "15"
+
+      # ── Remediation policy GUIDs (Intune trigger actions) ──────────────
+      - key: REMEDIATION_POLICY_DIAGNOSTICS
+        sync: false
+      - key: REMEDIATION_POLICY_LOCATION_REFRESH
+        sync: false
+      - key: REMEDIATION_POLICY_DATA_PULL
+        sync: false
+      - key: REMEDIATION_POLICY_PING_DISH
+        sync: false
+      - key: REMEDIATION_POLICY_STARLINK_REBOOT
+        sync: false
+
+      # ── Email / weekly digest (optional but used by cron) ──────────────
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: DIGEST_ENABLED
+        value: "true"
+      - key: NOTIFY_EMAIL_TO
+        sync: false
+
+      # ── Tuning (have safe defaults; override only if needed) ───────────
+      - key: DB_MAX_CONNECTIONS
+        value: "10"
+      - key: OPEN_METEO_ENABLED
+        value: "true"
+
+# NOTE: The Starlink portal sync (status/usage scrapers, formerly Cloud Run Jobs)
+# is NOT included here — it runs on the Windows daemon host / separate worker.
+# Point those at the new backend via STARFLEET_API_URL after cutover. See the runbook.
