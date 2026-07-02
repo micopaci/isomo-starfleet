@@ -126,6 +126,20 @@ Agent `POST /ingest/*` endpoints. All require `Authorization: Bearer <agent-toke
 | `REMEDIATION_POLICY_DATA_PULL` | Force data pull |
 | `REMEDIATION_POLICY_PING_DISH` | Starlink dish ping |
 | `REMEDIATION_POLICY_STARLINK_REBOOT` | Starlink dish reboot |
+| `REMEDIATION_POLICY_CHROME_UPDATE` | Force Chrome update (no shared fallback) |
+| `REMEDIATION_POLICY_WINDOWS_UPDATE` | Windows Update scan+install (no shared fallback) |
+
+### Defender for Endpoint TVM (see docs/DEFENDER_TVM.md)
+
+| Variable | Purpose |
+|---|---|
+| `DEFENDER_TVM_SYNC_ENABLED` | `false` to disable vulnerability sync |
+| `DEFENDER_TVM_SYNC_INTERVAL_MIN` | Sync interval (default 360, min 30) |
+| `DEFENDER_API_BASE_URL` | Geo override (`api-eu`/`api-us`) if global host 403s |
+| `SECURITY_NOTIFY_ENABLED` | `false` to disable new-vulnerability email/push |
+| `ANTHROPIC_API_KEY` | Claude API key for AI mitigation guidance (skipped when unset) |
+| `AI_MITIGATION_ENABLED` | `false` to disable AI guidance |
+| `AI_MITIGATION_MODEL` | Model override (default `claude-opus-4-8`) |
 
 ### Optional services
 
