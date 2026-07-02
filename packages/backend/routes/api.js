@@ -17,6 +17,7 @@ const { classifyAttribution, activeAlertNames } = require('../services/starlinkT
 const { computeSnapshotDailyTotal } = require('../services/starlinkPortalUsage');
 const { sendEmail } = require('../services/notifier');
 const graphClient        = require('../services/graph');
+const aiMitigation       = require('../services/aiMitigation');
 const { checkCoverageGap, getVisibleSatellites } = require('../services/orbitalSync');
 const {
   DEVICE_ONLINE_HOURS,
@@ -1933,7 +1934,14 @@ const TRIGGER_TYPES = [
   'diagnostics',
   'ping_dish',
   'reboot_starlink',
+  'update_chrome',
+  'update_windows',
 ];
+
+// Security remediations run Windows-only Intune proactive remediation scripts.
+// Chromebooks can't execute them, so site/fleet fan-outs must exclude non-Windows
+// devices or every Chromebook row becomes a guaranteed-failed trigger.
+const WINDOWS_ONLY_TRIGGER_TYPES = new Set(['update_chrome', 'update_windows']);
 
 function ensureTriggerConfig(res, type) {
   const config = graphClient.validateRemediationConfig(type);
@@ -2004,11 +2012,13 @@ router.post('/trigger/site', requireAdmin, async (req, res, next) => {
 
     const client = await pool.connect();
     try {
+      const windowsOnly = WINDOWS_ONLY_TRIGGER_TYPES.has(type) ? `AND os ILIKE '%windows%'` : '';
       const { rows } = await client.query(
         `SELECT id
          FROM devices
          WHERE site_id = $1
            AND intune_device_id IS NOT NULL
+           ${windowsOnly}
          ORDER BY last_seen DESC NULLS LAST, id ASC`,
         [siteId]
       );
@@ -2026,10 +2036,13 @@ router.post('/trigger/site', requireAdmin, async (req, res, next) => {
 });
 
 // ── POST /api/trigger/devices (admin only) ───────────────────────────────────
-// Body: { type } → triggers every Intune-managed laptop in the fleet.
+// Body: { type, vulnerability_id? } → triggers every Intune-managed laptop in
+// the fleet, or — when vulnerability_id is given — only the devices with an
+// active exposure to that CVE (lets the Security page remediate exactly the
+// exposed set).
 router.post('/trigger/devices', requireAdmin, async (req, res, next) => {
   try {
-    const { type } = req.body;
+    const { type, vulnerability_id } = req.body;
     if (!type) {
       return res.status(400).json({ error: 'type is required' });
     }
@@ -2040,19 +2053,33 @@ router.post('/trigger/devices', requireAdmin, async (req, res, next) => {
 
     const client = await pool.connect();
     try {
-      const { rows } = await client.query(
-        `SELECT id
-         FROM devices
-         WHERE intune_device_id IS NOT NULL
-         ORDER BY last_seen DESC NULLS LAST, id ASC`
-      );
+      const windowsOnly = WINDOWS_ONLY_TRIGGER_TYPES.has(type) ? `AND d.os ILIKE '%windows%'` : '';
+      const { rows } = vulnerability_id
+        ? await client.query(
+            `SELECT DISTINCT d.id, d.last_seen
+             FROM devices d
+             JOIN device_vulnerabilities dv ON dv.device_id = d.id
+             WHERE dv.vulnerability_id = $1
+               AND dv.status = 'active'
+               AND d.intune_device_id IS NOT NULL
+               ${windowsOnly}
+             ORDER BY d.last_seen DESC NULLS LAST, d.id ASC`,
+            [String(vulnerability_id)]
+          )
+        : await client.query(
+            `SELECT d.id
+             FROM devices d
+             WHERE d.intune_device_id IS NOT NULL
+               ${windowsOnly}
+             ORDER BY d.last_seen DESC NULLS LAST, d.id ASC`
+          );
 
       const trigger_ids = [];
       for (const row of rows) {
         trigger_ids.push(await createDeviceTrigger(client, row.id, type, req.user.email));
       }
 
-      res.json({ ok: true, type, count: trigger_ids.length, trigger_ids });
+      res.json({ ok: true, type, vulnerability_id: vulnerability_id ?? null, count: trigger_ids.length, trigger_ids });
     } finally {
       client.release();
     }
@@ -2110,6 +2137,94 @@ router.get('/alerts/summary', async (req, res, next) => {
     );
     res.json(rows);
   } catch (err) { next(err); }
+});
+
+// ── Security: Defender TVM vulnerability feed ─────────────────────────────────
+// Data is synced by services/defenderTvm.js. Read endpoints use router-level
+// auth (any logged-in user); mutation stays admin-only.
+
+const VULN_SEVERITY_ORDER = `CASE lower(v.severity)
+  WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END`;
+
+// GET /api/security/vulnerabilities — one row per CVE, aggregated across devices.
+// ?include=resolved keeps CVEs with no remaining active exposure.
+router.get('/security/vulnerabilities', async (req, res, next) => {
+  try {
+    const includeResolved = String(req.query.include || '') === 'resolved';
+    const { rows } = await pool.query(
+      `SELECT v.id, v.name, v.severity, v.cvss_v3, v.is_zero_day, v.published_at,
+              v.ai_guidance, v.ai_guidance_at,
+              COUNT(dv.id) FILTER (WHERE dv.status = 'active')::INT AS exposed_count,
+              MAX(dv.product_name)   AS product_name,
+              MAX(dv.product_vendor) AS product_vendor,
+              MAX(dv.fixing_kb_id)   AS fixing_kb_id,
+              (MAX(dv.fixing_kb_id) IS NOT NULL OR NOT v.is_zero_day) AS has_fix,
+              MIN(dv.first_seen_at)  AS first_seen_at,
+              MAX(dv.last_seen_at)   AS last_seen_at
+       FROM vulnerabilities v
+       JOIN device_vulnerabilities dv ON dv.vulnerability_id = v.id
+       GROUP BY v.id
+       ${includeResolved ? '' : `HAVING COUNT(dv.id) FILTER (WHERE dv.status = 'active') > 0`}
+       ORDER BY ${VULN_SEVERITY_ORDER} DESC, v.is_zero_day DESC,
+                COUNT(dv.id) FILTER (WHERE dv.status = 'active') DESC, v.id ASC`
+    );
+    res.json(rows.map(r => ({
+      ...r,
+      cvss_v3: r.cvss_v3 == null ? null : Number(r.cvss_v3),
+    })));
+  } catch (err) { next(err); }
+});
+
+// GET /api/security/vulnerabilities/:id/devices — affected devices with site.
+router.get('/security/vulnerabilities/:id/devices', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT d.id, d.hostname, d.windows_sn, d.os, d.os_version,
+              s.name AS site_name,
+              dv.product_name, dv.product_version, dv.fixing_kb_id,
+              dv.status, dv.first_seen_at, dv.last_seen_at,
+              (d.intune_device_id IS NOT NULL) AS can_remediate
+       FROM device_vulnerabilities dv
+       JOIN devices d ON d.id = dv.device_id
+       LEFT JOIN sites s ON s.id = d.site_id
+       WHERE dv.vulnerability_id = $1
+       ORDER BY (dv.status = 'active') DESC, d.hostname ASC NULLS LAST, d.id ASC`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// GET /api/security/summary — headline counts for the Overview badge / chips.
+router.get('/security/summary', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         COUNT(DISTINCT v.id) FILTER (WHERE v.is_zero_day OR lower(v.severity) = 'critical')::INT AS critical,
+         COUNT(DISTINCT v.id) FILTER (WHERE NOT v.is_zero_day AND lower(v.severity) = 'high')::INT AS warning,
+         COUNT(DISTINCT v.id) FILTER (WHERE NOT v.is_zero_day AND lower(v.severity) NOT IN ('critical', 'high'))::INT AS info,
+         COUNT(DISTINCT v.id) FILTER (WHERE v.is_zero_day)::INT AS zero_days,
+         COUNT(DISTINCT dv.device_id)::INT AS exposed_devices,
+         MAX(v.last_synced_at) AS last_synced_at
+       FROM vulnerabilities v
+       JOIN device_vulnerabilities dv
+         ON dv.vulnerability_id = v.id AND dv.status = 'active'`
+    );
+    res.json(rows[0] || { critical: 0, warning: 0, info: 0, zero_days: 0, exposed_devices: 0, last_synced_at: null });
+  } catch (err) { next(err); }
+});
+
+// POST /api/security/vulnerabilities/:id/guidance (admin only) — force
+// (re)generation of the AI mitigation guidance for one CVE.
+router.post('/security/vulnerabilities/:id/guidance', requireAdmin, async (req, res, next) => {
+  try {
+    const guidance = await aiMitigation.generateForId(req.params.id);
+    res.json({ ok: true, id: req.params.id, ai_guidance: guidance });
+  } catch (err) {
+    if (err.disabled) return res.status(503).json({ error: err.message });
+    if (err.notFound) return res.status(404).json({ error: err.message });
+    next(err);
+  }
 });
 
 // ── POST /api/alerts/:id/ack (admin only) ─────────────────────────────────────
