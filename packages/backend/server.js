@@ -19,6 +19,7 @@ const apiRoutes           = require('./routes/api');
 const inventoryRoutes     = require('./routes/inventory');
 const wsService           = require('./services/websocket');
 const graphClient         = require('./services/graph');
+const defenderTvm         = require('./services/defenderTvm');
 const { scheduleCron }              = require('./services/scoreCron');
 const { scheduleSpaceWeatherCron }  = require('./services/spaceWeather');
 const { scheduleOrbitalCron }       = require('./services/orbitalSync');
@@ -690,6 +691,7 @@ async function startServer() {
     scheduleMetricsEmitter();                // Fleet metrics → stdout every 5 min
     graphClient.startTriggerPoller();
     graphClient.scheduleIntuneDeviceSync();
+    defenderTvm.scheduleDefenderTvmSync();    // Defender for Endpoint TVM sync (default every 6h)
 
     const PORT = process.env.PORT || 3000;
     server.listen(PORT, () => {
