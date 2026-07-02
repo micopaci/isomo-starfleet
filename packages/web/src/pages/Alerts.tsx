@@ -5,10 +5,18 @@ const SEV_FILTERS: { label: string; value: string | 'all' | 'ack' }[] = [
   { label: 'All', value: 'all' },
   { label: 'Critical', value: 'critical' },
   { label: 'Warning', value: 'warning' },
+  { label: 'Security', value: 'security' },
   { label: 'Inventory', value: 'inventory' },
   { label: 'Info', value: 'info' },
   { label: 'Acknowledged', value: 'ack' },
 ];
+
+// 'security' filters on alert category (Defender TVM findings span severities);
+// the other filter values match on mapped severity.
+function matchesFilter(a: any, filter: string): boolean {
+  if (filter === 'security') return a.category === 'security';
+  return a.sev === filter;
+}
 
 function SevBadge({ sev }: { sev: string }) {
   return <span className={`sf-sev sf-sev--${sev}`}>{sev.toUpperCase()}</span>;
@@ -113,7 +121,7 @@ export default function Alerts() {
     alertList.filter(a => {
       if (filter === 'ack') return !a.open;
       if (filter === 'all') return true;
-      return a.sev === filter && a.open;
+      return matchesFilter(a, filter) && a.open;
     }), [alertList, filter]);
 
   const acknowledge = async (id: string) => {
@@ -177,7 +185,7 @@ export default function Alerts() {
               <span className="seg-count">
                 {f.value === 'all' ? alertList.filter(a => a.open).length
                   : f.value === 'ack' ? alertList.filter(a => !a.open).length
-                  : alertList.filter(a => a.sev === f.value && a.open).length}
+                  : alertList.filter(a => matchesFilter(a, f.value) && a.open).length}
               </span>
             </button>
           ))}

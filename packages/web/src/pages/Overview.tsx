@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import StatCard from '../components/StatCard';
 import StatusChip from '../components/StatusChip';
 import { useData } from '../context/DataContext';
@@ -26,8 +27,9 @@ function Sparkline({ points }: { points: number[] }) {
 }
 
 export default function Overview() {
-  const { dishes, alerts, inventory, loading, refreshData } = useData();
+  const { dishes, alerts, inventory, securitySummary, loading, refreshData } = useData();
   const [_sweep, setSweeping] = useState(false);
+  const nav = useNavigate();
 
   if (loading) {
     return (
@@ -73,6 +75,18 @@ export default function Overview() {
           <p className="sf-view-lede">Live telemetry snapshot across all {dishes.length} Starlink deployments.</p>
         </div>
         <div className="sf-view-actions">
+          {securitySummary && securitySummary.critical > 0 && (
+            <button
+              className="btn"
+              id="btn-security-badge"
+              onClick={() => nav('/security')}
+              style={{ color: 'var(--bad)', borderColor: 'var(--bad)' }}
+              aria-label={`${securitySummary.critical} critical vulnerabilities — open Security`}
+            >
+              <i className="ti ti-shield-exclamation" aria-hidden="true" />
+              {securitySummary.critical} critical vulnerabilit{securitySummary.critical === 1 ? 'y' : 'ies'}
+            </button>
+          )}
           <button
             className="btn btn--primary"
             id="btn-run-sweep"

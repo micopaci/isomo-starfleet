@@ -41,12 +41,23 @@ export interface Dish {
 export interface Alert {
   id: string;
   sev: 'critical' | 'warning' | 'inventory' | 'info';
+  category: string;
   time: string;
   msg: string;
   meta: string;
   open: boolean;
   ageDays: number;
   profile_number?: string;
+}
+
+// Mirrors GET /api/security/summary (Defender TVM).
+export interface SecuritySummary {
+  critical: number;
+  warning: number;
+  info: number;
+  zero_days: number;
+  exposed_devices: number;
+  last_synced_at: string | null;
 }
 
 export type Connectivity = 'online' | 'stale' | 'offline' | 'unknown';
@@ -81,6 +92,7 @@ interface DataContextType {
   alerts: Alert[];
   inventory: InventoryDevice[];
   intel: Intel;
+  securitySummary: SecuritySummary | null;
   loading: boolean;
   refreshData: () => Promise<void>;
 }
@@ -114,6 +126,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [inventory, setInventory] = useState<InventoryDevice[]>([]);
   const [intel, setIntel] = useState<Intel>({ kpIndex: null, kpLabel: null, satCount: null });
+  const [securitySummary, setSecuritySummary] = useState<SecuritySummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refreshIntel = async (headers: Record<string, string>) => {
@@ -166,6 +179,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const mappedAlerts: Alert[] = Array.isArray(rawAlerts) ? rawAlerts.map((a: any) => ({
         id: a.id,
         sev: a.category === 'inventory' ? 'inventory' : a.severity,
+        category: a.category || '',
         msg: a.message,
         meta: a.title,
         time: new Date(a.detected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -359,6 +373,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       //    Fire-and-forget: the satellites endpoint runs live SGP4 propagation
       //    and can be slow, so it must never block (or stall) the main load.
       void refreshIntel(headers);
+
+      // 5. Security summary (Defender TVM) — best-effort badge data.
+      void (async () => {
+        try {
+          const res = await fetch('/api/security/summary', { headers });
+          if (res.ok) setSecuritySummary(await res.json());
+        } catch { /* leave null */ }
+      })();
     } catch (err) {
       console.error('Failed to load data:', err);
     } finally {
@@ -376,7 +398,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <DataContext.Provider value={{ dishes, inactiveDishes, alerts, inventory, intel, loading, refreshData }}>
+    <DataContext.Provider value={{ dishes, inactiveDishes, alerts, inventory, intel, securitySummary, loading, refreshData }}>
       {children}
     </DataContext.Provider>
   );

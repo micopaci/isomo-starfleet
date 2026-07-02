@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Overview from './pages/Overview';
 import Starlinks from './pages/Starlinks';
 import Alerts from './pages/Alerts';
+import Security from './pages/Security';
 import Campuses from './pages/Campuses';
 import MapView from './pages/MapView';
 import Inventory from './pages/Inventory';
@@ -34,6 +35,7 @@ export default function App() {
               <Route path="starlinks"  element={<Starlinks />} />
               <Route path="computers"  element={<Navigate to="/inventory" replace />} />
               <Route path="alerts"     element={<Alerts />} />
+              <Route path="security"   element={<Security />} />
               <Route path="campuses"   element={<Campuses />} />
               <Route path="map"        element={<MapView />} />
               <Route path="inventory"  element={<Inventory />} />

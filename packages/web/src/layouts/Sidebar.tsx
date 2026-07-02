@@ -14,17 +14,19 @@ export default function Sidebar() {
   const nav = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { dishes, inactiveDishes, alerts, inventory, intel, loading } = useData();
+  const { dishes, inactiveDishes, alerts, inventory, intel, securitySummary, loading } = useData();
 
   const openAlertsCount = alerts.filter(a => a.open).length;
   const campusesCount = new Set(dishes.map(d => d.campus).filter(Boolean)).size;
   const offlineDishes = dishes.filter(d => d.status !== 'online').length;
   const totalStarlinks = dishes.length + inactiveDishes.length;
+  const criticalVulns = securitySummary?.critical ?? 0;
 
   const items = [
     { path: '/overview',   label: 'Overview',     icon: 'ti-layout-dashboard', count: loading ? '' : String(offlineDishes) },
     { path: '/starlinks',  label: 'Starlinks',     icon: 'ti-antenna',          count: loading ? '' : String(totalStarlinks) },
     { path: '/alerts',     label: 'Alerts',        icon: 'ti-bell',             count: loading ? '' : String(openAlertsCount) },
+    { path: '/security',   label: 'Security',      icon: 'ti-shield-lock',      count: criticalVulns > 0 ? String(criticalVulns) : '' },
     { path: '/campuses',   label: 'Campuses',      icon: 'ti-school',           count: loading ? '' : String(campusesCount) },
     { path: '/map',        label: 'Map',           icon: 'ti-map',              count: 'RW' },
     { path: '/inventory',  label: 'Computers',     icon: 'ti-device-laptop',    count: loading ? '' : String(inventory.length) },

@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 const ITEMS = [
   { path: '/overview',  label: 'Overview',  icon: 'ti-layout-dashboard' },
   { path: '/alerts',    label: 'Alerts',    icon: 'ti-bell' },
+  { path: '/security',  label: 'Security',  icon: 'ti-shield-lock' },
   { path: '/starlinks', label: 'Links',     icon: 'ti-antenna' },
   { path: '/computers', label: 'Devices',   icon: 'ti-device-laptop' },
   { path: '/inventory', label: 'Intake',    icon: 'ti-package' },
