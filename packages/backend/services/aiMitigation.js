@@ -122,21 +122,48 @@ function parseGuidance(text) {
   };
 }
 
+// GPT-5 / o-series reasoning models take `max_completion_tokens` and reject the
+// older `max_tokens`; GPT-4o-family takes `max_tokens`. Pick by model family and
+// keep a headroom for reasoning tokens on the reasoning models.
+function isReasoningModel(model) {
+  return /^(gpt-5|o\d)/i.test(model);
+}
+
+async function createCompletion(client, userPrompt) {
+  const base = {
+    model: MODEL,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: userPrompt },
+    ],
+  };
+  const reasoning = isReasoningModel(MODEL);
+  const withTokens = reasoning
+    ? { ...base, max_completion_tokens: 4000 }
+    : { ...base, max_tokens: 2000 };
+  try {
+    return await client.chat.completions.create(withTokens);
+  } catch (err) {
+    // Some model families flip the token-param requirement; retry once swapping
+    // it before giving up (guards against the model-family heuristic being wrong).
+    if (err?.status === 400 && /max_tokens|max_completion_tokens/i.test(String(err?.message || ''))) {
+      const swapped = reasoning
+        ? { ...base, max_tokens: 2000 }
+        : { ...base, max_completion_tokens: 4000 };
+      return client.chat.completions.create(swapped);
+    }
+    throw err;
+  }
+}
+
 // Generate + persist guidance for a single vulnerability row. Returns the
 // guidance object.
 async function generateAndStore(v) {
   const client = getClient();
   if (!client) throw new Error('OpenAI client not configured');
 
-  const response = await client.chat.completions.create({
-    model: MODEL,
-    max_tokens: 2000,
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: buildUserPrompt(v) },
-    ],
-  });
+  const response = await createCompletion(client, buildUserPrompt(v));
 
   const guidance = parseGuidance(response.choices?.[0]?.message?.content);
   await pool.query(

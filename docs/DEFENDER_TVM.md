@@ -79,7 +79,7 @@ and copying their script package GUIDs.
 | `OPENAI_API_KEY` | — | OpenAI/Codex API key; AI guidance is skipped when unset |
 | `OPENAI_BASE_URL` | — | optional base URL override (Azure OpenAI / gateway / proxy) |
 | `AI_MITIGATION_ENABLED` | `true` | set `false` to disable AI guidance |
-| `AI_MITIGATION_MODEL` | `gpt-4o` | model override — set to your Codex/OpenAI model |
+| `AI_MITIGATION_MODEL` | `gpt-4o` | model override — the exact model id your key exposes (e.g. from `GET /v1/models`) |
 
 ## API
 
