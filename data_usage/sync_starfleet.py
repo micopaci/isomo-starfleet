@@ -269,11 +269,26 @@ def parse_usage_payload(payload, terminal, from_date, to_date):
 
 
 def fetch_json(page, url):
-    result = page.evaluate(FETCH_JS, url)
-    if result.get("error"):
-        status = result.get("status") or result.get("message") or "unknown error"
-        raise RuntimeError(f"{url} failed: {status}")
-    return result["payload"]
+    last_error = None
+    for attempt in range(3):
+        try:
+            result = page.evaluate(FETCH_JS, url)
+            if result.get("error"):
+                status = result.get("status") or result.get("message") or "unknown error"
+                raise RuntimeError(f"{url} failed: {status}")
+            return result["payload"]
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            last_error = exc
+            if "Execution context was destroyed" not in str(exc):
+                raise
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=10000)
+            except Exception:
+                pass
+            time.sleep(0.75 * (attempt + 1))
+    raise last_error
 
 
 def fetch_status(page, terminal):

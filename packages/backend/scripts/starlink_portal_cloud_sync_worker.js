@@ -855,7 +855,7 @@ async function runDaemon() {
       const result = await runStatusCycle({ dryRun });
       console.log(`[StarlinkCloudSync] status cycle complete: ${JSON.stringify(result)}`);
     } catch (err) {
-      console.error(`[StarlinkCloudSync] status cycle failed: ${err.message}`);
+      console.error(`[StarlinkCloudSync] status cycle failed: ${err && (err.stack || err.message) || err}`);
     } finally {
       statusRunning = false;
     }
@@ -868,7 +868,7 @@ async function runDaemon() {
       const result = await runUsageCycle({ dryRun });
       console.log(`[StarlinkCloudSync] usage cycle complete: ${JSON.stringify(result)}`);
     } catch (err) {
-      console.error(`[StarlinkCloudSync] usage cycle failed: ${err.message}`);
+      console.error(`[StarlinkCloudSync] usage cycle failed: ${err && (err.stack || err.message) || err}`);
     } finally {
       usageRunning = false;
     }
@@ -924,7 +924,7 @@ async function main() {
 }
 
 main().catch(async err => {
-  console.error(`Starlink cloud sync worker failed: ${err.message}`);
+  console.error(`Starlink cloud sync worker failed: ${err && (err.stack || err.message) || err}`);
   await pool.end().catch(() => {});
   process.exitCode = 1;
 });
