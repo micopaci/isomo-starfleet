@@ -1,6 +1,6 @@
 /**
- * aiMitigation.js — Claude-generated mitigation guidance for Defender TVM
- * vulnerabilities.
+ * aiMitigation.js — AI-generated mitigation guidance for Defender TVM
+ * vulnerabilities, via the OpenAI / Codex API.
  *
  * For each exposed vulnerability we generate a plain-English risk explanation,
  * prioritized mitigation steps, the matching Starfleet remediation action, and
@@ -14,15 +14,16 @@
  * the CVE internals.
  *
  * Config:
- *   ANTHROPIC_API_KEY     required; guidance is skipped (logged) when absent
+ *   OPENAI_API_KEY        required; guidance is skipped (logged) when absent
  *   AI_MITIGATION_ENABLED 'false' to disable (default enabled)
- *   AI_MITIGATION_MODEL   model id (default claude-opus-4-8)
+ *   AI_MITIGATION_MODEL   model id (default gpt-4o)
+ *   OPENAI_BASE_URL       optional override (Azure OpenAI / gateway / proxy)
  *
  * All failures are logged and swallowed — never blocks the sync or the API.
  */
 const pool = require('../db');
 
-const MODEL = process.env.AI_MITIGATION_MODEL || 'claude-opus-4-8';
+const MODEL = process.env.AI_MITIGATION_MODEL || 'gpt-4o';
 
 function logJson(level, event, payload = {}) {
   const line = { timestamp: new Date().toISOString(), level, agent: 'ai-mitigation', event, payload };
@@ -32,20 +33,23 @@ function logJson(level, event, payload = {}) {
 
 function isEnabled() {
   if (process.env.AI_MITIGATION_ENABLED === 'false') return false;
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  return Boolean(process.env.OPENAI_API_KEY);
 }
 
 // Lazy-load the SDK (optional dependency; mirrors notifier.js's nodemailer load)
-// so the backend boots even if @anthropic-ai/sdk isn't installed.
-let anthropicClient = null;
-let AnthropicSdk = null;
+// so the backend boots even if `openai` isn't installed.
+let openaiClient = null;
+let OpenAiSdk = null;
 function getClient() {
-  if (anthropicClient) return anthropicClient;
-  if (!process.env.ANTHROPIC_API_KEY) return null;
+  if (openaiClient) return openaiClient;
+  if (!process.env.OPENAI_API_KEY) return null;
   try {
-    AnthropicSdk = require('@anthropic-ai/sdk');
-    anthropicClient = new AnthropicSdk();
-    return anthropicClient;
+    OpenAiSdk = require('openai');
+    openaiClient = new OpenAiSdk({
+      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: process.env.OPENAI_BASE_URL || undefined,
+    });
+    return openaiClient;
   } catch (err) {
     logJson('WARN', 'sdk_unavailable', { error: err.message });
     return null;
@@ -98,15 +102,14 @@ function buildUserPrompt(v) {
 const ALLOWED_ACTIONS = new Set(['update_chrome', 'update_windows', 'manual', 'none_available']);
 const ALLOWED_URGENCY = new Set(['immediate', 'this_week', 'monitor']);
 
-function extractJson(response) {
-  const block = (response.content || []).find(b => b.type === 'text' && b.text);
-  if (!block) throw new Error('no text block in model response');
+function parseGuidance(text) {
+  if (!text) throw new Error('empty model response');
   // Tolerate markdown fences or surrounding prose by slicing to the JSON object.
-  let text = block.text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start !== -1 && end !== -1) text = text.slice(start, end + 1);
-  const parsed = JSON.parse(text);
+  let cleaned = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start !== -1 && end !== -1) cleaned = cleaned.slice(start, end + 1);
+  const parsed = JSON.parse(cleaned);
 
   // Normalize to the expected shape so the UI can render it safely.
   return {
@@ -119,22 +122,23 @@ function extractJson(response) {
   };
 }
 
-// Generate + persist guidance for a single vulnerability row (as returned by
-// selectGuidanceInputs / a direct fetch). Returns the guidance object.
+// Generate + persist guidance for a single vulnerability row. Returns the
+// guidance object.
 async function generateAndStore(v) {
   const client = getClient();
-  if (!client) throw new Error('Anthropic client not configured');
+  if (!client) throw new Error('OpenAI client not configured');
 
-  const response = await client.messages.create({
+  const response = await client.chat.completions.create({
     model: MODEL,
     max_tokens: 2000,
-    thinking: { type: 'adaptive' },
-    output_config: { effort: 'low' },
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: buildUserPrompt(v) }],
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: buildUserPrompt(v) },
+    ],
   });
 
-  const guidance = extractJson(response);
+  const guidance = parseGuidance(response.choices?.[0]?.message?.content);
   await pool.query(
     `UPDATE vulnerabilities
      SET ai_guidance = $2::jsonb, ai_guidance_model = $3, ai_guidance_at = NOW()
@@ -159,7 +163,7 @@ const GUIDANCE_INPUT_SQL = `
 // admin "Regenerate" endpoint.
 async function generateForId(id) {
   if (!isEnabled()) {
-    const err = new Error('AI mitigation guidance is disabled or ANTHROPIC_API_KEY is not set');
+    const err = new Error('AI mitigation guidance is disabled or OPENAI_API_KEY is not set');
     err.disabled = true;
     throw err;
   }
@@ -176,7 +180,7 @@ async function generateForId(id) {
 // Sequential, capped, and rate-limit aware.
 async function generateMissingGuidance(cap = 20) {
   if (!isEnabled()) {
-    logJson('INFO', 'skipped', { reason: process.env.ANTHROPIC_API_KEY ? 'disabled' : 'no ANTHROPIC_API_KEY' });
+    logJson('INFO', 'skipped', { reason: process.env.OPENAI_API_KEY ? 'disabled' : 'no OPENAI_API_KEY' });
     return 0;
   }
   if (!getClient()) return 0;
@@ -210,7 +214,7 @@ async function generateMissingGuidance(cap = 20) {
       generated += 1;
     } catch (err) {
       // Stop the batch on rate limits; the next sync cycle catches up.
-      if (AnthropicSdk && err instanceof AnthropicSdk.RateLimitError) {
+      if (OpenAiSdk && err instanceof OpenAiSdk.RateLimitError) {
         logJson('WARN', 'rate_limited', { generated, remaining: rows.length - generated });
         break;
       }

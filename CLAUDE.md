@@ -138,9 +138,10 @@ Agent `POST /ingest/*` endpoints. All require `Authorization: Bearer <agent-toke
 | `DEFENDER_API_BASE_URL` | Geo override (`api-eu`/`api-us`) if global host 403s |
 | `SECURITY_NOTIFY_ENABLED` | `false` to disable new-vulnerability email/push |
 | `SECURITY_ALERT_MIN_SEVERITY` | Min severity for alert rows (default `high`; zero-days always alert) |
-| `ANTHROPIC_API_KEY` | Claude API key for AI mitigation guidance (skipped when unset) |
+| `OPENAI_API_KEY` | OpenAI/Codex API key for AI mitigation guidance (skipped when unset) |
+| `OPENAI_BASE_URL` | Optional OpenAI base URL override (Azure/gateway/proxy) |
 | `AI_MITIGATION_ENABLED` | `false` to disable AI guidance |
-| `AI_MITIGATION_MODEL` | Model override (default `claude-opus-4-8`) |
+| `AI_MITIGATION_MODEL` | Model override (default `gpt-4o`) |
 
 ### Optional services
 
