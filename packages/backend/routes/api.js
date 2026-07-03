@@ -2148,9 +2148,12 @@ const VULN_SEVERITY_ORDER = `CASE lower(v.severity)
 
 // GET /api/security/vulnerabilities — one row per CVE, aggregated across devices.
 // ?include=resolved keeps CVEs with no remaining active exposure.
+// The full TVM feed carries thousands of CVEs; the default limit returns the
+// worst 500 (severity → zero-day → exposure). ?limit=N up to 5000.
 router.get('/security/vulnerabilities', async (req, res, next) => {
   try {
     const includeResolved = String(req.query.include || '') === 'resolved';
+    const limit = Math.min(Math.max(parseInt(req.query.limit || '500', 10) || 500, 1), 5000);
     const { rows } = await pool.query(
       `SELECT v.id, v.name, v.severity, v.cvss_v3, v.is_zero_day, v.published_at,
               v.ai_guidance, v.ai_guidance_at,
@@ -2166,7 +2169,9 @@ router.get('/security/vulnerabilities', async (req, res, next) => {
        GROUP BY v.id
        ${includeResolved ? '' : `HAVING COUNT(dv.id) FILTER (WHERE dv.status = 'active') > 0`}
        ORDER BY ${VULN_SEVERITY_ORDER} DESC, v.is_zero_day DESC,
-                COUNT(dv.id) FILTER (WHERE dv.status = 'active') DESC, v.id ASC`
+                COUNT(dv.id) FILTER (WHERE dv.status = 'active') DESC, v.id ASC
+       LIMIT $1`,
+      [limit]
     );
     res.json(rows.map(r => ({
       ...r,

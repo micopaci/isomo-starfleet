@@ -239,7 +239,7 @@ export default function Security() {
           <p className="sf-timecode">Defender for Endpoint</p>
           <h1 className="sf-view-title">Security <em>Vulnerabilities</em></h1>
           <p className="sf-view-lede">
-            {vulns.length} exposed vulnerabilit{vulns.length === 1 ? 'y' : 'ies'} across the managed fleet
+            {(summary ? summary.critical + summary.warning + summary.info : vulns.length)} exposed vulnerabilit{(summary ? summary.critical + summary.warning + summary.info : vulns.length) === 1 ? 'y' : 'ies'} across the managed fleet
             {summary?.last_synced_at ? ` · last synced ${fmtRelative(summary.last_synced_at)}` : ''}.
           </p>
         </div>
@@ -255,7 +255,10 @@ export default function Security() {
       <div className="panel">
         <div className="panel-head">
           <h2>Vulnerability Feed</h2>
-          <span className="meta">{vulns.length} shown</span>
+          <span className="meta">
+            worst {vulns.length} shown{summary && (summary.critical + summary.warning + summary.info) > vulns.length
+              ? ` of ${summary.critical + summary.warning + summary.info}` : ''}
+          </span>
         </div>
         {vulns.length === 0 ? (
           <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>

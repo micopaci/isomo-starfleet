@@ -181,6 +181,10 @@ async function generateMissingGuidance(cap = 20) {
   }
   if (!getClient()) return 0;
 
+  // Auto-generate only for zero-days and critical/high findings — the full TVM
+  // feed carries thousands of medium/low CVEs and backfilling guidance for all
+  // of them would cost real money for guidance nobody reads. The Security
+  // drawer's "Generate" button covers any specific CVE on demand.
   const { rows } = await pool.query(
     `SELECT v.id, v.name, v.description, v.severity, v.cvss_v3, v.is_zero_day,
             COUNT(dv.id) FILTER (WHERE dv.status = 'active')::INT AS exposed_count,
@@ -190,6 +194,7 @@ async function generateMissingGuidance(cap = 20) {
      FROM vulnerabilities v
      JOIN device_vulnerabilities dv ON dv.vulnerability_id = v.id
      WHERE v.ai_guidance IS NULL
+       AND (v.is_zero_day OR lower(v.severity) IN ('critical', 'high'))
      GROUP BY v.id
      HAVING COUNT(dv.id) FILTER (WHERE dv.status = 'active') > 0
      ORDER BY CASE lower(v.severity) WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC,

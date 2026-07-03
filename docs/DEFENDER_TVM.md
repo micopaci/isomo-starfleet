@@ -73,6 +73,7 @@ and copying their script package GUIDs.
 | `DEFENDER_TVM_SYNC_INTERVAL_MIN` | `360` (min 30) | TVM refreshes a few times/day |
 | `DEFENDER_API_BASE_URL` | `https://api.securitycenter.microsoft.com` | geo override (`api-eu`/`api-us`) if the global host 403s |
 | `SECURITY_NOTIFY_ENABLED` | `true` | batched email + critical push on new findings |
+| `SECURITY_ALERT_MIN_SEVERITY` | `high` | min severity that creates an alert row (`critical`/`high`/`medium`/`low`/`all`); zero-days always alert |
 | `REMEDIATION_POLICY_CHROME_UPDATE` | — | GUID; the action 503s until set (no shared fallback) |
 | `REMEDIATION_POLICY_WINDOWS_UPDATE` | — | GUID; the action 503s until set (no shared fallback) |
 | `ANTHROPIC_API_KEY` | — | Claude API key; AI guidance is skipped when unset |
@@ -88,6 +89,24 @@ and copying their script package GUIDs.
 | `GET /api/security/summary` | user | severity counts, zero-days, exposed devices, last sync |
 | `POST /api/security/vulnerabilities/:id/guidance` | admin | force-regenerate AI guidance |
 | `POST /api/trigger/devices` `{type, vulnerability_id?}` | admin | remediate the exposed set (Windows-only for security types) |
+
+## Feed volume (measured 2026-07-02)
+
+The Bridge2Rwanda tenant reports ~397 Defender machines, ~229K
+machine-vulnerability pairs, and ~5,700 distinct CVEs. Consequences baked into
+the implementation:
+
+- DB writes are batched (500-row multi-VALUES upserts) — a full sync is a few
+  hundred statements, not 200K.
+- Alert rows are gated by `SECURITY_ALERT_MIN_SEVERITY` (default `high`;
+  zero-days always alert) so the Alerts feed stays usable. The Security page
+  shows everything regardless.
+- The new-findings email itemizes the worst 50 and summarizes the rest by
+  severity — the first sync reports thousands of "new" findings by definition.
+- AI guidance is auto-generated only for zero-days + critical/high (20 per
+  sync, severity-first); use the drawer's Generate button for anything else.
+- `GET /api/security/vulnerabilities` returns the worst 500 by default
+  (`?limit=` up to 5000).
 
 ## Operational notes
 
