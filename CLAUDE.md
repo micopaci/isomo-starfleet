@@ -138,10 +138,11 @@ Agent `POST /ingest/*` endpoints. All require `Authorization: Bearer <agent-toke
 | `DEFENDER_API_BASE_URL` | Geo override (`api-eu`/`api-us`) if global host 403s |
 | `SECURITY_NOTIFY_ENABLED` | `false` to disable new-vulnerability email/push |
 | `SECURITY_ALERT_MIN_SEVERITY` | Min severity for alert rows (default `high`; zero-days always alert) |
-| `OPENAI_API_KEY` | OpenAI/Codex API key for AI mitigation guidance (skipped when unset) |
-| `OPENAI_BASE_URL` | Optional OpenAI base URL override (Azure/gateway/proxy) |
+| `OPENAI_API_KEY` / `OPENROUTER_API_KEY` | Key for AI mitigation guidance (OpenAI-compatible; skipped when both unset) |
+| `OPENAI_BASE_URL` | Base URL override (auto-set to OpenRouter when only `OPENROUTER_API_KEY` is set) |
 | `AI_MITIGATION_ENABLED` | `false` to disable AI guidance |
-| `AI_MITIGATION_MODEL` | Model override (default `gpt-4o`) |
+| `AI_MITIGATION_MODEL` | Primary model id (default `gpt-4o`; OpenRouter uses `openai/gpt-5.5` form) |
+| `AI_MITIGATION_MODEL_FALLBACK` | Comma-separated fallback models tried on quota/rate/5xx (e.g. a free OpenRouter model) |
 
 ### Optional services
 

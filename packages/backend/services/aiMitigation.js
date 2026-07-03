@@ -1,6 +1,7 @@
 /**
  * aiMitigation.js — AI-generated mitigation guidance for Defender TVM
- * vulnerabilities, via the OpenAI / Codex API.
+ * vulnerabilities, via any OpenAI-compatible API (OpenAI, OpenRouter, Azure,
+ * a gateway/proxy).
  *
  * For each exposed vulnerability we generate a plain-English risk explanation,
  * prioritized mitigation steps, the matching Starfleet remediation action, and
@@ -14,10 +15,17 @@
  * the CVE internals.
  *
  * Config:
- *   OPENAI_API_KEY        required; guidance is skipped (logged) when absent
+ *   OPENAI_API_KEY / OPENROUTER_API_KEY  credential; guidance is skipped when both absent
+ *   OPENAI_BASE_URL       endpoint override; auto-set to OpenRouter when only
+ *                         OPENROUTER_API_KEY is provided
  *   AI_MITIGATION_ENABLED 'false' to disable (default enabled)
- *   AI_MITIGATION_MODEL   model id (default gpt-4o)
- *   OPENAI_BASE_URL       optional override (Azure OpenAI / gateway / proxy)
+ *   AI_MITIGATION_MODEL   primary model id (default gpt-4o). On OpenRouter, a
+ *                         namespaced id like 'openai/gpt-5.5'.
+ *   AI_MITIGATION_MODEL_FALLBACK  comma-separated fallback model ids. On a
+ *                         quota/billing/rate/5xx failure of one model the next
+ *                         is tried — e.g. a free OpenRouter model
+ *                         ('deepseek/deepseek-chat-v3-0324:free') when the paid
+ *                         primary runs out of credit.
  *
  * All failures are logged and swallowed — never blocks the sync or the API.
  */
@@ -31,9 +39,31 @@ function logJson(level, event, payload = {}) {
   write(JSON.stringify(line));
 }
 
+function apiKey() {
+  return process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY || '';
+}
+
+function baseUrl() {
+  if (process.env.OPENAI_BASE_URL) return process.env.OPENAI_BASE_URL;
+  // If only an OpenRouter key is set, point at OpenRouter automatically.
+  if (process.env.OPENROUTER_API_KEY && !process.env.OPENAI_API_KEY) return 'https://openrouter.ai/api/v1';
+  return undefined;
+}
+
+// Ordered model chain: primary first, then any fallbacks. On a
+// quota/billing/rate/5xx failure of one model the next is tried.
+function modelChain() {
+  const chain = [MODEL];
+  const raw = process.env.AI_MITIGATION_MODEL_FALLBACK || '';
+  for (const m of raw.split(',').map(s => s.trim()).filter(Boolean)) {
+    if (!chain.includes(m)) chain.push(m);
+  }
+  return chain;
+}
+
 function isEnabled() {
   if (process.env.AI_MITIGATION_ENABLED === 'false') return false;
-  return Boolean(process.env.OPENAI_API_KEY);
+  return Boolean(apiKey());
 }
 
 // Lazy-load the SDK (optional dependency; mirrors notifier.js's nodemailer load)
@@ -42,13 +72,10 @@ let openaiClient = null;
 let OpenAiSdk = null;
 function getClient() {
   if (openaiClient) return openaiClient;
-  if (!process.env.OPENAI_API_KEY) return null;
+  if (!apiKey()) return null;
   try {
     OpenAiSdk = require('openai');
-    openaiClient = new OpenAiSdk({
-      apiKey: process.env.OPENAI_API_KEY,
-      baseURL: process.env.OPENAI_BASE_URL || undefined,
-    });
+    openaiClient = new OpenAiSdk({ apiKey: apiKey(), baseURL: baseUrl() });
     return openaiClient;
   } catch (err) {
     logJson('WARN', 'sdk_unavailable', { error: err.message });
@@ -123,56 +150,94 @@ function parseGuidance(text) {
 }
 
 // GPT-5 / o-series reasoning models take `max_completion_tokens` and reject the
-// older `max_tokens`; GPT-4o-family takes `max_tokens`. Pick by model family and
-// keep a headroom for reasoning tokens on the reasoning models.
+// older `max_tokens`; GPT-4o-family and most others take `max_tokens`. The
+// leading `provider/` segment (OpenRouter) is stripped first. Wrong guesses are
+// self-correcting via the 400-retry in callModel().
 function isReasoningModel(model) {
-  return /^(gpt-5|o\d)/i.test(model);
+  const bare = model.includes('/') ? model.split('/').pop() : model;
+  return /^(gpt-5|o\d)/i.test(bare);
 }
 
-async function createCompletion(client, userPrompt) {
-  const base = {
-    model: MODEL,
+// One model, one attempt (with self-correcting retries for provider quirks:
+// the max_tokens/max_completion_tokens split, and models that reject
+// response_format). Does NOT catch quota/rate errors — those bubble up so the
+// caller can fall back to the next model.
+async function callModel(client, model, userPrompt) {
+  const req = {
+    model,
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: userPrompt },
     ],
   };
-  const reasoning = isReasoningModel(MODEL);
-  const withTokens = reasoning
-    ? { ...base, max_completion_tokens: 4000 }
-    : { ...base, max_tokens: 2000 };
-  try {
-    return await client.chat.completions.create(withTokens);
-  } catch (err) {
-    // Some model families flip the token-param requirement; retry once swapping
-    // it before giving up (guards against the model-family heuristic being wrong).
-    if (err?.status === 400 && /max_tokens|max_completion_tokens/i.test(String(err?.message || ''))) {
-      const swapped = reasoning
-        ? { ...base, max_tokens: 2000 }
-        : { ...base, max_completion_tokens: 4000 };
-      return client.chat.completions.create(swapped);
+  if (isReasoningModel(model)) req.max_completion_tokens = 4000;
+  else req.max_tokens = 2000;
+
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await client.chat.completions.create(req);
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err?.message || '');
+      if (err?.status === 400 && /max_tokens|max_completion_tokens/i.test(msg)) {
+        if ('max_tokens' in req) { delete req.max_tokens; req.max_completion_tokens = 4000; }
+        else { delete req.max_completion_tokens; req.max_tokens = 2000; }
+        continue;
+      }
+      if (err?.status === 400 && req.response_format && /response_format|json/i.test(msg)) {
+        // Some (often free) models don't support JSON mode; the prompt already
+        // demands a bare JSON object and parseGuidance tolerates fences/prose.
+        delete req.response_format;
+        continue;
+      }
+      throw err;
     }
-    throw err;
   }
+  throw lastErr;
 }
 
-// Generate + persist guidance for a single vulnerability row. Returns the
-// guidance object.
+// True for errors where trying a different model makes sense: quota/billing,
+// rate limits, and transient upstream failures.
+function shouldFallover(err) {
+  const status = err?.status;
+  if (status === 402 || status === 429 || status >= 500) return true;
+  return /quota|insufficient|billing|credit|rate limit/i.test(String(err?.message || ''));
+}
+
+// Generate + persist guidance for a single vulnerability row, walking the model
+// chain (primary → fallbacks) on quota/rate/5xx failures. Returns the guidance.
 async function generateAndStore(v) {
   const client = getClient();
-  if (!client) throw new Error('OpenAI client not configured');
+  if (!client) throw new Error('AI mitigation client not configured');
 
-  const response = await createCompletion(client, buildUserPrompt(v));
-
-  const guidance = parseGuidance(response.choices?.[0]?.message?.content);
-  await pool.query(
-    `UPDATE vulnerabilities
-     SET ai_guidance = $2::jsonb, ai_guidance_model = $3, ai_guidance_at = NOW()
-     WHERE id = $1`,
-    [v.id, JSON.stringify(guidance), response.model || MODEL]
-  );
-  return guidance;
+  const chain = modelChain();
+  const userPrompt = buildUserPrompt(v);
+  let lastErr;
+  for (let i = 0; i < chain.length; i++) {
+    const model = chain[i];
+    try {
+      const response = await callModel(client, model, userPrompt);
+      const guidance = parseGuidance(response.choices?.[0]?.message?.content);
+      await pool.query(
+        `UPDATE vulnerabilities
+         SET ai_guidance = $2::jsonb, ai_guidance_model = $3, ai_guidance_at = NOW()
+         WHERE id = $1`,
+        [v.id, JSON.stringify(guidance), response.model || model]
+      );
+      if (i > 0) logJson('INFO', 'used_fallback_model', { model, tried: chain.slice(0, i) });
+      return guidance;
+    } catch (err) {
+      lastErr = err;
+      if (i < chain.length - 1 && shouldFallover(err)) {
+        logJson('WARN', 'model_failed_falling_back', { model, status: err?.status, error: String(err?.message || '').slice(0, 160) });
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
 }
 
 const GUIDANCE_INPUT_SQL = `
@@ -190,7 +255,7 @@ const GUIDANCE_INPUT_SQL = `
 // admin "Regenerate" endpoint.
 async function generateForId(id) {
   if (!isEnabled()) {
-    const err = new Error('AI mitigation guidance is disabled or OPENAI_API_KEY is not set');
+    const err = new Error('AI mitigation guidance is disabled or no API key (OPENAI_API_KEY / OPENROUTER_API_KEY) is set');
     err.disabled = true;
     throw err;
   }
@@ -207,7 +272,7 @@ async function generateForId(id) {
 // Sequential, capped, and rate-limit aware.
 async function generateMissingGuidance(cap = 20) {
   if (!isEnabled()) {
-    logJson('INFO', 'skipped', { reason: process.env.OPENAI_API_KEY ? 'disabled' : 'no OPENAI_API_KEY' });
+    logJson('INFO', 'skipped', { reason: apiKey() ? 'disabled' : 'no API key' });
     return 0;
   }
   if (!getClient()) return 0;

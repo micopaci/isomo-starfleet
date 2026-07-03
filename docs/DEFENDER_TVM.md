@@ -76,10 +76,36 @@ and copying their script package GUIDs.
 | `SECURITY_ALERT_MIN_SEVERITY` | `high` | min severity that creates an alert row (`critical`/`high`/`medium`/`low`/`all`); zero-days always alert |
 | `REMEDIATION_POLICY_CHROME_UPDATE` | — | GUID; the action 503s until set (no shared fallback) |
 | `REMEDIATION_POLICY_WINDOWS_UPDATE` | — | GUID; the action 503s until set (no shared fallback) |
-| `OPENAI_API_KEY` | — | OpenAI/Codex API key; AI guidance is skipped when unset |
-| `OPENAI_BASE_URL` | — | optional base URL override (Azure OpenAI / gateway / proxy) |
+| `OPENAI_API_KEY` / `OPENROUTER_API_KEY` | — | key for the OpenAI-compatible API; guidance skipped when both unset |
+| `OPENAI_BASE_URL` | — | base URL override; auto-set to OpenRouter when only `OPENROUTER_API_KEY` is set |
 | `AI_MITIGATION_ENABLED` | `true` | set `false` to disable AI guidance |
-| `AI_MITIGATION_MODEL` | `gpt-4o` | model override — the exact model id your key exposes (e.g. from `GET /v1/models`) |
+| `AI_MITIGATION_MODEL` | `gpt-4o` | primary model id (OpenRouter form: `openai/gpt-5.5`) |
+| `AI_MITIGATION_MODEL_FALLBACK` | — | comma-separated fallbacks tried on quota/rate/5xx (e.g. a free OpenRouter model) |
+
+### Provider options
+
+The guidance service talks to any **OpenAI-compatible** endpoint via the `openai`
+SDK. Pick one:
+
+- **OpenAI direct** — `OPENAI_API_KEY=sk-...`, `AI_MITIGATION_MODEL=gpt-5.5`.
+- **OpenRouter** — `OPENROUTER_API_KEY=sk-or-...` (base URL auto-set),
+  `AI_MITIGATION_MODEL=openai/gpt-5.5`. Model ids are namespaced `provider/model`.
+
+**Paid-with-free-fallback** (the requested setup): keep a paid primary and list a
+free model as the fallback. When the paid model fails with a quota/billing/rate
+(402/429) or upstream 5xx error, the next model in the chain is used and the
+`ai_guidance_model` column records which one actually answered:
+
+```
+OPENROUTER_API_KEY=sk-or-...
+AI_MITIGATION_MODEL=openai/gpt-5.5
+AI_MITIGATION_MODEL_FALLBACK=deepseek/deepseek-chat-v3-0324:free
+```
+
+Free-model ids change over time — pick a current one from
+[openrouter.ai/models](https://openrouter.ai/models) (filter to $0). Free models
+are heavily rate-limited and may not support JSON mode; the service downgrades
+the request automatically (drops `response_format`) and still parses the reply.
 
 ## API
 
