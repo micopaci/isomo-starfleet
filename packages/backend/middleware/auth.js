@@ -78,4 +78,22 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { authMiddleware, requireAdmin };
+/**
+ * Verify a bare JWT against every configured candidate key. Returns the decoded
+ * payload or throws the last verification error. Shared by routers (e.g. the
+ * intake kiosk) that need to authenticate a token outside the main middleware.
+ */
+function verifyToken(token) {
+  const candidates = getVerifyCandidates();
+  let lastErr = null;
+  for (const { key, algorithms } of candidates) {
+    try {
+      return jwt.verify(token, key, { algorithms });
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('no verify key configured');
+}
+
+module.exports = { authMiddleware, requireAdmin, verifyToken };

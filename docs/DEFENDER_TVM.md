@@ -1,0 +1,154 @@
+# Defender for Endpoint TVM Integration
+
+Starfleet syncs Microsoft Defender for Endpoint's Threat & Vulnerability
+Management (TVM) feed — every CVE Defender reports for every product on every
+managed machine — into the platform:
+
+- **Dashboard**: `/security` in the web app lists all exposed vulnerabilities
+  with severity, CVSS, zero-day flag, exposed-device counts, per-device
+  drill-down, AI mitigation guidance, and one-click remediation.
+- **Alerts**: one fleet-wide `alert_events` row per CVE (category `security`,
+  `source_type='defender_tvm'`), auto-resolved when Defender stops reporting it.
+- **Notifications**: each sync that discovers new vulnerabilities sends one
+  batched email (all severities) via the existing notifier, plus an FCM push
+  for critical/zero-day findings.
+- **Remediation**: two Intune proactive-remediation actions — `update_chrome`
+  and `update_windows` — triggerable per-CVE (exactly the exposed devices) or
+  fleet-wide. Windows only; Chromebooks patch via Google Admin.
+- **AI guidance**: per-CVE mitigation guidance generated via the OpenAI / Codex
+  API (`gpt-4o` by default), cached on the `vulnerabilities` row, shown in the
+  Security drawer with a "verify before acting" disclaimer.
+
+## Architecture
+
+| Piece | File |
+|---|---|
+| Sync service (schedule, correlation, alerts, notify) | `packages/backend/services/defenderTvm.js` |
+| AI mitigation guidance | `packages/backend/services/aiMitigation.js` |
+| Read API + regenerate endpoint | `packages/backend/routes/api.js` (`/api/security/*`) |
+| Trigger types (`update_chrome`, `update_windows`) | `packages/backend/routes/api.js` + `services/graph.js` |
+| Tables | `packages/backend/migrations/043_defender_tvm.sql` |
+| Remediation scripts | `packages/agent/chrome-update-*.ps1`, `windows-update-*.ps1` |
+| Web UI | `packages/web/src/pages/Security.tsx` |
+
+The sync runs every `DEFENDER_TVM_SYNC_INTERVAL_MIN` minutes (default 360),
+first run 45s after boot (staggered behind the Intune device sync so `devices`
+rows exist to correlate against). Defender machines are matched to `devices`
+by `azure_ad_device_id`, falling back to hostname; unmatched machines are
+logged per sync.
+
+## One-time setup
+
+### 1. Grant Defender API permissions (Entra)
+
+On the existing app registration (the one behind `GRAPH_CLIENT_ID`):
+
+```text
+Entra admin center -> App registrations -> <Starfleet app> -> API permissions
+  -> Add a permission -> APIs my organization uses -> WindowsDefenderATP
+  -> Application permissions: Machine.Read.All + Vulnerability.Read.All
+  -> Grant admin consent
+```
+
+No new secret is needed — the same client credentials are used with a
+different token audience (`https://api.securitycenter.microsoft.com/.default`).
+Until consent is granted, the sync logs
+`Missing application roles. API required roles: Machine.Read.All…` (HTTP 403)
+every cycle and otherwise no-ops.
+
+Licensing: the `machinesVulnerabilities` endpoint requires Defender for
+Endpoint Plan 2 (Defender for Business has partial API support).
+
+### 2. Create the Intune remediation packages
+
+See `packages/agent/INTUNE_SETUP.md` → "Security Remediations (Defender TVM)"
+for creating **Starfleet - Update Chrome** and **Starfleet - Windows Update**
+and copying their script package GUIDs.
+
+### 3. Set env vars (Render dashboard)
+
+| Var | Default | Purpose |
+|---|---|---|
+| `DEFENDER_TVM_SYNC_ENABLED` | `true` | set `false` to disable the sync |
+| `DEFENDER_TVM_SYNC_INTERVAL_MIN` | `360` (min 30) | TVM refreshes a few times/day |
+| `DEFENDER_API_BASE_URL` | `https://api.securitycenter.microsoft.com` | geo override (`api-eu`/`api-us`) if the global host 403s |
+| `SECURITY_NOTIFY_ENABLED` | `true` | batched email + critical push on new findings |
+| `SECURITY_ALERT_MIN_SEVERITY` | `high` | min severity that creates an alert row (`critical`/`high`/`medium`/`low`/`all`); zero-days always alert |
+| `REMEDIATION_POLICY_CHROME_UPDATE` | — | GUID; the action 503s until set (no shared fallback) |
+| `REMEDIATION_POLICY_WINDOWS_UPDATE` | — | GUID; the action 503s until set (no shared fallback) |
+| `OPENAI_API_KEY` / `OPENROUTER_API_KEY` | — | key for the OpenAI-compatible API; guidance skipped when both unset |
+| `OPENAI_BASE_URL` | — | base URL override; auto-set to OpenRouter when only `OPENROUTER_API_KEY` is set |
+| `AI_MITIGATION_ENABLED` | `true` | set `false` to disable AI guidance |
+| `AI_MITIGATION_MODEL` | `gpt-4o` | primary model id (OpenRouter form: `openai/gpt-5.5`) |
+| `AI_MITIGATION_MODEL_FALLBACK` | — | comma-separated fallbacks tried on quota/rate/5xx (e.g. a free OpenRouter model) |
+
+### Provider options
+
+The guidance service talks to any **OpenAI-compatible** endpoint via the `openai`
+SDK. Pick one:
+
+- **OpenAI direct** — `OPENAI_API_KEY=sk-...`, `AI_MITIGATION_MODEL=gpt-5.5`.
+- **OpenRouter** — `OPENROUTER_API_KEY=sk-or-...` (base URL auto-set),
+  `AI_MITIGATION_MODEL=openai/gpt-5.5`. Model ids are namespaced `provider/model`.
+
+**Paid-with-free-fallback** (the requested setup): keep a paid primary and list a
+free model as the fallback. When the paid model fails with a quota/billing/rate
+(402/429) or upstream 5xx error, the next model in the chain is used and the
+`ai_guidance_model` column records which one actually answered:
+
+```
+OPENROUTER_API_KEY=sk-or-...
+AI_MITIGATION_MODEL=openai/gpt-5.5
+AI_MITIGATION_MODEL_FALLBACK=deepseek/deepseek-chat-v3-0324:free
+```
+
+Free-model ids change over time — pick a current one from
+[openrouter.ai/models](https://openrouter.ai/models) (filter to $0). Free models
+are heavily rate-limited and may not support JSON mode; the service downgrades
+the request automatically (drops `response_format`) and still parses the reply.
+
+## API
+
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `GET /api/security/vulnerabilities` | user | per-CVE aggregate (`?include=resolved` for cleared ones) |
+| `GET /api/security/vulnerabilities/:id/devices` | user | affected devices with site + `can_remediate` |
+| `GET /api/security/summary` | user | severity counts, zero-days, exposed devices, last sync |
+| `POST /api/security/vulnerabilities/:id/guidance` | admin | force-regenerate AI guidance |
+| `POST /api/trigger/devices` `{type, vulnerability_id?}` | admin | remediate the exposed set (Windows-only for security types) |
+
+## Feed volume (measured 2026-07-02)
+
+The Bridge2Rwanda tenant reports ~397 Defender machines, ~229K
+machine-vulnerability pairs, and ~5,700 distinct CVEs. Consequences baked into
+the implementation:
+
+- DB writes are batched (500-row multi-VALUES upserts) — a full sync is a few
+  hundred statements, not 200K.
+- Alert rows are gated by `SECURITY_ALERT_MIN_SEVERITY` (default `high`;
+  zero-days always alert) so the Alerts feed stays usable. The Security page
+  shows everything regardless.
+- The new-findings email itemizes the worst 50 and summarizes the rest by
+  severity — the first sync reports thousands of "new" findings by definition.
+- AI guidance is auto-generated only for zero-days + critical/high (20 per
+  sync, severity-first); use the drawer's Generate button for anything else.
+- `GET /api/security/vulnerabilities` returns the worst 500 by default
+  (`?limit=` up to 5000).
+
+## Operational notes
+
+- **Zero-days without a fix** (TVM-* ids) are display-only: Starfleet tracks
+  them and shows "No patch available"; `update_windows` picks the fix up
+  automatically once Microsoft ships the KB and Defender reports it.
+- **Windows Update remediation never reboots** — `reboot_required` is logged
+  and left to an operator (school devices).
+- **AI guidance is grounded** in Defender-supplied fields only (most of these
+  CVEs postdate the model's training data) and never auto-executes anything;
+  remediation stays behind the admin confirm dialog. Cost is negligible
+  (~50 CVEs × ~1.5K tokens ≈ under $1 backfill, trickle thereafter).
+- **Alert auto-resolution gotcha**: the derived-alerts resolver in
+  `routes/api.js` resolves every open alert with `source_type='derived'` not
+  re-derived on each read. Security alerts intentionally use
+  `source_type='defender_tvm'` — do not change this.
+- **Rate limits**: the Defender API allows ~30 calls/min; detail enrichment is
+  sequential (250ms delay, ≤25/run) and later syncs catch up.

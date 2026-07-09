@@ -153,3 +153,65 @@ queue count = 0
 last_heartbeat.txt updated after Intune ran
 test.ps1 reports GPS or Starlink ID/UUID
 ```
+
+## Security Remediations (Defender TVM)
+
+The Starfleet Security page triggers two additional remediation packages via
+the same on-demand proactive remediation flow. These scripts take no tokens and
+need no build step — upload the files from `packages/agent/` as-is.
+
+### Starfleet - Update Chrome
+
+```text
+Intune admin center -> Devices -> Scripts and remediations -> Remediations -> Create
+
+Name: Starfleet - Update Chrome
+Detection script file:   packages/agent/chrome-update-detection.ps1
+Remediation script file: packages/agent/chrome-update-remediation.ps1
+Run this script using the logged-on credentials: No
+Enforce script signature check: No
+Run script in 64-bit PowerShell: Yes
+```
+
+Detection exits 1 when the installed Chrome is older than the latest stable
+release (from `versionhistory.googleapis.com`; falls back to Google Update
+freshness when offline). Remediation kicks Google Update and, if that fails,
+silently installs the latest enterprise MSI. A running Chrome is never killed —
+an in-use update stages and applies on relaunch (`pending_relaunch`).
+
+### Starfleet - Windows Update
+
+```text
+Name: Starfleet - Windows Update
+Detection script file:   packages/agent/windows-update-detection.ps1
+Remediation script file: packages/agent/windows-update-remediation.ps1
+Run this script using the logged-on credentials: No
+Enforce script signature check: No
+Run script in 64-bit PowerShell: Yes
+```
+
+Detection exits 1 when applicable software updates are pending. Remediation
+installs them security-severity first inside a ~20-minute window and **never
+reboots** — `reboot_required` is logged and left to an operator.
+
+### Wire The GUIDs Into The Backend
+
+On-demand runs do not require the package to be assigned to a device group, but
+an optional daily schedule against a Windows device group is a useful
+belt-and-braces for devices that are offline when an on-demand trigger fires.
+Chromebooks cannot run proactive remediations; the backend already excludes
+non-Windows devices from these two trigger types.
+
+After creating each package, copy its script package GUID from the portal URL
+(or `GET /beta/deviceManagement/deviceHealthScripts` in Graph Explorer) and set
+on the backend host (Render dashboard):
+
+```text
+REMEDIATION_POLICY_CHROME_UPDATE=<guid of Starfleet - Update Chrome>
+REMEDIATION_POLICY_WINDOWS_UPDATE=<guid of Starfleet - Windows Update>
+```
+
+Until each GUID is set, the matching Security page action returns 503 (the
+types deliberately do NOT fall back to the shared `REMEDIATION_POLICY_ID` —
+running the generic Starfleet agent package for an update action would execute
+the wrong script).

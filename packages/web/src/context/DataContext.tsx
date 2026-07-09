@@ -19,6 +19,7 @@ export interface Dish {
   rain: number;
   laptops: number;
   serial: string;
+  kitId: string | null;
   lat_coord: number;
   lng_coord: number;
   spark: number[];
@@ -33,17 +34,30 @@ export interface Dish {
   serviceLineId: string | null;
   decommissionedAt: string | null;
   decommissionReason: string | null;
+  sourceType: 'terminal' | 'retired_asset';
+  replacementKitId: string | null;
 }
 
 export interface Alert {
   id: string;
   sev: 'critical' | 'warning' | 'inventory' | 'info';
+  category: string;
   time: string;
   msg: string;
   meta: string;
   open: boolean;
   ageDays: number;
   profile_number?: string;
+}
+
+// Mirrors GET /api/security/summary (Defender TVM).
+export interface SecuritySummary {
+  critical: number;
+  warning: number;
+  info: number;
+  zero_days: number;
+  exposed_devices: number;
+  last_synced_at: string | null;
 }
 
 export type Connectivity = 'online' | 'stale' | 'offline' | 'unknown';
@@ -78,6 +92,7 @@ interface DataContextType {
   alerts: Alert[];
   inventory: InventoryDevice[];
   intel: Intel;
+  securitySummary: SecuritySummary | null;
   loading: boolean;
   refreshData: () => Promise<void>;
 }
@@ -111,6 +126,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [inventory, setInventory] = useState<InventoryDevice[]>([]);
   const [intel, setIntel] = useState<Intel>({ kpIndex: null, kpLabel: null, satCount: null });
+  const [securitySummary, setSecuritySummary] = useState<SecuritySummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refreshIntel = async (headers: Record<string, string>) => {
@@ -163,6 +179,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const mappedAlerts: Alert[] = Array.isArray(rawAlerts) ? rawAlerts.map((a: any) => ({
         id: a.id,
         sev: a.category === 'inventory' ? 'inventory' : a.severity,
+        category: a.category || '',
         msg: a.message,
         meta: a.title,
         time: new Date(a.detected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -206,12 +223,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           spark.unshift(0);
         }
         const dataGb = consumedGb.slice(-7).reduce((sum: number, v: any) => sum + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
+        const portalName = String(terminal?.nickname || '').trim();
+        const displayName = portalName && !['disabled', 'dead'].includes(portalName.toLowerCase()) ? portalName : s.name;
 
         return {
-          // Distinguish dishes by the terminal's own portal nickname (its real
-          // identity), not the site name — the terminal↔site match is fuzzy, so
-          // the site name can hide which actual dish (working vs broken) is here.
-          name: terminal?.nickname || s.name,
+          // Prefer the terminal's portal nickname, except for generic inactive
+          // labels that hide the real site identity.
+          name: displayName,
           campus: s.name || s.district || 'Unassigned',
           region: getRegionForDistrict(s.district),
           status,
@@ -242,6 +260,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           serviceLineId: terminal?.service_line_id || s.starlink_sn || null,
           decommissionedAt: terminal?.decommissioned_at || null,
           decommissionReason: terminal?.decommission_reason || null,
+          kitId: terminal?.kit_id || s.kit_id || null,
+          sourceType: 'terminal',
+          replacementKitId: terminal?.replacement_kit_id || null,
         };
       }) : [];
 
@@ -262,6 +283,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const termJson = await termRes.json();
         const terminals: any[] = Array.isArray(termJson?.terminals) ? termJson.terminals : [];
         for (const t of terminals) {
+          // Decommissioned terminals live ONLY in the dedicated Decommissioned
+          // view — never in the Starlinks fleet list (avoids duplication).
+          if (t.decommissioned_at) continue;
           if (String(t.current_status || '').toLowerCase() !== 'inactive') continue;
           if (t.service_line_id && seenLines.has(t.service_line_id)) continue;
           const consumed = Array.isArray(t.usage_trend) ? t.usage_trend.map((u: any) => Number(u.consumed_gb)) : [];
@@ -288,6 +312,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             serviceLineId: t.service_line_id || null,
             decommissionedAt: t.decommissioned_at || null,
             decommissionReason: t.decommission_reason || null,
+            kitId: t.kit_id || null,
+            sourceType: t.source_type === 'retired_asset' ? 'retired_asset' : 'terminal',
+            replacementKitId: t.replacement_kit_id || null,
           });
         }
       } catch (err) {
@@ -334,7 +361,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }) : [];
 
-      setDishes(mappedDishes);
+      // Decommissioned dishes are excluded from the active fleet entirely — they
+      // belong only in the Decommissioned view, not the Starlinks list / Overview
+      // / Map / Reports (prevents the same dish appearing in two places).
+      setDishes(mappedDishes.filter(d => !d.decommissionedAt));
       setInactiveDishes(mappedInactive);
       setAlerts(mappedAlerts);
       setInventory(mappedInventory);
@@ -343,6 +373,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       //    Fire-and-forget: the satellites endpoint runs live SGP4 propagation
       //    and can be slow, so it must never block (or stall) the main load.
       void refreshIntel(headers);
+
+      // 5. Security summary (Defender TVM) — best-effort badge data.
+      void (async () => {
+        try {
+          const res = await fetch('/api/security/summary', { headers });
+          if (res.ok) setSecuritySummary(await res.json());
+        } catch { /* leave null */ }
+      })();
     } catch (err) {
       console.error('Failed to load data:', err);
     } finally {
@@ -360,7 +398,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <DataContext.Provider value={{ dishes, inactiveDishes, alerts, inventory, intel, loading, refreshData }}>
+    <DataContext.Provider value={{ dishes, inactiveDishes, alerts, inventory, intel, securitySummary, loading, refreshData }}>
       {children}
     </DataContext.Provider>
   );

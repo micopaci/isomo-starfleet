@@ -17,8 +17,10 @@ const authRoutes          = require('./routes/auth');
 const ingestRoutes        = require('./routes/ingest');
 const apiRoutes           = require('./routes/api');
 const inventoryRoutes     = require('./routes/inventory');
+const kioskRoutes         = require('./routes/kiosk');
 const wsService           = require('./services/websocket');
 const graphClient         = require('./services/graph');
+const defenderTvm         = require('./services/defenderTvm');
 const { scheduleCron }              = require('./services/scoreCron');
 const { scheduleSpaceWeatherCron }  = require('./services/spaceWeather');
 const { scheduleOrbitalCron }       = require('./services/orbitalSync');
@@ -294,6 +296,44 @@ async function ensureRuntimeSchema() {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_starlink_terminals_status
       ON starlink_terminals(current_status, status_updated_at DESC)
+    `);
+    await client.query(`
+      ALTER TABLE starlink_terminals
+      ADD COLUMN IF NOT EXISTS decommissioned_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS decommission_reason TEXT
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS starlink_retired_assets (
+        id                 BIGSERIAL PRIMARY KEY,
+        site_id            INTEGER REFERENCES sites(id) ON DELETE SET NULL,
+        site_name          TEXT NOT NULL,
+        starlink_sn        TEXT,
+        starlink_uuid      TEXT,
+        kit_id             TEXT NOT NULL UNIQUE,
+        service_line_id    TEXT,
+        account_id         TEXT,
+        status             TEXT NOT NULL DEFAULT 'decommissioned'
+                           CHECK (status IN ('decommissioned', 'retired', 'replaced', 'unknown')),
+        decommissioned_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        decommission_reason TEXT,
+        replacement_kit_id TEXT,
+        metadata           JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      ALTER TABLE starlink_retired_assets
+      ADD COLUMN IF NOT EXISTS starlink_uuid TEXT
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_starlink_retired_assets_site_id
+      ON starlink_retired_assets(site_id)
+      WHERE site_id IS NOT NULL
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_starlink_retired_assets_decommissioned_at
+      ON starlink_retired_assets(decommissioned_at DESC)
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS starlink_usage_history (
@@ -584,6 +624,21 @@ app.use('/auth', authRoutes);
 // ── Ingest (JWT-protected) ────────────────────────────────────────────────────
 app.use('/ingest', authMiddleware, ingestRoutes);
 
+// ── QR Sticker Resolver: GET /r/:token ───────────────────────────────────────
+// Physical QR stickers encode https://starfleet.icircles.rw/r/<token>.
+// This redirects to the live kiosk intake page with the token pre-filled in
+// the query string so the intern never has to type it.
+app.get('/r/:token', (req, res) => {
+  const token = encodeURIComponent(req.params.token);
+  res.redirect(302, `/intake.html?token=${token}`);
+});
+
+// ── Intake Kiosk (own PIN-based auth; QR scan-to-register) ───────────────────
+// Mounted BEFORE the JWT-guarded /api so its public resolve/auth endpoints work
+// without a dashboard session; write endpoints self-authenticate via requireKioskOperator.
+app.use('/api/kiosk', kioskRoutes);
+
+
 // ── Read API + trigger (JWT-protected) ───────────────────────────────────────
 app.use('/api/inventory', authMiddleware, inventoryRoutes);
 app.use('/api', authMiddleware, apiRoutes);
@@ -652,6 +707,7 @@ async function startServer() {
     scheduleMetricsEmitter();                // Fleet metrics → stdout every 5 min
     graphClient.startTriggerPoller();
     graphClient.scheduleIntuneDeviceSync();
+    defenderTvm.scheduleDefenderTvmSync();    // Defender for Endpoint TVM sync (default every 6h)
 
     const PORT = process.env.PORT || 3000;
     server.listen(PORT, () => {

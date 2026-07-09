@@ -359,6 +359,12 @@ const REMEDIATION_POLICY_IDS = {
   'data_pull':        process.env.REMEDIATION_POLICY_DATA_PULL        || DEFAULT_REMEDIATION_POLICY_ID,
   'diagnostics':      process.env.REMEDIATION_POLICY_DIAGNOSTICS      || DEFAULT_REMEDIATION_POLICY_ID,
   'ping_dish':        process.env.REMEDIATION_POLICY_PING_DISH        || DEFAULT_REMEDIATION_POLICY_ID,
+  // Security remediations (Defender TVM). Deliberately NOT falling back to the
+  // shared DEFAULT policy: running the generic Starfleet agent package for an
+  // "update Chrome / Windows" action would execute the wrong script. Leave each
+  // null until its own GUID is set so validateRemediationConfig() 503s instead.
+  'update_chrome':    process.env.REMEDIATION_POLICY_CHROME_UPDATE    || null,
+  'update_windows':   process.env.REMEDIATION_POLICY_WINDOWS_UPDATE   || null,
 };
 
 function validateRemediationConfig(type) {
@@ -490,4 +496,8 @@ module.exports = {
   listManagedDevices,
   syncManagedDevices,
   scheduleIntuneDeviceSync,
+  // Exported so services/defenderTvm.js reuses the same HTTP + retry/backoff
+  // stack instead of duplicating it.
+  fetchJson,
+  requestWithRetry,
 };

@@ -269,11 +269,26 @@ def parse_usage_payload(payload, terminal, from_date, to_date):
 
 
 def fetch_json(page, url):
-    result = page.evaluate(FETCH_JS, url)
-    if result.get("error"):
-        status = result.get("status") or result.get("message") or "unknown error"
-        raise RuntimeError(f"{url} failed: {status}")
-    return result["payload"]
+    last_error = None
+    for attempt in range(3):
+        try:
+            result = page.evaluate(FETCH_JS, url)
+            if result.get("error"):
+                status = result.get("status") or result.get("message") or "unknown error"
+                raise RuntimeError(f"{url} failed: {status}")
+            return result["payload"]
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            last_error = exc
+            if "Execution context was destroyed" not in str(exc):
+                raise
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=10000)
+            except Exception:
+                pass
+            time.sleep(0.75 * (attempt + 1))
+    raise last_error
 
 
 def fetch_status(page, terminal):
@@ -375,6 +390,28 @@ def write_json(path, payload):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
+
+
+def persist_session_state(context, state_path):
+    """Re-save the browser session so the on-disk auth state stays fresh.
+
+    The Starlink portal rotates the short-lived access cookie on every page
+    load. Without writing it back, each run reloads the same stale token from
+    disk and eventually 401s (~12-16h after the last manual login). Persisting
+    after a successful run keeps the access token no older than one poll, so a
+    5-minute daemon self-refreshes as long as the long-lived SSO cookie holds.
+
+    Written atomically (temp file + replace) so a crash mid-write can't corrupt
+    state.json. Never raises — a save failure must not fail an otherwise good
+    run, since the worker has already consumed the status output.
+    """
+    try:
+        tmp_path = state_path.parent / (state_path.name + ".tmp")
+        context.storage_state(path=str(tmp_path))
+        tmp_path.replace(state_path)
+        print(f"Refreshed auth state: {state_path}")
+    except Exception as exc:
+        print(f"WARNING: could not persist refreshed auth state: {exc}", file=sys.stderr)
 
 
 def append_jsonl(path, row):
@@ -509,6 +546,7 @@ def main():
         write_json(args.output, output)
         print(f"Wrote {args.output}")
         print(f"Status rows: {len(output['status'])}; usage rows: {len(output['usage'])}")
+        persist_session_state(context, args.state)
         browser.close()
         return 0
 

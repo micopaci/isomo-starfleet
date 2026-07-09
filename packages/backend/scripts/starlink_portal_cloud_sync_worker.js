@@ -135,6 +135,10 @@ function pythonBin() {
   return process.env.STARLINK_PYTHON_BIN || process.env.PYTHON || defaultPythonBin();
 }
 
+function includeInactiveTerminals() {
+  return String(process.env.STARLINK_INCLUDE_INACTIVE_TERMINALS || '').toLowerCase() === 'true';
+}
+
 function pythonBridgeAvailable() {
   return fs.existsSync(pythonSyncScriptPath()) && fs.existsSync(authStatePath()) && fs.existsSync(fleetMapPath());
 }
@@ -248,6 +252,7 @@ function runPythonStarfleetSync(mode) {
   ];
   if (mode === 'status') args.push('--status-once');
   if (mode === 'usage') args.push('--usage');
+  if (includeInactiveTerminals()) args.push('--include-inactive');
   if (process.env.STARLINK_PYTHON_SHOW_BROWSER === 'true') args.push('--show-browser');
 
   const result = spawnSync(pythonBin(), args, {
@@ -374,7 +379,10 @@ async function seedConfiguredTerminals(client, inventory) {
        DO UPDATE SET
          account_id = EXCLUDED.account_id,
          nickname = COALESCE(EXCLUDED.nickname, starlink_terminals.nickname),
-         site_id = COALESCE(EXCLUDED.site_id, starlink_terminals.site_id),
+         site_id = CASE
+           WHEN $6 = 'Inactive' THEN EXCLUDED.site_id
+           ELSE COALESCE(EXCLUDED.site_id, starlink_terminals.site_id)
+         END,
          billing_cycle_start = COALESCE(EXCLUDED.billing_cycle_start, starlink_terminals.billing_cycle_start),
          current_status = CASE
            WHEN $6 = 'Inactive' THEN 'Inactive'
@@ -399,13 +407,18 @@ async function seedConfiguredTerminals(client, inventory) {
   return seeded;
 }
 
-async function loadTerminals(client) {
-  // Inactive / decommissioned terminals are stored for display but excluded from polling.
+async function loadTerminals(client, { includeInactive = false } = {}) {
+  // Inactive / decommissioned terminals are stored for display but excluded
+  // from normal polling. Operator re-feeds can explicitly include them to
+  // refresh portal names and last-seen evidence for disabled/replaced dishes.
+  const whereClause = includeInactive
+    ? ''
+    : `WHERE current_status != 'Inactive'
+       AND decommissioned_at IS NULL`;
   const { rows } = await client.query(
     `SELECT service_line_id, account_id, nickname, site_id, billing_cycle_start::text AS billing_cycle_start
      FROM starlink_terminals
-     WHERE current_status != 'Inactive'
-       AND decommissioned_at IS NULL
+     ${whereClause}
      ORDER BY COALESCE(site_id, 999999), nickname NULLS LAST, service_line_id`,
   );
   return rows;
@@ -413,16 +426,19 @@ async function loadTerminals(client) {
 
 async function ensureTerminalInventory(client, { dryRun = false } = {}) {
   const allInventory = loadTerminalInventoryFromEnv();
+  const includeInactive = includeInactiveTerminals();
   // Seed all terminals (including inactive so they appear in the DB with current_status='Inactive').
   const seeded = allInventory.length && !dryRun ? await seedConfiguredTerminals(client, allInventory) : 0;
   // Only return active terminals for polling.
-  const activeInventory = allInventory.filter(t => {
+  const activeInventory = includeInactive ? allInventory : allInventory.filter(t => {
     const s = String(t.status || '').trim().toLowerCase();
     return !s || s === 'active';
   });
-  const terminals = dryRun && allInventory.length ? activeInventory : await loadTerminals(client);
+  const terminals = dryRun && allInventory.length
+    ? activeInventory
+    : await loadTerminals(client, { includeInactive });
   if (!terminals.length) {
-    throw new Error('No active Starlink terminals configured. Seed starlink_terminals with STARLINK_TERMINALS_FILE or STARLINK_TERMINALS_JSON.');
+    throw new Error('No Starlink terminals configured. Seed starlink_terminals with STARLINK_TERMINALS_FILE or STARLINK_TERMINALS_JSON.');
   }
   return { seeded, terminals };
 }
@@ -463,7 +479,10 @@ async function recordAuthExpiredAlert(client, err, context = {}) {
 async function upsertTerminalStatus(client, terminal, status) {
   await client.query(
     `UPDATE starlink_terminals
-     SET current_status = $2,
+     SET current_status = CASE
+           WHEN decommissioned_at IS NOT NULL THEN 'Inactive'
+           ELSE $2
+         END,
          last_seen_utc = COALESCE($3::timestamptz, last_seen_utc),
          nickname = COALESCE($4, nickname),
          raw_terminal = $5::jsonb,
@@ -836,7 +855,7 @@ async function runDaemon() {
       const result = await runStatusCycle({ dryRun });
       console.log(`[StarlinkCloudSync] status cycle complete: ${JSON.stringify(result)}`);
     } catch (err) {
-      console.error(`[StarlinkCloudSync] status cycle failed: ${err.message}`);
+      console.error(`[StarlinkCloudSync] status cycle failed: ${err && (err.stack || err.message) || err}`);
     } finally {
       statusRunning = false;
     }
@@ -849,7 +868,7 @@ async function runDaemon() {
       const result = await runUsageCycle({ dryRun });
       console.log(`[StarlinkCloudSync] usage cycle complete: ${JSON.stringify(result)}`);
     } catch (err) {
-      console.error(`[StarlinkCloudSync] usage cycle failed: ${err.message}`);
+      console.error(`[StarlinkCloudSync] usage cycle failed: ${err && (err.stack || err.message) || err}`);
     } finally {
       usageRunning = false;
     }
@@ -905,7 +924,7 @@ async function main() {
 }
 
 main().catch(async err => {
-  console.error(`Starlink cloud sync worker failed: ${err.message}`);
+  console.error(`Starlink cloud sync worker failed: ${err && (err.stack || err.message) || err}`);
   await pool.end().catch(() => {});
   process.exitCode = 1;
 });

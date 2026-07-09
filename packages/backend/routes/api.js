@@ -17,6 +17,7 @@ const { classifyAttribution, activeAlertNames } = require('../services/starlinkT
 const { computeSnapshotDailyTotal } = require('../services/starlinkPortalUsage');
 const { sendEmail } = require('../services/notifier');
 const graphClient        = require('../services/graph');
+const aiMitigation       = require('../services/aiMitigation');
 const { checkCoverageGap, getVisibleSatellites } = require('../services/orbitalSync');
 const {
   DEVICE_ONLINE_HOURS,
@@ -155,10 +156,15 @@ function mapStarlinkTerminalRow(row) {
     : [];
   return {
     service_line_id: row.service_line_id,
+    source_type: row.source_type || 'terminal',
     site_id: row.site_id == null ? null : Number(row.site_id),
     site_name: row.site_name || null,
     nickname: row.nickname || null,
     account_id: row.account_id || null,
+    starlink_sn: row.starlink_sn || null,
+    starlink_uuid: row.starlink_uuid || null,
+    kit_id: row.kit_id || null,
+    replacement_kit_id: row.replacement_kit_id || null,
     current_status: row.current_status || 'Unknown',
     last_seen_utc: row.last_seen_utc || null,
     billing_cycle_start: row.billing_cycle_start || null,
@@ -184,6 +190,74 @@ function mapStarlinkTerminalRow(row) {
       : null,
     usage_trend: usageTrend,
   };
+}
+
+function mapRetiredStarlinkAssetRow(row) {
+  if (!row) return null;
+  return {
+    service_line_id: row.service_line_id || null,
+    source_type: 'retired_asset',
+    retired_asset_id: Number(row.id),
+    site_id: row.site_id == null ? null : Number(row.site_id),
+    site_name: row.site_name || null,
+    nickname: row.site_name || row.kit_id || null,
+    account_id: row.account_id || null,
+    starlink_sn: row.starlink_sn || null,
+    starlink_uuid: row.starlink_uuid || null,
+    kit_id: row.kit_id || null,
+    replacement_kit_id: row.replacement_kit_id || null,
+    current_status: 'Inactive',
+    last_seen_utc: null,
+    billing_cycle_start: null,
+    status_updated_at: row.updated_at || row.decommissioned_at || null,
+    decommissioned_at: row.decommissioned_at || null,
+    decommission_reason: row.decommission_reason || null,
+    latest_usage: null,
+    latest_ping: null,
+    usage_trend: [],
+  };
+}
+
+function timeValue(value) {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function starlinkTerminalStatusScore(terminal) {
+  if (!terminal || terminal.decommissioned_at) return 0;
+  const pingStatus = String(terminal.latest_ping?.current_status || '').toLowerCase();
+  const currentStatus = String(terminal.current_status || '').toLowerCase();
+  if (terminal.latest_ping?.is_offline === true) return 0;
+  if (pingStatus === 'online' || currentStatus === 'online') return 3;
+  if (pingStatus === 'offline' || currentStatus === 'inactive' || currentStatus === 'offline') return 1;
+  return 2;
+}
+
+function compareStarlinkTerminalForKit(a, b) {
+  const statusDelta = starlinkTerminalStatusScore(b) - starlinkTerminalStatusScore(a);
+  if (statusDelta) return statusDelta;
+  const updatedDelta = timeValue(b.status_updated_at) - timeValue(a.status_updated_at);
+  if (updatedDelta) return updatedDelta;
+  const pingDelta = timeValue(b.latest_ping?.recorded_at) - timeValue(a.latest_ping?.recorded_at);
+  if (pingDelta) return pingDelta;
+  return String(a.service_line_id || '').localeCompare(String(b.service_line_id || ''));
+}
+
+function normalizeStarlinkTerminalList(terminals) {
+  const byKit = new Map();
+  for (const terminal of terminals) {
+    if (!terminal?.kit_id) continue;
+    const existing = byKit.get(terminal.kit_id);
+    if (!existing || compareStarlinkTerminalForKit(terminal, existing) < 0) {
+      byKit.set(terminal.kit_id, terminal);
+    }
+  }
+  return [...byKit.values()].sort((a, b) => {
+    const aName = a.site_name || a.nickname || a.service_line_id || '';
+    const bName = b.site_name || b.nickname || b.service_line_id || '';
+    return aName.localeCompare(bName) || String(a.kit_id || '').localeCompare(String(b.kit_id || ''));
+  });
 }
 
 function dailyUsageFromTerminal(terminal) {
@@ -721,6 +795,9 @@ router.get('/sites', async (req, res, next) => {
               st.billing_cycle_start::text AS billing_cycle_start,
               st.status_updated_at,
               resolved.site_name,
+              resolved.starlink_sn,
+              resolved.starlink_uuid,
+              resolved.kit_id,
               latest.log_date::text AS latest_log_date,
               latest.consumed_gb AS latest_consumed_gb,
               latest.collected_at AS latest_collected_at,
@@ -733,7 +810,7 @@ router.get('/sites', async (req, res, next) => {
               usage_trend.usage_trend
        FROM starlink_terminals st
        LEFT JOIN LATERAL (
-         SELECT s.id AS site_id, s.name AS site_name
+         SELECT s.id AS site_id, s.name AS site_name, s.starlink_sn, s.starlink_uuid, s.kit_id
          FROM sites s
          WHERE s.id = st.site_id
             OR ${sqlTerminalSiteMatch('s', 'st')}
@@ -1192,6 +1269,9 @@ router.get('/starlink-terminals', async (req, res, next) => {
               st.status_updated_at,
               st.decommissioned_at,
               st.decommission_reason,
+              resolved.starlink_sn,
+              resolved.starlink_uuid,
+              resolved.kit_id,
               latest.log_date::text AS latest_log_date,
               latest.consumed_gb AS latest_consumed_gb,
               latest.collected_at AS latest_collected_at,
@@ -1204,7 +1284,7 @@ router.get('/starlink-terminals', async (req, res, next) => {
               usage_trend.usage_trend
        FROM starlink_terminals st
        LEFT JOIN LATERAL (
-         SELECT s.id AS site_id, s.name AS site_name
+         SELECT s.id AS site_id, s.name AS site_name, s.starlink_sn, s.starlink_uuid, s.kit_id
          FROM sites s
          WHERE s.id = st.site_id
             OR ${sqlTerminalSiteMatch('s', 'st')}
@@ -1240,9 +1320,36 @@ router.get('/starlink-terminals', async (req, res, next) => {
       [days]
     );
 
+    const retiredAssetsRes = await pool.query(
+      `SELECT id,
+              site_id,
+              site_name,
+              starlink_sn,
+              starlink_uuid,
+              kit_id,
+              service_line_id,
+              account_id,
+              status,
+              decommissioned_at,
+              decommission_reason,
+              replacement_kit_id,
+              updated_at
+       FROM starlink_retired_assets
+       ORDER BY decommissioned_at DESC, site_name, kit_id`
+    );
+
+    const activeTerminals = normalizeStarlinkTerminalList(rows.map(mapStarlinkTerminalRow));
+    const activeKitIds = new Set(activeTerminals.map(terminal => terminal.kit_id));
+    const retiredAssets = retiredAssetsRes.rows
+      .map(mapRetiredStarlinkAssetRow)
+      .filter(asset => asset?.kit_id && !activeKitIds.has(asset.kit_id));
+
     res.json({
       days,
-      terminals: rows.map(mapStarlinkTerminalRow),
+      terminals: [
+        ...activeTerminals,
+        ...retiredAssets,
+      ],
     });
   } catch (err) { next(err); }
 });
@@ -1827,7 +1934,14 @@ const TRIGGER_TYPES = [
   'diagnostics',
   'ping_dish',
   'reboot_starlink',
+  'update_chrome',
+  'update_windows',
 ];
+
+// Security remediations run Windows-only Intune proactive remediation scripts.
+// Chromebooks can't execute them, so site/fleet fan-outs must exclude non-Windows
+// devices or every Chromebook row becomes a guaranteed-failed trigger.
+const WINDOWS_ONLY_TRIGGER_TYPES = new Set(['update_chrome', 'update_windows']);
 
 function ensureTriggerConfig(res, type) {
   const config = graphClient.validateRemediationConfig(type);
@@ -1898,11 +2012,13 @@ router.post('/trigger/site', requireAdmin, async (req, res, next) => {
 
     const client = await pool.connect();
     try {
+      const windowsOnly = WINDOWS_ONLY_TRIGGER_TYPES.has(type) ? `AND os ILIKE '%windows%'` : '';
       const { rows } = await client.query(
         `SELECT id
          FROM devices
          WHERE site_id = $1
            AND intune_device_id IS NOT NULL
+           ${windowsOnly}
          ORDER BY last_seen DESC NULLS LAST, id ASC`,
         [siteId]
       );
@@ -1920,10 +2036,13 @@ router.post('/trigger/site', requireAdmin, async (req, res, next) => {
 });
 
 // ── POST /api/trigger/devices (admin only) ───────────────────────────────────
-// Body: { type } → triggers every Intune-managed laptop in the fleet.
+// Body: { type, vulnerability_id? } → triggers every Intune-managed laptop in
+// the fleet, or — when vulnerability_id is given — only the devices with an
+// active exposure to that CVE (lets the Security page remediate exactly the
+// exposed set).
 router.post('/trigger/devices', requireAdmin, async (req, res, next) => {
   try {
-    const { type } = req.body;
+    const { type, vulnerability_id } = req.body;
     if (!type) {
       return res.status(400).json({ error: 'type is required' });
     }
@@ -1934,19 +2053,33 @@ router.post('/trigger/devices', requireAdmin, async (req, res, next) => {
 
     const client = await pool.connect();
     try {
-      const { rows } = await client.query(
-        `SELECT id
-         FROM devices
-         WHERE intune_device_id IS NOT NULL
-         ORDER BY last_seen DESC NULLS LAST, id ASC`
-      );
+      const windowsOnly = WINDOWS_ONLY_TRIGGER_TYPES.has(type) ? `AND d.os ILIKE '%windows%'` : '';
+      const { rows } = vulnerability_id
+        ? await client.query(
+            `SELECT DISTINCT d.id, d.last_seen
+             FROM devices d
+             JOIN device_vulnerabilities dv ON dv.device_id = d.id
+             WHERE dv.vulnerability_id = $1
+               AND dv.status = 'active'
+               AND d.intune_device_id IS NOT NULL
+               ${windowsOnly}
+             ORDER BY d.last_seen DESC NULLS LAST, d.id ASC`,
+            [String(vulnerability_id)]
+          )
+        : await client.query(
+            `SELECT d.id
+             FROM devices d
+             WHERE d.intune_device_id IS NOT NULL
+               ${windowsOnly}
+             ORDER BY d.last_seen DESC NULLS LAST, d.id ASC`
+          );
 
       const trigger_ids = [];
       for (const row of rows) {
         trigger_ids.push(await createDeviceTrigger(client, row.id, type, req.user.email));
       }
 
-      res.json({ ok: true, type, count: trigger_ids.length, trigger_ids });
+      res.json({ ok: true, type, vulnerability_id: vulnerability_id ?? null, count: trigger_ids.length, trigger_ids });
     } finally {
       client.release();
     }
@@ -2004,6 +2137,99 @@ router.get('/alerts/summary', async (req, res, next) => {
     );
     res.json(rows);
   } catch (err) { next(err); }
+});
+
+// ── Security: Defender TVM vulnerability feed ─────────────────────────────────
+// Data is synced by services/defenderTvm.js. Read endpoints use router-level
+// auth (any logged-in user); mutation stays admin-only.
+
+const VULN_SEVERITY_ORDER = `CASE lower(v.severity)
+  WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END`;
+
+// GET /api/security/vulnerabilities — one row per CVE, aggregated across devices.
+// ?include=resolved keeps CVEs with no remaining active exposure.
+// The full TVM feed carries thousands of CVEs; the default limit returns the
+// worst 500 (severity → zero-day → exposure). ?limit=N up to 5000.
+router.get('/security/vulnerabilities', async (req, res, next) => {
+  try {
+    const includeResolved = String(req.query.include || '') === 'resolved';
+    const limit = Math.min(Math.max(parseInt(req.query.limit || '500', 10) || 500, 1), 5000);
+    const { rows } = await pool.query(
+      `SELECT v.id, v.name, v.severity, v.cvss_v3, v.is_zero_day, v.published_at,
+              v.ai_guidance, v.ai_guidance_at,
+              COUNT(dv.id) FILTER (WHERE dv.status = 'active')::INT AS exposed_count,
+              MAX(dv.product_name)   AS product_name,
+              MAX(dv.product_vendor) AS product_vendor,
+              MAX(dv.fixing_kb_id)   AS fixing_kb_id,
+              (MAX(dv.fixing_kb_id) IS NOT NULL OR NOT v.is_zero_day) AS has_fix,
+              MIN(dv.first_seen_at)  AS first_seen_at,
+              MAX(dv.last_seen_at)   AS last_seen_at
+       FROM vulnerabilities v
+       JOIN device_vulnerabilities dv ON dv.vulnerability_id = v.id
+       GROUP BY v.id
+       ${includeResolved ? '' : `HAVING COUNT(dv.id) FILTER (WHERE dv.status = 'active') > 0`}
+       ORDER BY ${VULN_SEVERITY_ORDER} DESC, v.is_zero_day DESC,
+                COUNT(dv.id) FILTER (WHERE dv.status = 'active') DESC, v.id ASC
+       LIMIT $1`,
+      [limit]
+    );
+    res.json(rows.map(r => ({
+      ...r,
+      cvss_v3: r.cvss_v3 == null ? null : Number(r.cvss_v3),
+    })));
+  } catch (err) { next(err); }
+});
+
+// GET /api/security/vulnerabilities/:id/devices — affected devices with site.
+router.get('/security/vulnerabilities/:id/devices', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT d.id, d.hostname, d.windows_sn, d.os, d.os_version,
+              s.name AS site_name,
+              dv.product_name, dv.product_version, dv.fixing_kb_id,
+              dv.status, dv.first_seen_at, dv.last_seen_at,
+              (d.intune_device_id IS NOT NULL) AS can_remediate
+       FROM device_vulnerabilities dv
+       JOIN devices d ON d.id = dv.device_id
+       LEFT JOIN sites s ON s.id = d.site_id
+       WHERE dv.vulnerability_id = $1
+       ORDER BY (dv.status = 'active') DESC, d.hostname ASC NULLS LAST, d.id ASC`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// GET /api/security/summary — headline counts for the Overview badge / chips.
+router.get('/security/summary', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         COUNT(DISTINCT v.id) FILTER (WHERE v.is_zero_day OR lower(v.severity) = 'critical')::INT AS critical,
+         COUNT(DISTINCT v.id) FILTER (WHERE NOT v.is_zero_day AND lower(v.severity) = 'high')::INT AS warning,
+         COUNT(DISTINCT v.id) FILTER (WHERE NOT v.is_zero_day AND lower(v.severity) NOT IN ('critical', 'high'))::INT AS info,
+         COUNT(DISTINCT v.id) FILTER (WHERE v.is_zero_day)::INT AS zero_days,
+         COUNT(DISTINCT dv.device_id)::INT AS exposed_devices,
+         MAX(v.last_synced_at) AS last_synced_at
+       FROM vulnerabilities v
+       JOIN device_vulnerabilities dv
+         ON dv.vulnerability_id = v.id AND dv.status = 'active'`
+    );
+    res.json(rows[0] || { critical: 0, warning: 0, info: 0, zero_days: 0, exposed_devices: 0, last_synced_at: null });
+  } catch (err) { next(err); }
+});
+
+// POST /api/security/vulnerabilities/:id/guidance (admin only) — force
+// (re)generation of the AI mitigation guidance for one CVE.
+router.post('/security/vulnerabilities/:id/guidance', requireAdmin, async (req, res, next) => {
+  try {
+    const guidance = await aiMitigation.generateForId(req.params.id);
+    res.json({ ok: true, id: req.params.id, ai_guidance: guidance });
+  } catch (err) {
+    if (err.disabled) return res.status(503).json({ error: err.message });
+    if (err.notFound) return res.status(404).json({ error: err.message });
+    next(err);
+  }
 });
 
 // ── POST /api/alerts/:id/ack (admin only) ─────────────────────────────────────

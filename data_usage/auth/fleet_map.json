@@ -69,7 +69,7 @@
             },
             {
                 "service_line": "SL-DF-7524418-96351-63",
-                "nickname": "GS Nyange",
+                "nickname": "DISABLED - Old Nyange",
                 "status": "Inactive"
             },
             {
@@ -174,7 +174,7 @@
         "terminals": [
             {
                 "service_line": "SL-596751-62929-38",
-                "nickname": "DISABLED",
+                "nickname": "DISABLED - BUSASAMANA ",
                 "status": "Inactive"
             },
             {
@@ -184,7 +184,7 @@
             },
             {
                 "service_line": "SL-596753-39884-44",
-                "nickname": "GS Mubuga II",
+                "nickname": "GS Mubuga N",
                 "status": "Active"
             },
             {
@@ -224,7 +224,7 @@
             },
             {
                 "service_line": "SL-DF-7525498-69379-82",
-                "nickname": "DEAD",
+                "nickname": "OLD NYAGASAMBU - DEAD",
                 "status": "Inactive"
             },
             {
@@ -234,7 +234,7 @@
             },
             {
                 "service_line": "SL-DF-7526684-64875-76",
-                "nickname": "Maranyundo Girls",
+                "nickname": "OLD MARANYUNDO GIRLS - DEAD",
                 "status": "Inactive"
             },
             {

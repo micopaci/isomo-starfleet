@@ -538,6 +538,65 @@ export interface DeviceLifecycleLog {
   recorded_at: string;
 }
 
+// ── Security / Defender TVM ──────────────────────────────────────────────────
+// Mirrors GET /api/security/* (synced by backend services/defenderTvm.js).
+
+/** AI-generated mitigation guidance cached on a vulnerability (nullable). */
+export interface AiGuidance {
+  summary: string;
+  risk_plain_english: string;
+  mitigation_steps: string[];
+  starfleet_action: 'update_chrome' | 'update_windows' | 'manual' | 'none_available';
+  urgency: 'immediate' | 'this_week' | 'monitor';
+  caveats: string;
+}
+
+/** One row per CVE — mirrors GET /api/security/vulnerabilities */
+export interface VulnerabilitySummary {
+  id: string;                       // 'CVE-2026-13774' or 'TVM-2026-0001'
+  name: string | null;
+  severity: string;                 // Defender values: Critical/High/Medium/Low
+  cvss_v3: number | null;
+  is_zero_day: boolean;
+  published_at: string | null;
+  ai_guidance: AiGuidance | null;
+  ai_guidance_at: string | null;
+  exposed_count: number;
+  product_name: string | null;
+  product_vendor: string | null;
+  fixing_kb_id: string | null;
+  has_fix: boolean;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+}
+
+/** Mirrors GET /api/security/vulnerabilities/:id/devices */
+export interface VulnerabilityDevice {
+  id: number;
+  hostname: string | null;
+  windows_sn: string | null;
+  os: string | null;
+  os_version: string | null;
+  site_name: string | null;
+  product_name: string | null;
+  product_version: string | null;
+  fixing_kb_id: string | null;
+  status: 'active' | 'resolved';
+  first_seen_at: string;
+  last_seen_at: string;
+  can_remediate: boolean;
+}
+
+/** Mirrors GET /api/security/summary */
+export interface SecuritySummary {
+  critical: number;
+  warning: number;
+  info: number;
+  zero_days: number;
+  exposed_devices: number;
+  last_synced_at: string | null;
+}
+
 // ── Offline Transaction Queue Item ─────────────────────────────────────────
 export interface OfflineTransaction {
   transaction_uuid: string;
