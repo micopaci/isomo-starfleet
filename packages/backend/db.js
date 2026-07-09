@@ -6,16 +6,8 @@ const MAX_CONNECTIONS = parseInt(process.env.DB_MAX_CONNECTIONS, 10) || 10;
 let poolConfig;
 
 if (process.env.INSTANCE_CONNECTION_NAME) {
-  const { Connector } = require('@google-cloud/cloud-sql-connector');
-  const connector = new Connector();
-
-  const clientOpts = connector.getOptions({
-    instanceConnectionName: process.env.INSTANCE_CONNECTION_NAME,
-    ipType: process.env.DB_IP_TYPE || 'PRIVATE',
-  });
-
   poolConfig = {
-    ...clientOpts,
+    host: `/cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME || 'starfleet',
