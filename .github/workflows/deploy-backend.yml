@@ -67,7 +67,7 @@ jobs:
           service: ${{ env.SERVICE }}
           region: ${{ env.REGION }}
           image: ${{ env.IMAGE_REPO }}:${{ github.sha }}
-          flags: '--cpu-boost --no-cpu-throttling --max-instances=4 --min-instances=0 --add-cloudsql-instances=isomobrain:us-central1:starfleet-db'
+          flags: '--cpu-boost --no-cpu-throttling --max-instances=4 --min-instances=0 --add-cloudsql-instances=isomobrain:us-central1:starfleet-db --allow-unauthenticated'
           env_vars: |
             NODE_ENV=production
             DB_IP_TYPE=PUBLIC
