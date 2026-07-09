@@ -17,6 +17,7 @@ const authRoutes          = require('./routes/auth');
 const ingestRoutes        = require('./routes/ingest');
 const apiRoutes           = require('./routes/api');
 const inventoryRoutes     = require('./routes/inventory');
+const kioskRoutes         = require('./routes/kiosk');
 const wsService           = require('./services/websocket');
 const graphClient         = require('./services/graph');
 const defenderTvm         = require('./services/defenderTvm');
@@ -622,6 +623,21 @@ app.use('/auth', authRoutes);
 
 // ── Ingest (JWT-protected) ────────────────────────────────────────────────────
 app.use('/ingest', authMiddleware, ingestRoutes);
+
+// ── QR Sticker Resolver: GET /r/:token ───────────────────────────────────────
+// Physical QR stickers encode https://starfleet.icircles.rw/r/<token>.
+// This redirects to the live kiosk intake page with the token pre-filled in
+// the query string so the intern never has to type it.
+app.get('/r/:token', (req, res) => {
+  const token = encodeURIComponent(req.params.token);
+  res.redirect(302, `/intake.html?token=${token}`);
+});
+
+// ── Intake Kiosk (own PIN-based auth; QR scan-to-register) ───────────────────
+// Mounted BEFORE the JWT-guarded /api so its public resolve/auth endpoints work
+// without a dashboard session; write endpoints self-authenticate via requireKioskOperator.
+app.use('/api/kiosk', kioskRoutes);
+
 
 // ── Read API + trigger (JWT-protected) ───────────────────────────────────────
 app.use('/api/inventory', authMiddleware, inventoryRoutes);

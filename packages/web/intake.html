@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Starfleet Intake Kiosk</title>
+<meta name="description" content="Isomo Circles device intake kiosk — scan a QR sticker to register or update a device.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0e1712;--panel:#172018;--surface-2:#1e2b1f;--surface-3:#253027;--line:#2e3d30;--ink:#e2ede4;--ink-2:#adbfaf;--ink-3:#6e7f70;--faint:#4a5a4c;--accent:#34b483;--accent-dark:#268f67;--accent-soft:rgba(52,180,131,.14);--accent-ink:#5fc28e;--ok:#5fc28e;--ok-soft:rgba(95,194,142,.14);--warn:#d9a441;--warn-soft:rgba(217,164,65,.14);--bad:#cf5b48;--bad-soft:rgba(207,91,72,.14);--mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;--ui:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;--radius:10px;--card-radius:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--ui);font-size:15px;line-height:1.5;min-height:100dvh;display:flex;flex-direction:column;align-items:center;padding:0 0 40px;-webkit-font-smoothing:antialiased}
+.topbar{width:100%;max-width:480px;display:flex;align-items:center;justify-content:space-between;padding:18px 20px 14px;border-bottom:1px solid var(--line)}
+.topbar-logo{display:flex;align-items:center;gap:10px}
+.topbar-logo svg{flex-shrink:0}
+.topbar-wordmark{font-size:13px;font-weight:600;letter-spacing:.03em;color:var(--accent-ink)}
+.topbar-sub{font-size:11px;color:var(--ink-3);margin-top:1px}
+#operator-badge{font-size:11px;font-family:var(--mono);color:var(--ink-3);background:var(--surface-2);border:1px solid var(--line);padding:4px 8px;border-radius:6px;display:none;cursor:pointer}
+#operator-badge.visible{display:block}
+.card-wrap{width:100%;max-width:480px;padding:20px 20px 0;display:flex;flex-direction:column;gap:0;flex:1}
+.screen{display:none;flex-direction:column;gap:18px;animation:fadeIn .2s ease}
+.screen.active{display:flex}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--card-radius);padding:18px}
+.card-title{font-size:12px;font-family:var(--mono);color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px}
+.asset-pill{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);border:1px solid var(--accent-dark);color:var(--accent-ink);font-family:var(--mono);font-size:22px;font-weight:600;padding:12px 20px;border-radius:var(--radius);margin-bottom:4px}
+.asset-pill small{font-size:11px;font-weight:400;color:var(--ink-3);font-family:var(--ui);margin-left:6px}
+.status-badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:4px 10px;border-radius:99px;margin-bottom:2px}
+.status-badge::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
+.badge--ok{background:var(--ok-soft);color:var(--ok)}
+.badge--warn{background:var(--warn-soft);color:var(--warn)}
+.badge--bad{background:var(--bad-soft);color:var(--bad)}
+.badge--neutral{background:var(--surface-2);color:var(--ink-2)}
+.detail-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13.5px;margin-top:10px}
+.detail-grid dt{color:var(--ink-3);white-space:nowrap}
+.detail-grid dd{color:var(--ink);font-family:var(--mono);font-size:13px}
+label.field-label{display:block;font-size:12px;font-weight:500;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+input[type=text],input[type=email],input[type=password],select,textarea{width:100%;background:var(--surface-2);border:1px solid var(--line);color:var(--ink);font-family:var(--ui);font-size:15px;padding:11px 14px;border-radius:var(--radius);outline:none;transition:border-color .15s;appearance:none;-webkit-appearance:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);background:var(--surface-3)}
+input.mono{font-family:var(--mono);font-size:14px;letter-spacing:.03em}
+input.pin-input{text-align:center;font-size:28px;font-family:var(--mono);letter-spacing:.4em;padding:14px}
+textarea{resize:vertical;min-height:70px;font-size:14px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px 18px;border:none;border-radius:var(--radius);font-family:var(--ui);font-size:15px;font-weight:600;cursor:pointer;transition:background .15s,opacity .15s,transform .08s;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn--primary{background:var(--accent);color:var(--bg)}
+.btn--primary:hover:not(:disabled){background:var(--accent-dark)}
+.btn--bad{background:var(--bad);color:#fff}
+.btn--bad:hover:not(:disabled){background:#b84533}
+.btn--ghost{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line)}
+.btn--ghost:hover:not(:disabled){background:var(--surface-3)}
+.symptom-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.symptom-item{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13.5px;cursor:pointer;transition:border-color .15s,background .15s;user-select:none;-webkit-user-select:none}
+.symptom-item input{display:none}
+.symptom-item .check-box{width:18px;height:18px;border:2px solid var(--line);border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.symptom-item.checked{border-color:var(--bad);background:var(--bad-soft)}
+.symptom-item.checked .check-box{background:var(--bad);border-color:var(--bad)}
+.symptom-item.checked .check-box::after{content:'✓';color:#fff;font-size:11px;font-weight:700}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--surface-3);border:1px solid var(--line);color:var(--ink);padding:11px 18px;border-radius:var(--radius);font-size:14px;max-width:360px;text-align:center;transition:transform .25s cubic-bezier(.34,1.56,.64,1),opacity .2s;opacity:0;z-index:999;pointer-events:none}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+#toast.ok{border-color:var(--ok);color:var(--ok)}
+#toast.err{border-color:var(--bad);color:var(--bad)}
+#toast.warn{border-color:var(--warn);color:var(--warn)}
+.spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.2);border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.success-icon{width:64px;height:64px;background:var(--ok-soft);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 12px;border:2px solid var(--ok)}
+.error-icon{width:64px;height:64px;background:var(--bad-soft);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 12px;border:2px solid var(--bad)}
+.back-row{display:flex;align-items:center;gap:8px;margin-bottom:-4px}
+.back-btn{background:none;border:none;color:var(--ink-3);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:4px;padding:4px 0;font-family:var(--ui)}
+.back-btn:hover{color:var(--ink)}
+.type-toggle{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.type-btn{padding:9px 6px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;color:var(--ink-2);font-size:12.5px;font-weight:500;cursor:pointer;text-align:center;transition:all .15s;font-family:var(--ui)}
+.type-btn.active{background:var(--accent-soft);border-color:var(--accent-dark);color:var(--accent-ink)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="14" cy="14" r="13" stroke="#34b483" stroke-width="1.5"/>
+      <path d="M14 4 L19 14 L14 10 L9 14 Z" fill="#34b483" opacity=".9"/>
+      <path d="M14 10 L19 14 L14 24 L9 14 Z" fill="#34b483" opacity=".45"/>
+    </svg>
+    <div>
+      <div class="topbar-wordmark">Starfleet</div>
+      <div class="topbar-sub">Device Intake</div>
+    </div>
+  </div>
+  <div id="operator-badge" onclick="signOut()" title="Tap to sign out">
+    <span id="operator-name-badge">Operator</span> &middot; Sign out
+  </div>
+</div>
+
+<div class="card-wrap">
+
+  <!-- SCREEN: loading -->
+  <div class="screen active" id="screen-loading">
+    <div class="card" style="text-align:center;padding:40px 20px">
+      <div style="font-size:36px;margin-bottom:16px">📡</div>
+      <p style="color:var(--ink-2);font-size:15px">Validating QR code&hellip;</p>
+    </div>
+  </div>
+
+  <!-- SCREEN: bad-token -->
+  <div class="screen" id="screen-bad-token">
+    <div class="card" style="text-align:center;padding:40px 20px">
+      <div class="error-icon">⚠️</div>
+      <h2 style="font-size:18px;margin-bottom:8px">Unknown QR Tag</h2>
+      <p style="color:var(--ink-2);font-size:14px">This sticker is not part of the Isomo Circles fleet. Check the asset number or contact an admin.</p>
+    </div>
+  </div>
+
+  <!-- SCREEN: pin -->
+  <div class="screen" id="screen-pin">
+    <div class="card">
+      <p class="card-title">Asset Tag</p>
+      <div class="asset-pill" id="pin-asset-number">&mdash;</div>
+      <p id="pin-asset-status" style="font-size:13px;margin-top:8px;color:var(--ink-3)"></p>
+    </div>
+    <div class="card">
+      <p class="card-title">Operator PIN</p>
+      <label class="field-label">Enter your PIN</label>
+      <input id="pin-input" type="password" inputmode="numeric" class="pin-input" placeholder="&bull; &bull; &bull; &bull;"
+        autocomplete="current-password" maxlength="12">
+      <p id="pin-error" style="color:var(--bad);font-size:13px;margin-top:8px;display:none"></p>
+    </div>
+    <button class="btn btn--primary" id="pin-submit-btn" onclick="submitPin()">
+      <span id="pin-btn-text">Authenticate</span>
+    </button>
+  </div>
+
+  <!-- SCREEN: registered -->
+  <div class="screen" id="screen-registered">
+    <div class="back-row">
+      <button class="back-btn" onclick="signOut()">&larr; Sign out</button>
+    </div>
+    <div class="card">
+      <p class="card-title">Asset Tag</p>
+      <div class="asset-pill" id="reg-asset-number">&mdash;</div>
+      <div style="margin-top:10px"><span class="status-badge" id="reg-status-badge">&mdash;</span></div>
+      <dl class="detail-grid" id="reg-detail-grid"></dl>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn btn--ghost" onclick="showAssignScreen()">&nearr; Reissue / Assign</button>
+      <button class="btn btn--bad" onclick="showMarkBrokenScreen()">🔧 Mark as Broken</button>
+    </div>
+  </div>
+
+  <!-- SCREEN: new (unregistered) -->
+  <div class="screen" id="screen-new">
+    <div class="back-row">
+      <button class="back-btn" onclick="signOut()">&larr; Sign out</button>
+    </div>
+    <div class="card">
+      <p class="card-title">Asset Tag</p>
+      <div class="asset-pill" id="new-asset-number">&mdash;</div>
+      <p style="color:var(--ink-3);font-size:13px;margin-top:8px">New device &mdash; enter the serial number to bind this sticker.</p>
+    </div>
+    <div class="card">
+      <p class="card-title">Register Device</p>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div>
+          <label class="field-label">BIOS / Device Serial Number</label>
+          <input id="new-serial" type="text" class="mono" placeholder="e.g. 5CG123ABCD" autocapitalize="characters" spellcheck="false">
+        </div>
+        <div>
+          <label class="field-label">Assign to (optional)</label>
+          <input id="new-assignee" type="email" inputmode="email" placeholder="student@icircles.rw" autocapitalize="none" spellcheck="false" oninput="toggleNewAssigneeType()">
+        </div>
+        <div id="new-assignee-type-row" style="display:none">
+          <label class="field-label" style="margin-bottom:8px">Assignee Type</label>
+          <div class="type-toggle">
+            <button class="type-btn active" data-type="student" onclick="setNewAssigneeType('student')">Student</button>
+            <button class="type-btn" data-type="staff" onclick="setNewAssigneeType('staff')">Staff</button>
+            <button class="type-btn" data-type="pool" onclick="setNewAssigneeType('pool')">Pool</button>
+          </div>
+        </div>
+        <div>
+          <label class="field-label">Notes (optional)</label>
+          <textarea id="new-notes" placeholder="e.g. Received from Kigali office, charger included"></textarea>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn btn--primary" id="btn-register-ok" onclick="registerDevice(false)"><span>Register &mdash; Working</span></button>
+          <button class="btn btn--bad" id="btn-register-broken" onclick="registerDevice(true)"><span>Register &mdash; Mark Broken</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN: mark-broken -->
+  <div class="screen" id="screen-broken">
+    <div class="back-row"><button class="back-btn" onclick="goBack()">&larr; Back</button></div>
+    <div class="card">
+      <p class="card-title">Mark Broken</p>
+      <p style="color:var(--ink-2);font-size:14px">The current assignment will be closed and the device sent to the repair queue.</p>
+    </div>
+    <div class="card">
+      <p class="card-title">Symptoms</p>
+      <div class="symptom-grid" id="symptom-grid"></div>
+    </div>
+    <div class="card">
+      <label class="field-label">Notes (optional)</label>
+      <textarea id="broken-notes" placeholder="e.g. Screen cracked, battery swollen"></textarea>
+    </div>
+    <button class="btn btn--bad" id="btn-mark-broken" onclick="submitMarkBroken()">Confirm &mdash; Send to Repair Queue</button>
+  </div>
+
+  <!-- SCREEN: assign -->
+  <div class="screen" id="screen-assign">
+    <div class="back-row"><button class="back-btn" onclick="goBack()">&larr; Back</button></div>
+    <div class="card">
+      <p class="card-title">Assign / Reissue</p>
+      <p style="color:var(--ink-2);font-size:14px">Any existing assignment will be closed and a new one opened.</p>
+    </div>
+    <div class="card">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div>
+          <label class="field-label">Assignee Email (UPN)</label>
+          <input id="assign-email" type="email" inputmode="email" placeholder="student@icircles.rw" autocapitalize="none" spellcheck="false">
+        </div>
+        <div>
+          <label class="field-label">Assignee Type</label>
+          <div class="type-toggle">
+            <button class="type-btn active" data-type="student" onclick="setAssignType('student')">Student</button>
+            <button class="type-btn" data-type="staff" onclick="setAssignType('staff')">Staff</button>
+            <button class="type-btn" data-type="pool" onclick="setAssignType('pool')">Pool</button>
+          </div>
+        </div>
+        <div>
+          <label class="field-label">Notes (optional)</label>
+          <textarea id="assign-notes" placeholder="e.g. Reissued after repair, batch 3"></textarea>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn--primary" id="btn-assign" onclick="submitAssign()">Confirm Assignment</button>
+  </div>
+
+  <!-- SCREEN: success -->
+  <div class="screen" id="screen-success">
+    <div class="card" style="text-align:center;padding:40px 20px">
+      <div class="success-icon">✓</div>
+      <h2 id="success-title" style="font-size:18px;margin-bottom:8px">Done</h2>
+      <p id="success-body" style="color:var(--ink-2);font-size:14px"></p>
+    </div>
+    <button class="btn btn--ghost" onclick="signOut()">Scan another device</button>
+  </div>
+
+</div><!-- /card-wrap -->
+<div id="toast"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const API = ''; // same-origin
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const state = {
+  token: null, assetNumber: null, registered: false,
+  asset: null, kioskJwt: null, operatorName: null,
+  assignType: 'student', newAssignType: 'student', prevScreen: null,
+};
+
+const SYMPTOMS = [
+  'SSD Fault','Screen Crack','Battery Fault','Keyboard',
+  'Charger Missing','Lockout / Bitlocker','Motherboard','Other',
+];
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+(async function boot() {
+  // Restore session (survives page refresh within one shift)
+  try {
+    const saved = sessionStorage.getItem('kioskSession');
+    if (saved) { Object.assign(state, JSON.parse(saved)); showOperatorBadge(state.operatorName); }
+  } catch (_) { sessionStorage.removeItem('kioskSession'); }
+
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('token');
+  if (!raw) { showScreen('bad-token'); return; }
+  state.token = raw;
+
+  // Skip PIN if session already has a kiosk JWT for this token
+  if (state.kioskJwt && state.token === raw) {
+    renderActionScreen(state.asset, state.registered);
+    return;
+  }
+
+  try {
+    const r = await apiCall('GET', '/api/kiosk/resolve/' + encodeURIComponent(raw));
+    state.assetNumber = r.asset_number;
+    state.registered  = r.registered;
+    renderPinScreen();
+  } catch (err) {
+    showScreen(err.status === 404 ? 'bad-token' : 'bad-token');
+  }
+})();
+
+// ── Screen helpers ─────────────────────────────────────────────────────────────
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById('screen-' + name);
+  if (el) el.classList.add('active');
+}
+
+function renderPinScreen() {
+  document.getElementById('pin-asset-number').innerHTML =
+    '#' + String(state.assetNumber).padStart(3,'0') +
+    '<small>' + (state.registered ? 'REGISTERED' : 'UNREGISTERED') + '</small>';
+  document.getElementById('pin-asset-status').textContent = state.registered
+    ? 'Device already in fleet. Enter your PIN to update its status.'
+    : 'New device — enter your PIN, then provide the serial number.';
+  showScreen('pin');
+  setTimeout(() => document.getElementById('pin-input').focus(), 100);
+}
+
+function renderActionScreen(asset, isRegistered) {
+  if (!isRegistered || !asset || !asset.device) renderNewScreen(asset);
+  else renderRegisteredScreen(asset);
+}
+
+function renderRegisteredScreen(asset) {
+  const d = asset.device;
+  document.getElementById('reg-asset-number').innerHTML = '#' + String(asset.asset_number).padStart(3,'0');
+  const badge = document.getElementById('reg-status-badge');
+  const statusMap = {
+    working_in_use:    ['badge--ok',  'Working — In Use'],
+    intake_broken:     ['badge--bad', 'Intake Broken'],
+    in_repair:         ['badge--warn','In Repair'],
+    ready_for_reissue: ['badge--ok',  'Ready for Reissue'],
+    decommissioned:    ['badge--neutral','Decommissioned'],
+  };
+  const [cls, label] = statusMap[d.hardware_status] || ['badge--neutral', d.hardware_status];
+  badge.className = 'status-badge ' + cls;
+  badge.textContent = label;
+  const grid = document.getElementById('reg-detail-grid');
+  grid.innerHTML = [
+    ['Serial',   d.serial_number  || '—'],
+    ['Profile',  d.profile_number || '—'],
+    ['Model',    d.model          || '—'],
+    ['OS',       d.os             || '—'],
+    ['Assignee', d.assignee_email || 'Unassigned'],
+  ].map(([k,v]) => '<dt>' + k + '</dt><dd>' + escHtml(String(v)) + '</dd>').join('');
+  showScreen('registered');
+}
+
+function renderNewScreen(asset) {
+  const n = asset ? asset.asset_number : state.assetNumber;
+  document.getElementById('new-asset-number').innerHTML = '#' + String(n).padStart(3,'0');
+  showScreen('new');
+  setTimeout(() => document.getElementById('new-serial').focus(), 100);
+}
+
+function toggleNewAssigneeType() {
+  const val = document.getElementById('new-assignee').value.trim();
+  document.getElementById('new-assignee-type-row').style.display = val ? 'block' : 'none';
+}
+
+function showMarkBrokenScreen() {
+  state.prevScreen = 'registered';
+  const grid = document.getElementById('symptom-grid');
+  grid.innerHTML = SYMPTOMS.map(s =>
+    '<label class="symptom-item" onclick="toggleSymptom(this)">' +
+    '<input type="checkbox" value="' + s + '">' +
+    '<span class="check-box"></span><span>' + s + '</span></label>'
+  ).join('');
+  document.getElementById('broken-notes').value = '';
+  showScreen('broken');
+}
+
+function showAssignScreen() {
+  state.prevScreen = 'registered';
+  document.getElementById('assign-email').value = '';
+  document.getElementById('assign-notes').value = '';
+  setAssignType('student');
+  showScreen('assign');
+  setTimeout(() => document.getElementById('assign-email').focus(), 100);
+}
+
+function goBack() {
+  if (state.prevScreen) showScreen(state.prevScreen);
+  else renderActionScreen(state.asset, state.registered);
+}
+
+// ── PIN ────────────────────────────────────────────────────────────────────────
+async function submitPin() {
+  const pin = document.getElementById('pin-input').value.trim();
+  if (!pin) { pinError('Please enter your PIN.'); return; }
+  setBtnLoading('pin-submit-btn', 'pin-btn-text', true);
+  try {
+    const r = await apiCall('POST', '/api/kiosk/auth', { token: state.token, pin });
+    state.kioskJwt     = r.kiosk_token;
+    state.operatorName = r.operator.name;
+    state.asset        = r.asset;
+    state.registered   = r.asset.registered;
+    state.assetNumber  = r.asset.asset_number;
+    saveSession();
+    showOperatorBadge(r.operator.name);
+    document.getElementById('pin-error').style.display = 'none';
+    renderActionScreen(r.asset, r.asset.registered);
+  } catch (err) {
+    pinError(err.message || 'Authentication failed.');
+  } finally {
+    setBtnLoading('pin-submit-btn', 'pin-btn-text', false, 'Authenticate');
+    document.getElementById('pin-input').value = '';
+  }
+}
+
+function pinError(msg) {
+  const el = document.getElementById('pin-error');
+  el.textContent = msg; el.style.display = 'block';
+  document.getElementById('pin-input').focus();
+}
+
+// ── Register ───────────────────────────────────────────────────────────────────
+async function registerDevice(markBroken) {
+  const serial = document.getElementById('new-serial').value.trim();
+  if (!serial) { toast('Serial number is required.', 'err'); return; }
+  const assigneeEmail = document.getElementById('new-assignee').value.trim() || null;
+  const notes = document.getElementById('new-notes').value.trim() || null;
+  const btnId = markBroken ? 'btn-register-broken' : 'btn-register-ok';
+  setBtnLoading(btnId, null, true);
+  try {
+    const body = { token: state.token, serial, mark_broken: markBroken, notes,
+                   client_transaction_uuid: crypto.randomUUID() };
+    if (assigneeEmail && !markBroken) { body.assignee_email = assigneeEmail; body.assignee_type = state.newAssignType; }
+    const r = await apiCall('POST', '/api/kiosk/register', body, true);
+    state.asset = r.asset; state.registered = true; saveSession();
+    showSuccess(
+      markBroken ? '🔧 Registered — Repair Queue' : '✓ Registered',
+      'Asset #' + String(r.asset_number).padStart(3,'0') + ' · Profile ' + r.profile_number +
+      (assigneeEmail && !markBroken ? ' · Assigned to ' + assigneeEmail : '') + '.'
+    );
+  } catch (err) { toast(err.message || 'Registration failed.', 'err'); }
+  finally { setBtnLoading(btnId, null, false); }
+}
+
+// ── Mark broken ────────────────────────────────────────────────────────────────
+async function submitMarkBroken() {
+  const symptoms = [...document.querySelectorAll('#symptom-grid input:checked')].map(i => i.value);
+  const notes = document.getElementById('broken-notes').value.trim() || null;
+  setBtnLoading('btn-mark-broken', null, true);
+  try {
+    const r = await apiCall('POST', '/api/kiosk/mark-broken',
+      { token: state.token, symptoms, notes, client_transaction_uuid: crypto.randomUUID() }, true);
+    state.asset = r.asset; saveSession();
+    showSuccess('🔧 Marked as Broken', 'Asset sent to repair queue. Active assignment closed.');
+  } catch (err) { toast(err.message || 'Request failed.', 'err'); }
+  finally { setBtnLoading('btn-mark-broken', null, false); }
+}
+
+// ── Assign ─────────────────────────────────────────────────────────────────────
+async function submitAssign() {
+  const email = document.getElementById('assign-email').value.trim();
+  if (!email) { toast('Assignee email is required.', 'err'); return; }
+  const notes = document.getElementById('assign-notes').value.trim() || null;
+  setBtnLoading('btn-assign', null, true);
+  try {
+    const r = await apiCall('POST', '/api/kiosk/assign',
+      { token: state.token, assignee_email: email, assignee_type: state.assignType,
+        notes, client_transaction_uuid: crypto.randomUUID() }, true);
+    state.asset = r.asset; saveSession();
+    showSuccess('✓ Assigned', 'Device assigned to ' + email + '.');
+  } catch (err) { toast(err.message || 'Assignment failed.', 'err'); }
+  finally { setBtnLoading('btn-assign', null, false); }
+}
+
+// ── Symptom ────────────────────────────────────────────────────────────────────
+function toggleSymptom(label) {
+  const cb = label.querySelector('input');
+  cb.checked = !cb.checked;
+  label.classList.toggle('checked', cb.checked);
+}
+
+// ── Type toggles ───────────────────────────────────────────────────────────────
+function setAssignType(type) {
+  state.assignType = type;
+  document.querySelectorAll('#screen-assign .type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+}
+function setNewAssigneeType(type) {
+  state.newAssignType = type;
+  document.querySelectorAll('#screen-new .type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+}
+
+// ── Success ────────────────────────────────────────────────────────────────────
+function showSuccess(title, body) {
+  document.getElementById('success-title').textContent = title;
+  document.getElementById('success-body').textContent  = body;
+  showScreen('success');
+}
+
+// ── Session ────────────────────────────────────────────────────────────────────
+function signOut() {
+  sessionStorage.removeItem('kioskSession');
+  const t = state.token ? '?token=' + encodeURIComponent(state.token) : '';
+  window.location.href = window.location.pathname + t;
+}
+
+function saveSession() {
+  const { token, assetNumber, registered, asset, kioskJwt, operatorName } = state;
+  sessionStorage.setItem('kioskSession', JSON.stringify({ token, assetNumber, registered, asset, kioskJwt, operatorName }));
+}
+
+function showOperatorBadge(name) {
+  document.getElementById('operator-name-badge').textContent = name || 'Operator';
+  document.getElementById('operator-badge').classList.add('visible');
+}
+
+// ── API ────────────────────────────────────────────────────────────────────────
+async function apiCall(method, url, body, needAuth) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (needAuth && state.kioskJwt) headers['Authorization'] = 'Bearer ' + state.kioskJwt;
+  const res = await fetch(API + url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  let data;
+  try { data = await res.json(); } catch (_) { data = {}; }
+  if (!res.ok) { const e = new Error(data.error || 'HTTP ' + res.status); e.status = res.status; throw e; }
+  return data;
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────────
+let _tt;
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'show ' + (type || '');
+  clearTimeout(_tt);
+  _tt = setTimeout(() => { el.className = ''; }, 3500);
+}
+
+// ── Button loading state ───────────────────────────────────────────────────────
+const _btnOrigText = {};
+function setBtnLoading(btnId, txtId, loading, restoreText) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  if (loading) {
+    _btnOrigText[btnId] = btn.innerHTML;
+    btn.disabled = true;
+    if (txtId) { document.getElementById(txtId).innerHTML = '<span class="spinner"></span>'; }
+    else { btn.innerHTML = '<span class="spinner"></span>'; }
+  } else {
+    btn.disabled = false;
+    if (restoreText && txtId) document.getElementById(txtId).textContent = restoreText;
+    else btn.innerHTML = _btnOrigText[btnId] || btn.innerHTML;
+  }
+}
+
+// ── Utils ──────────────────────────────────────────────────────────────────────
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+document.getElementById('pin-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitPin(); });
+</script>
+</body>
+</html>
