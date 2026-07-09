@@ -5,6 +5,9 @@ const {
 
 const WEBAGG_BASE_URL = 'https://starlink.com/api/webagg/v2';
 const TELEMETRYAGG_BASE_URL = 'https://starlink.com/api/telemetryagg/v1';
+const AUTH_BASE_URL = 'https://starlink.com/api/auth';
+const PORTAL_ORIGIN = 'https://starlink.com';
+const PORTAL_REFERER = 'https://starlink.com/account/home';
 
 function firstDefined(...values) {
   return values.find(value => value !== undefined && value !== null);
@@ -153,11 +156,11 @@ function numberFromValue(value) {
 function coerceDailyGigabytes(point) {
   const direct = numberFromValue(point);
   if (direct != null) return direct;
+  // Annotated feed returns each day as a positional array of GB buckets,
+  // e.g. [20.6] (total) or [priorityGb, standardGb]. Sum the numeric members.
   if (Array.isArray(point)) {
-    if (point.length === 0) return null;
-    const first = point[0];
-    if (Array.isArray(first)) return coerceDailyGigabytes(first);
-    return coerceDailyGigabytes(first);
+    const nums = point.map(numberFromValue).filter(n => n != null);
+    return nums.length ? nums.reduce((sum, n) => sum + n, 0) : null;
   }
   if (!point || typeof point !== 'object') return null;
 
@@ -270,14 +273,67 @@ function parseUsageHistory(payload, options = {}) {
 }
 
 class StarlinkPortalClient {
-  constructor({ headers, webaggBaseUrl = WEBAGG_BASE_URL, telemetryaggBaseUrl = TELEMETRYAGG_BASE_URL } = {}) {
-    this.headers = headers || {};
+  constructor({
+    headers,
+    webaggBaseUrl = WEBAGG_BASE_URL,
+    telemetryaggBaseUrl = TELEMETRYAGG_BASE_URL,
+    authBaseUrl = AUTH_BASE_URL,
+  } = {}) {
+    // Starlink rejects API calls without a same-origin Referer/Origin.
+    this.baseHeaders = { Referer: PORTAL_REFERER, Origin: PORTAL_ORIGIN, ...(headers || {}) };
     this.webaggBaseUrl = webaggBaseUrl.replace(/\/$/, '');
     this.telemetryaggBaseUrl = telemetryaggBaseUrl.replace(/\/$/, '');
+    this.authBaseUrl = authBaseUrl.replace(/\/$/, '');
+
+    // Maintain a live cookie jar so per-account auth refreshes (which rotate
+    // Starlink.Com.Access.V1 via Set-Cookie) carry into subsequent requests.
+    this.jar = new Map();
+    if (this.baseHeaders.Cookie) {
+      for (const part of String(this.baseHeaders.Cookie).split(/;\s*/)) {
+        const name = part.split('=')[0];
+        if (name) this.jar.set(name, part);
+      }
+    }
+    this.activeAccountId = null;
+  }
+
+  headers() {
+    return { ...this.baseHeaders, Cookie: [...this.jar.values()].join('; ') };
+  }
+
+  captureCookies(res) {
+    const setCookies = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
+    for (const cookie of setCookies) {
+      const pair = cookie.split(';')[0];
+      const name = pair.split('=')[0];
+      if (name) this.jar.set(name, pair);
+    }
+  }
+
+  // Starlink ignores ?accountNumber on data endpoints; account context is set by
+  // the starlink.com.account_number cookie plus an auth refresh that rotates the
+  // access token for that account. Call before fetching a different account's lines.
+  async switchAccount(accountId) {
+    if (!accountId || accountId === this.activeAccountId) return;
+    this.jar.set('starlink.com.account_number', `starlink.com.account_number=${encodeURIComponent(accountId)}`);
+    const res = await fetch(`${this.authBaseUrl}/auth/user?accountNumber=${encodeURIComponent(accountId)}`, {
+      headers: this.headers(),
+      redirect: 'manual',
+    });
+    this.captureCookies(res);
+    if (isAuthExpiredStatus(res.status)) {
+      throw new StarlinkPortalAuthExpiredError(
+        `Starlink portal auth expired with HTTP ${res.status}`,
+        res.status,
+        { operation: 'switch_account', account_id: accountId },
+      );
+    }
+    this.activeAccountId = accountId;
   }
 
   async requestJson(url, context = {}) {
-    const res = await fetch(url, { headers: this.headers });
+    const res = await fetch(url, { headers: this.headers(), redirect: 'manual' });
+    this.captureCookies(res);
     const text = await res.text();
     let body = {};
     try {
@@ -310,24 +366,10 @@ class StarlinkPortalClient {
   getDataUsage(accountId, serviceLineId) {
     const encodedAccount = encodeURIComponent(accountId);
     const encodedServiceLine = encodeURIComponent(serviceLineId);
-    const annotatedPath = `${this.telemetryaggBaseUrl}/data-usage/account/${encodedAccount}/service-line/${encodedServiceLine}/annotated`;
-    const legacyPath = `${this.telemetryaggBaseUrl}/data-usage/account/${encodedAccount}/service-line/${encodedServiceLine}`;
-
-    try {
-      return this.requestJson(
-        annotatedPath,
-        { operation: 'daily_usage', account_id: accountId, service_line_id: serviceLineId, variant: 'annotated' },
-      );
-    } catch (err) {
-      if (err && err.name === 'StarlinkPortalAuthExpiredError') throw err;
-      if (err && /HTTP 404|HTTP 403/.test(err.message || '')) {
-        return this.requestJson(
-          legacyPath,
-          { operation: 'daily_usage', account_id: accountId, service_line_id: serviceLineId, variant: 'legacy' },
-        );
-      }
-      throw err;
-    }
+    return this.requestJson(
+      `${this.telemetryaggBaseUrl}/data-usage/account/${encodedAccount}/service-line/${encodedServiceLine}/annotated`,
+      { operation: 'daily_usage', account_id: accountId, service_line_id: serviceLineId },
+    );
   }
 }
 
